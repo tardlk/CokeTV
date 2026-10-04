@@ -4,7 +4,7 @@ import App from '../../web/App.vue';
 import {registerUI} from '../../web/register-ui.js';
 vi.mock('../../web/SourceWorkspace.vue',()=>({__esModule:true,default:{props:['source'],template:'<div class="workspace-shell">编辑 {{source.name}}</div>'}}));
 
-let wrapper,state,requests;
+let wrapper,state,requests,setupRequired;
 const initial=()=>({scripts:[{id:'script',file:'样本.js',engine:'js'}],instances:[
     {id:'a',scriptId:'script',name:'源A',params:'',enabled:true,searchable:true,filterable:false,tags:[]},
     {id:'b',scriptId:'script',name:'源B',params:'second',enabled:false,searchable:true,filterable:false,tags:[]},
@@ -16,7 +16,7 @@ function useAllEngines(){
 function button(text,root=wrapper){return root.findAll('button').find(item=>item.text().trim()===text);}
 async function start(){wrapper=mount(App,{attachTo:document.body,global:{plugins:[{install:registerUI}]}});await flushPromises();}
 beforeEach(()=>{
-    state=initial();requests=[];
+    state=initial();requests=[];setupRequired=false;
     sessionStorage.setItem('coketv-access',btoa(':test'));
     window.matchMedia=vi.fn(()=>({matches:false,addEventListener:vi.fn(),removeEventListener:vi.fn(),addListener:vi.fn(),removeListener:vi.fn()}));
     global.ResizeObserver=class{observe(){}unobserve(){}disconnect(){}};
@@ -24,6 +24,8 @@ beforeEach(()=>{
     vi.stubGlobal('fetch',vi.fn(async(url,options={})=>{
         const payload=options.body instanceof FormData?{engine:options.body.get('engine'),file:options.body.get('file')}:options.body?JSON.parse(options.body):null;
         requests.push({url,method:options.method||'GET',payload});
+        if(url==='/access/status')return {ok:true,status:200,json:async()=>({requiresSetup:setupRequired})};
+        if(url==='/admin/access/setup'){setupRequired=false;return {ok:true,status:200,json:async()=>({ok:true})};}
         if(url==='/admin/instances/batch')for(const instance of state.instances)if(payload.ids.includes(instance.id))instance.enabled=payload.enabled;
         if(url.startsWith('/admin/instances/')&&options.method==='PUT')Object.assign(state.instances.find(s=>s.id===url.split('/').at(-1)),payload);
         if(url==='/admin/subscriptions'&&options.method==='POST')state.subscriptions.push({id:'s',token:'test',...payload});
@@ -38,6 +40,22 @@ beforeEach(()=>{
 afterEach(()=>{wrapper?.unmount();document.body.innerHTML='';sessionStorage.clear();history.replaceState({},'','/');vi.unstubAllGlobals();});
 
 describe('shadcn 控制台绑定',()=>{
+    it('首次进入创建密码，输入不一致不提交，成功后进入并保存新凭据',async()=>{
+        setupRequired=true;await start();
+        expect(wrapper.text()).toContain('首次使用，请创建访问密码');
+        expect(requests.some(item=>item.url==='/admin/state')).toBe(false);
+        await wrapper.find('#new-password').setValue('new-password');await wrapper.find('#confirm-password').setValue('different');
+        await wrapper.find('form').trigger('submit');await flushPromises();
+        expect(wrapper.text()).toContain('两次输入的密码不一致');
+        expect(requests.some(item=>item.url==='/admin/access/setup')).toBe(false);
+        await wrapper.find('#confirm-password').setValue('new-password');await wrapper.find('form').trigger('submit');await flushPromises();
+        expect(requests.find(item=>item.url==='/admin/access/setup').payload).toEqual({password:'new-password',confirmPassword:'new-password'});
+        expect(atob(sessionStorage.getItem('coketv-access'))).toBe(':new-password');
+        expect(wrapper.find('.source-table').exists()).toBe(true);
+        await wrapper.find('[aria-label="退出"]').trigger('click');await flushPromises();
+        expect(wrapper.find('#new-password').exists()).toBe(false);
+        expect(wrapper.find('#login-password').exists()).toBe(true);
+    });
     it('只输入访问密码即可进入，退出清除访问凭据',async()=>{
         sessionStorage.clear();await start();
         expect(wrapper.findAll('input')).toHaveLength(1);

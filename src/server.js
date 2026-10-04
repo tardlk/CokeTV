@@ -45,8 +45,11 @@ export async function createApp({directory, seed = true} = {}) {
         reply.code(error.statusCode || 500).send({error: error.message, ...(error.importCode ? {code: error.importCode} : {})});
     });
     app.addHook('preHandler', async (request, reply) => {
+        if (request.routeOptions.url === '/admin/access/setup') return;
         if (request.url.startsWith('/admin/')) return auth.guard(request, reply);
     });
+    app.get('/access/status', async () => ({requiresSetup: auth.needsSetup()}));
+    app.post('/admin/access/setup', async request => auth.setup(request));
     app.addHook('onClose', async () => runner.close());
     const baseUrl = request => store.state.settings.publicUrl.replace(/\/$/, '') || `${request.protocol}://${request.headers.host}`;
     const contextFor = (request, instance, script, extra) => ({...buildContext(baseUrl(request), instance, script, extra), sourceEnvPath: store.state.instances.some(s => s.id === instance.id) ? store.sourceEnvPath(instance.id) : null, localPort: app.server.address()?.port || Number(process.env.PORT) || 54058});

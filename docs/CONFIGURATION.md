@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `HOST` | `0.0.0.0` | 监听地址 |
 | `PORT` | `54058` | 服务端口 |
-| `ADMIN_PASSWORD` | 未设置 | 未设置时读取/生成 data/admin.json |
+| `ADMIN_PASSWORD` | 未设置 | 未设置时读取 data/admin.json；首次初始值为 111111，需要创建新密码 |
 | `DATA_DIR` | 项目 data 目录 | 自定义运行数据位置 |
 | `PYTHON_PATH` | `python3` | 首次初始化的 Python 解释器路径 |
 | `PHP_PATH` | `php` | 首次初始化的 PHP 解释器路径 |

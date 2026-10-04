@@ -16,6 +16,11 @@ before(async () => {
     directory = await fs.mkdtemp(path.join(os.tmpdir(), 'drpy-http-'));
     app = await createApp({directory, seed: false});
     const credentials = JSON.parse(await fs.readFile(path.join(directory, 'admin.json')));
+    assert.equal(credentials.password,'111111');
+    assert.equal((await app.inject({url:'/admin/state',headers:{authorization:'Basic '+Buffer.from(':111111').toString('base64')}})).statusCode,428);
+    const setupPassword='integration-password';
+    assert.equal((await app.inject({url:'/admin/access/setup',method:'POST',headers:{authorization:'Basic '+Buffer.from(':111111').toString('base64')},payload:{password:setupPassword,confirmPassword:setupPassword}})).statusCode,200);
+    credentials.password=setupPassword;
     authorization = `Basic ${Buffer.from(`:${credentials.password}`).toString('base64')}`;
     const localPython = path.join(ROOT, '.tools/python/bin/python3'), localPhp = path.join(ROOT, '.tools/php/php');
     app.store.state.settings.pythonPath = process.env.TEST_PYTHON || await fs.access(localPython).then(() => localPython).catch(() => 'python3');

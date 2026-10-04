@@ -26,7 +26,7 @@ TEST_PYTHON="$PWD/.venv/bin/python3" TEST_PHP=php npm test
 
 ## 当前验证
 
-本机 macOS arm64 / Node 22 / Python 3.12 / PHP 8.4 已通过 44 项测试、110 个文件语法检查与生产构建。涵盖：
+本机 macOS arm64 / Node 22 / Python 3.12 / PHP 8.4 已通过 46 项测试、110 个文件语法检查与生产构建。涵盖：
 
 - JS、CatVod、HIPY、PHP、DR2 的首页、分类、搜索、详情、播放与代理协议。
 - 实例参数、源级 ENV 隔离、配置持久化、备份与订阅范围。

@@ -13,6 +13,7 @@ export default {
         const workspaceSource = ref(null);
         const state = ref(null), page = ref('sources'), query = ref(''), engine = ref('all'), selected = ref([]), currentPage = ref(1);
         const auth = ref(sessionStorage.getItem('coketv-access') || ''), login = ref({password: ''}), loginError = ref('');
+        const requiresSetup = ref(false), accessLoading = ref(true), newPassword = ref(''), confirmPassword = ref('');
         const busy = ref(false), notices = ref([]), modal = ref(null), form = ref({}), dependencies = ref(null);
         const pageSize=ref(20);
         const confirming = ref(null), settings = ref({}), importFile = ref(null);
@@ -21,7 +22,7 @@ export default {
         async function api(url, body, method = body === undefined ? 'GET' : 'POST') {
             const response = await fetch(url, {method, headers: {Authorization: `Basic ${auth.value}`, ...(body && !(body instanceof FormData) ? {'Content-Type': 'application/json'} : {})}, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body)});
             const data = await response.json();
-            if (!response.ok) { if (response.status === 401) { auth.value = ''; sessionStorage.removeItem('coketv-access'); } throw Object.assign(new Error(data.error || '请求失败'), {code: data.code}); }
+            if (!response.ok) { if (response.status === 401 || data.code === 'ACCESS_SETUP_REQUIRED') { auth.value = ''; state.value = null; sessionStorage.removeItem('coketv-access'); } if (data.code === 'ACCESS_SETUP_REQUIRED') requiresSetup.value = true; throw Object.assign(new Error(data.error || '请求失败'), {code: data.code}); }
             return data;
         }
         async function load() {
@@ -39,6 +40,21 @@ export default {
             auth.value = btoa(unescape(encodeURIComponent(`:${login.value.password}`))); loginError.value = '';
             try { await load(); sessionStorage.setItem('coketv-access', auth.value); login.value.password = ''; const id=location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1]; const source=sources.value.find(s=>s.id===id); if(source){workspaceSource.value=source;page.value='workspace';} }
             catch (error) { loginError.value = error.message; auth.value = ''; } finally { busy.value = false; }
+        }
+        async function createPassword() {
+            if (busy.value) return;
+            loginError.value = '';
+            if (newPassword.value !== confirmPassword.value) {loginError.value='两次输入的密码不一致';return;}
+            busy.value = true;
+            try {
+                auth.value = btoa(':111111');
+                await api('/admin/access/setup', {password: newPassword.value, confirmPassword: confirmPassword.value});
+                requiresSetup.value = false;
+                auth.value = btoa(unescape(encodeURIComponent(`:${newPassword.value}`)));
+                newPassword.value = ''; confirmPassword.value = '';
+                await load(); sessionStorage.setItem('coketv-access', auth.value);
+                const id=location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1];const source=sources.value.find(s=>s.id===id);if(source){workspaceSource.value=source;page.value='workspace';}
+            } catch(error) {loginError.value=error.message;auth.value='';} finally {busy.value=false;}
         }
         const sources = computed(() => (state.value?.instances || []).map(instance => ({...instance, script: state.value.scripts.find(s => s.id === instance.scriptId)})));
         const filtered = computed(() => sources.value.filter(source => (engine.value === 'all' || engineLanguage(source.script?.engine) === engine.value) &&
@@ -122,15 +138,24 @@ export default {
         async function scan() { await api('/admin/scan', {}); await load(); }
         function logout() { auth.value = ''; state.value = null; sessionStorage.removeItem('coketv-access'); }
         const modalTitle=computed(()=>modal.value==='import'?'选择 JS 运行格式':modal.value==='rename'?'重命名源':modal.value==='links'?'订阅地址':modal.value==='instance'?(form.value.id?'编辑源':'新建源实例'):modal.value==='editor'?'添加源':modal.value==='subscription'?(form.value.id?'配置订阅':'新建订阅'):form.value.title || '');
-        onMounted(async () => { if (auth.value) await action(load); const id = location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1]; if (id && state.value) { const source = sources.value.find(s => s.id === id); if (source) {workspaceSource.value=source; page.value='workspace';} } });
-        return {requestFile,languageLabels,engineLanguage,renameSource,saveName,importSelected,importFile,pageSize,openLinks,switchCapability,modalTitle, workspaceSource, closeWorkspace, api, state, page, query, engine, selected, currentPage, totalPages, visible, filtered, sources, enabledCount, auth, login, loginError, busy, notices, modal, form, dependencies, confirming, settings, labels,
+        onMounted(async () => {
+            try { const access = await api('/access/status'); requiresSetup.value=access.requiresSetup; }
+            catch(error){loginError.value=error.message;}
+            finally {accessLoading.value=false;}
+            if(requiresSetup.value){auth.value='';sessionStorage.removeItem('coketv-access');return;}
+            if (auth.value) await action(load);
+            const id = location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1]; if (id && state.value) { const source = sources.value.find(s => s.id === id); if (source) {workspaceSource.value=source; page.value='workspace';} }
+        });
+        return {requiresSetup,accessLoading,newPassword,confirmPassword,createPassword,requestFile,languageLabels,engineLanguage,renameSource,saveName,importSelected,importFile,pageSize,openLinks,switchCapability,modalTitle, workspaceSource, closeWorkspace, api, state, page, query, engine, selected, currentPage, totalPages, visible, filtered, sources, enabledCount, auth, login, loginError, busy, notices, modal, form, dependencies, confirming, settings, labels,
             action, signIn, toggle, selectVisible, switchSource, batch, editInstance, saveInstance, editScript, newScript, saveScript, upload, removeSource, openSubscription, saveSubscription, subscriptionUrl, copy, preview, deleteSub, resetToken, saveSettings, checkDependencies, exportConfig, importConfig, logout, acceptConfirm, load, scan};
     }
 };
 </script>
 <template>
   <Toaster rich-colors position="bottom-right" />
-  <div v-if="!auth || !state" class="login-layout">
+  <div v-if="accessLoading" class="login-layout"><Skeleton class="h-52 w-80" /></div>
+  <div v-else-if="requiresSetup" class="login-layout"><section class="login-form-area"><form class="login-form" @submit.prevent="createPassword"><div><h2>CokeTV</h2><p>首次使用，请创建访问密码。</p></div><FieldGroup><Field><FieldLabel for="new-password">新密码</FieldLabel><Input id="new-password" v-model="newPassword" type="password" autocomplete="new-password" minlength="6" maxlength="200" :disabled="busy" required autofocus /></Field><Field :data-invalid="!!loginError"><FieldLabel for="confirm-password">确认密码</FieldLabel><Input id="confirm-password" v-model="confirmPassword" type="password" autocomplete="new-password" :disabled="busy" :aria-invalid="!!loginError" required /><FieldError v-if="loginError">{{loginError}}</FieldError></Field></FieldGroup><Button type="submit" :disabled="busy">{{busy?'创建中…':'创建并进入'}}</Button></form></section></div>
+  <div v-else-if="!auth || !state" class="login-layout">
     <section class="login-form-area"><form class="login-form" @submit.prevent="signIn"><h2>CokeTV</h2><FieldGroup><Field :data-invalid="!!loginError"><FieldLabel for="login-password">访问密码</FieldLabel><Input id="login-password" v-model="login.password" type="password" autocomplete="current-password" :aria-invalid="!!loginError" :disabled="busy" required autofocus /><FieldError v-if="loginError">{{loginError}}</FieldError></Field></FieldGroup><Button type="submit" :disabled="busy">{{busy?'验证中…':'进入'}}</Button></form></section>
   </div>
   <SourceWorkspace v-else-if="page==='workspace' && workspaceSource" :key="workspaceSource.id" :source="workspaceSource" :sources="sources" :api="api" @close="closeWorkspace" @saved="action(load)" />
