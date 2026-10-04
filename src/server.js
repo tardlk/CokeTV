@@ -413,7 +413,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
     const app = await createApp();
     await app.listen({port: Number(process.env.PORT) || 54058, host: process.env.HOST || '0.0.0.0'});
     console.log(`CokeTV 已启动：http://127.0.0.1:${app.server.address().port}`);
-    console.log(`管理登录信息：${path.join(app.store.directory, 'admin.json')}（或使用 ADMIN_USER/ADMIN_PASSWORD）`);
+    console.log(`访问密码配置：${path.join(app.store.directory, 'admin.json')}（或使用 ADMIN_PASSWORD）`);
     const close = async () => { await app.close(); process.exit(); };
     process.on('SIGINT', close); process.on('SIGTERM', close);
 }

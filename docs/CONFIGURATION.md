@@ -8,7 +8,6 @@
 | --- | --- | --- |
 | `HOST` | `0.0.0.0` | 监听地址 |
 | `PORT` | `54058` | 服务端口 |
-| `ADMIN_USER` | `admin` | 配合 ADMIN_PASSWORD 指定登录账号 |
 | `ADMIN_PASSWORD` | 未设置 | 未设置时读取/生成 data/admin.json |
 | `DATA_DIR` | 项目 data 目录 | 自定义运行数据位置 |
 | `PYTHON_PATH` | `python3` | 首次初始化的 Python 解释器路径 |

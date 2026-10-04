@@ -21,7 +21,7 @@ python3 -m venv .venv
 PYTHON_PATH="$PWD/.venv/bin/python3" PHP_PATH=php npm start
 ```
 
-打开 [http://127.0.0.1:54058](http://127.0.0.1:54058)。首次启动生成 `data/admin.json`，其中保存管理员账号和密码。也可以通过 `ADMIN_USER`、`ADMIN_PASSWORD` 指定已有登录配置。
+打开 [http://127.0.0.1:54058](http://127.0.0.1:54058)。首次启动生成 `data/admin.json`，其中保存访问密码。进入页面只需输入访问密码，没有用户或账号管理。也可以通过 `ADMIN_PASSWORD` 指定密码。
 
 已安装运行环境并构建前端后，可以用 `./start.sh` 启动。本机开发工具若放在 `.tools/`，启动脚本会自动识别；这些工具不随仓库分发。
 
@@ -70,7 +70,7 @@ TVBox 在另一台设备上时，在设置中填写可达的服务对外地址�
 用户运行数据在 `data/`，不进入 Git。
 
 ```text
-data/admin.json                    管理登录信息
+data/admin.json                    访问密码配置
 data/state.json                    源实例、订阅与设置
 data/runtime/                      运行内核副本、源与辅助资源
 data/runtime/config/source-env/    按源实例保存的环境变量

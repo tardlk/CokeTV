@@ -5,8 +5,8 @@ const source = process.argv[2];
 if (!source) { console.error('用法：npm run verify -- <站点ID> [服务地址]'); process.exit(1); }
 const base = process.argv[3] || 'http://127.0.0.1:54058';
 const directory = process.env.DATA_DIR || path.join(ROOT, 'data');
-const credentials = process.env.ADMIN_PASSWORD ? {username: process.env.ADMIN_USER || 'admin', password: process.env.ADMIN_PASSWORD} : JSON.parse(await fs.readFile(path.join(directory, 'admin.json')));
-const headers = {Authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64')}`};
+const credentials = process.env.ADMIN_PASSWORD ? {password: process.env.ADMIN_PASSWORD} : JSON.parse(await fs.readFile(path.join(directory, 'admin.json')));
+const headers = {Authorization: `Basic ${Buffer.from(`:${credentials.password}`).toString('base64')}`};
 const get = async query => {
     const response = await fetch(`${base}/api/${encodeURIComponent(source)}?${new URLSearchParams(query)}`, {headers});
     const body = await response.json();

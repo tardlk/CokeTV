@@ -17,7 +17,7 @@ function button(text,root=wrapper){return root.findAll('button').find(item=>item
 async function start(){wrapper=mount(App,{attachTo:document.body,global:{plugins:[{install:registerUI}]}});await flushPromises();}
 beforeEach(()=>{
     state=initial();requests=[];
-    sessionStorage.setItem('drpy-auth',btoa('admin:test'));
+    sessionStorage.setItem('coketv-access',btoa(':test'));
     window.matchMedia=vi.fn(()=>({matches:false,addEventListener:vi.fn(),removeEventListener:vi.fn(),addListener:vi.fn(),removeListener:vi.fn()}));
     global.ResizeObserver=class{observe(){}unobserve(){}disconnect(){}};
     HTMLElement.prototype.scrollIntoView=vi.fn();
@@ -38,6 +38,25 @@ beforeEach(()=>{
 afterEach(()=>{wrapper?.unmount();document.body.innerHTML='';sessionStorage.clear();history.replaceState({},'','/');vi.unstubAllGlobals();});
 
 describe('shadcn 控制台绑定',()=>{
+    it('只输入访问密码即可进入，退出清除访问凭据',async()=>{
+        sessionStorage.clear();await start();
+        expect(wrapper.findAll('input')).toHaveLength(1);
+        expect(wrapper.text()).not.toContain('管理员账号');
+        await wrapper.find('#login-password').setValue('中文:password');await wrapper.find('form').trigger('submit');await flushPromises();
+        const encoded=sessionStorage.getItem('coketv-access');
+        expect(decodeURIComponent(escape(atob(encoded)))).toBe(':中文:password');
+        expect(wrapper.find('[aria-label="账户菜单"]').exists()).toBe(false);
+        await wrapper.find('[aria-label="退出"]').trigger('click');await flushPromises();
+        expect(sessionStorage.getItem('coketv-access')).toBeNull();
+        expect(wrapper.find('#login-password').exists()).toBe(true);
+    });
+    it('错误访问密码保持锁定并显示原因',async()=>{
+        sessionStorage.clear();vi.stubGlobal('fetch',vi.fn(async()=>({ok:false,status:401,json:async()=>({error:'访问密码不正确'})})));
+        await start();await wrapper.find('#login-password').setValue('wrong');await wrapper.find('form').trigger('submit');await flushPromises();
+        expect(wrapper.text()).toContain('访问密码不正确');
+        expect(wrapper.find('.source-table').exists()).toBe(false);
+        expect(sessionStorage.getItem('coketv-access')).toBeNull();
+    });
     it('导入直接打开文件选择，标签与添加源说明都已移除',async()=>{
         await start();
         const chooser=wrapper.find('#source-upload');const click=vi.spyOn(chooser.element,'click').mockImplementation(()=>{});

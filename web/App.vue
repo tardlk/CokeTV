@@ -12,16 +12,16 @@ export default {
     setup() {
         const workspaceSource = ref(null);
         const state = ref(null), page = ref('sources'), query = ref(''), engine = ref('all'), selected = ref([]), currentPage = ref(1);
-        const auth = ref(sessionStorage.getItem('drpy-auth') || ''), login = ref({name: 'admin', password: ''}), loginError = ref('');
+        const auth = ref(sessionStorage.getItem('coketv-access') || ''), login = ref({password: ''}), loginError = ref('');
         const busy = ref(false), notices = ref([]), modal = ref(null), form = ref({}), dependencies = ref(null);
-        const pageSize=ref(20),accountOpen=ref(false);
+        const pageSize=ref(20);
         const confirming = ref(null), settings = ref({}), importFile = ref(null);
         const labels = engineLabels;
         const notify=(message,error=false)=>error?toast.error(message):toast.success(message);
         async function api(url, body, method = body === undefined ? 'GET' : 'POST') {
             const response = await fetch(url, {method, headers: {Authorization: `Basic ${auth.value}`, ...(body && !(body instanceof FormData) ? {'Content-Type': 'application/json'} : {})}, body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body)});
             const data = await response.json();
-            if (!response.ok) { if (response.status === 401) { auth.value = ''; sessionStorage.removeItem('drpy-auth'); } throw Object.assign(new Error(data.error || '请求失败'), {code: data.code}); }
+            if (!response.ok) { if (response.status === 401) { auth.value = ''; sessionStorage.removeItem('coketv-access'); } throw Object.assign(new Error(data.error || '请求失败'), {code: data.code}); }
             return data;
         }
         async function load() {
@@ -35,9 +35,10 @@ export default {
             try { await fn(); if (message) notify(message); } catch (error) { notify(error.message, true); } finally { busy.value = false; }
         }
         async function signIn() {
-            auth.value = btoa(unescape(encodeURIComponent(`${login.value.name}:${login.value.password}`))); loginError.value = '';
-            try { await load(); sessionStorage.setItem('drpy-auth', auth.value); login.value.password = ''; const id=location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1]; const source=sources.value.find(s=>s.id===id); if(source){workspaceSource.value=source;page.value='workspace';} }
-            catch (error) { loginError.value = error.message; auth.value = ''; }
+            if (busy.value) return; busy.value = true;
+            auth.value = btoa(unescape(encodeURIComponent(`:${login.value.password}`))); loginError.value = '';
+            try { await load(); sessionStorage.setItem('coketv-access', auth.value); login.value.password = ''; const id=location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1]; const source=sources.value.find(s=>s.id===id); if(source){workspaceSource.value=source;page.value='workspace';} }
+            catch (error) { loginError.value = error.message; auth.value = ''; } finally { busy.value = false; }
         }
         const sources = computed(() => (state.value?.instances || []).map(instance => ({...instance, script: state.value.scripts.find(s => s.id === instance.scriptId)})));
         const filtered = computed(() => sources.value.filter(source => (engine.value === 'all' || engineLanguage(source.script?.engine) === engine.value) &&
@@ -119,10 +120,10 @@ export default {
             event.target.value = '';
         }
         async function scan() { await api('/admin/scan', {}); await load(); }
-        function logout() { auth.value = ''; state.value = null; sessionStorage.removeItem('drpy-auth'); }
+        function logout() { auth.value = ''; state.value = null; sessionStorage.removeItem('coketv-access'); }
         const modalTitle=computed(()=>modal.value==='import'?'选择 JS 运行格式':modal.value==='rename'?'重命名源':modal.value==='links'?'订阅地址':modal.value==='instance'?(form.value.id?'编辑源':'新建源实例'):modal.value==='editor'?'添加源':modal.value==='subscription'?(form.value.id?'配置订阅':'新建订阅'):form.value.title || '');
         onMounted(async () => { if (auth.value) await action(load); const id = location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1]; if (id && state.value) { const source = sources.value.find(s => s.id === id); if (source) {workspaceSource.value=source; page.value='workspace';} } });
-        return {requestFile,languageLabels,engineLanguage,renameSource,saveName,importSelected,importFile,pageSize,accountOpen,openLinks,switchCapability,modalTitle, workspaceSource, closeWorkspace, api, state, page, query, engine, selected, currentPage, totalPages, visible, filtered, sources, enabledCount, auth, login, loginError, busy, notices, modal, form, dependencies, confirming, settings, labels,
+        return {requestFile,languageLabels,engineLanguage,renameSource,saveName,importSelected,importFile,pageSize,openLinks,switchCapability,modalTitle, workspaceSource, closeWorkspace, api, state, page, query, engine, selected, currentPage, totalPages, visible, filtered, sources, enabledCount, auth, login, loginError, busy, notices, modal, form, dependencies, confirming, settings, labels,
             action, signIn, toggle, selectVisible, switchSource, batch, editInstance, saveInstance, editScript, newScript, saveScript, upload, removeSource, openSubscription, saveSubscription, subscriptionUrl, copy, preview, deleteSub, resetToken, saveSettings, checkDependencies, exportConfig, importConfig, logout, acceptConfirm, load, scan};
     }
 };
@@ -130,8 +131,7 @@ export default {
 <template>
   <Toaster rich-colors position="bottom-right" />
   <div v-if="!auth || !state" class="login-layout">
-    <section class="login-story"><div class="brand-lockup"><span class="brand-mark"><Icon name="layers" /></span><div><strong>CokeTV</strong><small>源与订阅管理</small></div></div><div class="login-visual"><h1>所有源，<br>一个工作空间。</h1><p>运行你熟悉的脚本，组合自己的订阅。<br>从后台到电视，让内容始终触手可及。</p><div class="login-engine-list"><Badge v-for="label in languageLabels" :key="label" variant="outline">{{label}}</Badge></div></div><span class="login-footer">轻量服务 · 全部引擎 · 私有部署</span></section>
-    <section class="login-form-area"><form class="login-form" @submit.prevent="signIn"><div><h2>登录控制台</h2><p>输入管理员账号，开始管理源和订阅。</p></div><FieldGroup><Field><FieldLabel for="login-name">管理员账号</FieldLabel><Input id="login-name" v-model="login.name" autocomplete="username" required /></Field><Field :data-invalid="!!loginError"><FieldLabel for="login-password">密码</FieldLabel><Input id="login-password" v-model="login.password" type="password" autocomplete="current-password" :aria-invalid="!!loginError" required /><FieldError v-if="loginError">{{loginError}}</FieldError></Field></FieldGroup><Button type="submit">进入控制台<Icon name="external" data-icon="inline-end" /></Button><p>首次启动的登录信息保存在 data/admin.json。</p></form></section>
+    <section class="login-form-area"><form class="login-form" @submit.prevent="signIn"><h2>CokeTV</h2><FieldGroup><Field :data-invalid="!!loginError"><FieldLabel for="login-password">访问密码</FieldLabel><Input id="login-password" v-model="login.password" type="password" autocomplete="current-password" :aria-invalid="!!loginError" :disabled="busy" required autofocus /><FieldError v-if="loginError">{{loginError}}</FieldError></Field></FieldGroup><Button type="submit" :disabled="busy">{{busy?'验证中…':'进入'}}</Button></form></section>
   </div>
   <SourceWorkspace v-else-if="page==='workspace' && workspaceSource" :key="workspaceSource.id" :source="workspaceSource" :sources="sources" :api="api" @close="closeWorkspace" @saved="action(load)" />
   <SidebarProvider v-else>
@@ -141,7 +141,7 @@ export default {
 <SidebarRail />
     </Sidebar>
     <SidebarInset>
-      <header class="console-header"><div class="console-header-title"><SidebarTrigger /><Separator orientation="vertical" class="h-16" /><strong>管理后台</strong></div><div class="console-header-actions"><Button variant="ghost" size="icon" aria-label="刷新页面数据" title="刷新页面数据" :disabled="busy" @click="action(load)"><Icon name="monitor" :size="16" /></Button><div class="account-control"><Button variant="ghost" size="icon" class="account-button" aria-label="账户菜单" :aria-expanded="accountOpen" @click="accountOpen=!accountOpen"><Icon name="user" :size="18" /></Button><div v-if="accountOpen" class="account-menu"><span>管理员</span><Button variant="ghost" size="sm" @click="accountOpen=false;logout()"><Icon name="logout" />退出登录</Button></div></div></div></header>
+      <header class="console-header"><div class="console-header-title"><SidebarTrigger /><Separator orientation="vertical" class="h-16" /><strong>管理后台</strong></div><div class="console-header-actions"><Button variant="ghost" size="icon" aria-label="刷新页面数据" title="刷新页面数据" :disabled="busy" @click="action(load)"><Icon name="monitor" :size="16" /></Button><Button variant="ghost" size="icon" aria-label="退出" title="退出" @click="logout"><Icon name="logout" :size="18" /></Button></div></header>
       <main class="console-main">
         <template v-if="page==='sources'">
           <h1 class="sr-only">源管理</h1>

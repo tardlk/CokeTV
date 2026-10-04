@@ -16,7 +16,7 @@ before(async () => {
     directory = await fs.mkdtemp(path.join(os.tmpdir(), 'drpy-http-'));
     app = await createApp({directory, seed: false});
     const credentials = JSON.parse(await fs.readFile(path.join(directory, 'admin.json')));
-    authorization = `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64')}`;
+    authorization = `Basic ${Buffer.from(`:${credentials.password}`).toString('base64')}`;
     const localPython = path.join(ROOT, '.tools/python/bin/python3'), localPhp = path.join(ROOT, '.tools/php/php');
     app.store.state.settings.pythonPath = process.env.TEST_PYTHON || await fs.access(localPython).then(() => localPython).catch(() => 'python3');
     app.store.state.settings.phpPath = process.env.TEST_PHP || await fs.access(localPhp).then(() => localPhp).catch(() => 'php');
@@ -41,6 +41,12 @@ test('后台登录与空闲启动：管理页面/订阅不会启动任何引擎'
     const result = await call('/admin/state');
     assert.equal(result.runtime.started, false);
     assert.equal(app.runner.child, null);
+    const password=JSON.parse(await fs.readFile(path.join(directory,'admin.json'))).password;
+    for(const invalid of ['Basic '+Buffer.from(':wrong').toString('base64'),'Basic '+Buffer.from('no-separator').toString('base64')]){
+        assert.equal((await app.inject({url:'/admin/state',headers:{authorization:invalid}})).statusCode,401);
+    }
+    assert.equal((await app.inject({url:'/admin/state',headers:{authorization:'Basic '+Buffer.from('legacy-name:'+password).toString('base64')}})).statusCode,200);
+    assert.equal(JSON.parse(await fs.readFile(path.join(directory,'admin.json'))).username,undefined);
 });
 for (const engine of engines) test(`${engine} 引擎：中文源名、首页、分类、搜索、详情、播放和代理`, async () => {
     const id = ids[engine];
