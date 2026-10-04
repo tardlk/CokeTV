@@ -1,0 +1,17 @@
+node_modules
+dist
+data
+.tools
+.venv
+.env
+.env.*
+.git
+.github
+coverage
+docs
+tests
+releases
+**/__pycache__
+**/*.pyc
+*.log
+.DS_Store

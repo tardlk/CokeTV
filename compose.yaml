@@ -1,0 +1,13 @@
+services:
+  coketv:
+    build: .
+    ports:
+      - "5758:5758"
+    volumes:
+      - ./data:/app/data
+    environment:
+      TZ: Asia/Shanghai
+      # 可设置 ADMIN_USER / ADMIN_PASSWORD；未设置时自动生成 data/admin.json。
+    restart: unless-stopped
+    stop_grace_period: 15s
+
