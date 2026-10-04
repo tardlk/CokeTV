@@ -3,7 +3,7 @@ import path from 'path';
 import {ROOT} from '../src/paths.js';
 const source = process.argv[2];
 if (!source) { console.error('用法：npm run verify -- <站点ID> [服务地址]'); process.exit(1); }
-const base = process.argv[3] || 'http://127.0.0.1:5758';
+const base = process.argv[3] || 'http://127.0.0.1:54058';
 const directory = process.env.DATA_DIR || path.join(ROOT, 'data');
 const credentials = process.env.ADMIN_PASSWORD ? {username: process.env.ADMIN_USER || 'admin', password: process.env.ADMIN_PASSWORD} : JSON.parse(await fs.readFile(path.join(directory, 'admin.json')));
 const headers = {Authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64')}`};

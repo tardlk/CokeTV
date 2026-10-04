@@ -49,11 +49,11 @@ export async function createApp({directory, seed = true} = {}) {
     });
     app.addHook('onClose', async () => runner.close());
     const baseUrl = request => store.state.settings.publicUrl.replace(/\/$/, '') || `${request.protocol}://${request.headers.host}`;
-    const contextFor = (request, instance, script, extra) => ({...buildContext(baseUrl(request), instance, script, extra), sourceEnvPath: store.state.instances.some(s => s.id === instance.id) ? store.sourceEnvPath(instance.id) : null, localPort: app.server.address()?.port || Number(process.env.PORT) || 5758});
+    const contextFor = (request, instance, script, extra) => ({...buildContext(baseUrl(request), instance, script, extra), sourceEnvPath: store.state.instances.some(s => s.id === instance.id) ? store.sourceEnvPath(instance.id) : null, localPort: app.server.address()?.port || Number(process.env.PORT) || 54058});
     const serveMedia = (request, reply, target, headers, suppliedToken) => {
         const base = baseUrl(request);
         const parsed = new URL(target);
-        const ownPort = app.server.address()?.port || Number(process.env.PORT) || 5758;
+        const ownPort = app.server.address()?.port || Number(process.env.PORT) || 54058;
         const own = parsed.origin === new URL(base).origin || (['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname) && Number(parsed.port) === ownPort);
         if (own) {
             const originalHost = parsed.host;
@@ -411,7 +411,7 @@ export async function createApp({directory, seed = true} = {}) {
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
     const app = await createApp();
-    await app.listen({port: Number(process.env.PORT) || 5758, host: process.env.HOST || '0.0.0.0'});
+    await app.listen({port: Number(process.env.PORT) || 54058, host: process.env.HOST || '0.0.0.0'});
     console.log(`CokeTV 已启动：http://127.0.0.1:${app.server.address().port}`);
     console.log(`管理登录信息：${path.join(app.store.directory, 'admin.json')}（或使用 ADMIN_USER/ADMIN_PASSWORD）`);
     const close = async () => { await app.close(); process.exit(); };

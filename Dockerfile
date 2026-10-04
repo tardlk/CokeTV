@@ -21,9 +21,9 @@ COPY --from=build /app/dist ./dist
 COPY package.json ./
 COPY src ./src
 COPY engine ./engine
-ENV NODE_ENV=production TZ=Asia/Shanghai PORT=5758 HOST=0.0.0.0 PYTHON_PATH=/opt/python/bin/python3 PHP_PATH=php
+ENV NODE_ENV=production TZ=Asia/Shanghai PORT=54058 HOST=0.0.0.0 PYTHON_PATH=/opt/python/bin/python3 PHP_PATH=php
 VOLUME /app/data
-EXPOSE 5758
+EXPOSE 54058
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
-    CMD node -e "fetch('http://127.0.0.1:5758/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+    CMD node -e "fetch('http://127.0.0.1:54058/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "src/server.js"]

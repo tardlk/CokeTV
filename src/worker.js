@@ -22,7 +22,7 @@ async function startGateway() {
     if (gateway) return gateway.server.address().port;
     const {default: Fastify} = await import('fastify');
     const server = Fastify({logger: false});
-    const options = {rootDir: root, PORT: Number(process.env.DRPY_HTTP_PORT) || 5758};
+    const options = {rootDir: root, PORT: Number(process.env.DRPY_HTTP_PORT) || 54058};
     for (const name of ['webdav-proxy', 'ftp-proxy']) {
         const controller = await importRuntime(`controllers/${name}.js`);
         server.register(controller.default, options);
@@ -116,7 +116,7 @@ process.on('message', async message => {
     await withSourceEnvironment({file: rawEnv.sourceEnvPath}, async () => {
     try {
         process.env.DRPY_PUBLIC_URL = rawEnv.requestHost;
-        process.env.DRPY_HTTP_PORT = String(rawEnv.localPort || new URL(rawEnv.requestHost).port || 5758);
+        process.env.DRPY_HTTP_PORT = String(rawEnv.localPort || new URL(rawEnv.requestHost).port || 54058);
         const engine = await getEngine(source.engine);
         const env = await hydrateEnv(rawEnv, source);
         const file = source.file;

@@ -2,7 +2,7 @@ services:
   coketv:
     build: .
     ports:
-      - "5758:5758"
+      - "54058:54058"
     volumes:
       - ./data:/app/data
     environment:
