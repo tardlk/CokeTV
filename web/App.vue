@@ -47,7 +47,7 @@ export default {
             if (newPassword.value !== confirmPassword.value) {loginError.value='两次输入的密码不一致';return;}
             busy.value = true;
             try {
-                auth.value = btoa(':111111');
+                auth.value = '';
                 await api('/admin/access/setup', {password: newPassword.value, confirmPassword: confirmPassword.value});
                 requiresSetup.value = false;
                 auth.value = btoa(unescape(encodeURIComponent(`:${newPassword.value}`)));

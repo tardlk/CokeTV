@@ -8,16 +8,17 @@ export async function createAuth(store) {
     let credentials;
     try { credentials = JSON.parse(await fs.readFile(file, 'utf8')); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
-    if (process.env.ADMIN_PASSWORD && !(process.env.ADMIN_PASSWORD === '111111' && credentials?.requiresSetup === false)) {
-        credentials = {password: process.env.ADMIN_PASSWORD, requiresSetup: process.env.ADMIN_PASSWORD === '111111'};
+    if (process.env.ADMIN_PASSWORD && (!credentials || credentials.requiresSetup === true)) {
+        credentials = {password: process.env.ADMIN_PASSWORD, requiresSetup: false};
     }
     if (!credentials) {
-        credentials = {password: '111111', requiresSetup: true};
+        credentials = {requiresSetup: true};
         await fs.writeFile(file, JSON.stringify(credentials, null, 2), {mode: 0o600});
     }
-    if (typeof credentials.password !== 'string' || !credentials.password) throw new Error('访问密码配置无效');
-    let expected = hash(credentials.password), settingUp = false;
+    if (credentials.requiresSetup !== true && (typeof credentials.password !== 'string' || !credentials.password)) throw new Error('访问密码配置无效');
+    let expected = credentials.requiresSetup === true ? null : hash(credentials.password), settingUp = false;
     const matchesPassword = request => {
+        if (!expected) return false;
         const auth = request.headers.authorization || '';
         if (!auth.startsWith('Basic ')) return false;
         const decoded = Buffer.from(auth.slice(6), 'base64').toString('utf8');
@@ -31,11 +32,9 @@ export async function createAuth(store) {
     const isAdmin = request => !needsSetup() && matchesPassword(request);
     const setup = async (request) => {
         if (!needsSetup() || settingUp) throw Object.assign(new Error('密码已创建，请使用新密码进入'), {statusCode: 409});
-        if (!matchesPassword(request)) throw Object.assign(new Error('初始密码不正确'), {statusCode: 401});
         const {password, confirmPassword} = request.body || {};
         if (typeof password !== 'string' || password.length < 6 || password.length > 200 || !password.trim()) throw Object.assign(new Error('密码需要 6 到 200 个字符'), {statusCode: 400});
         if (password !== confirmPassword) throw Object.assign(new Error('两次输入的密码不一致'), {statusCode: 400});
-        if (password === credentials.password) throw Object.assign(new Error('请设置不同于初始密码的新密码'), {statusCode: 400});
         settingUp = true;
         try {
             const saved = {password, requiresSetup: false};
