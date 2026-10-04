@@ -21,6 +21,7 @@ __pycache__/
 /docs/local-history/
 /docs/screenshots/
 /releases/
+/HANDOFF.md
 
 # Editor and OS files
 .DS_Store
