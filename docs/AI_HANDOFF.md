@@ -45,12 +45,14 @@
 
 ```sh
 npm ci
-npm test
 npm run check
 npm run build
+npm test
 ```
 
 Node22，Python/PHP真实解释器可用 `TEST_PYTHON` / `TEST_PHP` 指定。当前源码89测试（42后端+47UI）、115文件语法、空壳检查和构建通过。全部测试使用临时数据。
+
+干净克隆后先build再test：页面路由集成测试需要dist/index.html。不能依赖本机忽略的dist，让GitHub工作流先构建。
 
 未运行原drpy-node-coder CLI，不宣称使用过。协议样本不代表所有第三方站点、解析器或编码可播。
 

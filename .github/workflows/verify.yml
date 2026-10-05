@@ -28,8 +28,8 @@ jobs:
           npm ci --no-audit --no-fund
           python -m pip install -r engine/spider/py/base/requirements.txt
       - run: npm run check
+      - run: npm run build
       - run: npm test
         env:
           TEST_PYTHON: python
           TEST_PHP: php
-      - run: npm run build
