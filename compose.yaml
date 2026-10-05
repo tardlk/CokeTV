@@ -1,13 +1,13 @@
 services:
   coketv:
-    build: .
+    image: ghcr.io/tardlk/coketv:latest
+    platform: linux/amd64
     ports:
       - "54058:54058"
     volumes:
       - ./data:/app/data
     environment:
       TZ: Asia/Shanghai
-      # 可设置 ADMIN_PASSWORD；未设置时自动生成 data/admin.json。
+      # 管理密码只在首次进入 /admin 时创建；观影首页无需密码。
     restart: unless-stopped
     stop_grace_period: 15s
-

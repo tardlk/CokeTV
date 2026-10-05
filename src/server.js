@@ -18,6 +18,8 @@ import {buildContext} from './context.js';
 import {localToken, rewritePlaylist, streamMedia} from './media.js';
 import {syntaxCheck, importBundle, decodeSource, detectSourceEngine} from './sources.js';
 import {sourceTemplate} from './source-templates.js';
+import {createPlaybackSessions, playbackUrl, playbackHeaders, mediaType} from './playback.js';
+import {createTvboxImporter} from './tvbox-import.js';
 
 dotenv.config();
 const exec = promisify(execFile);
@@ -36,6 +38,8 @@ export async function createApp({directory, seed = true} = {}) {
     const store = await new Store(directory).init({seed});
     const runner = new Runner(store);
     const auth = await createAuth(store);
+    const playback = createPlaybackSessions();
+    const tvboxImporter = createTvboxImporter(store);
     const app = Fastify({logger: false, bodyLimit: 8 * 1024 * 1024, trustProxy: process.env.TRUST_PROXY === '1'});
     await app.register(formbody);
     await app.register(multipart, {limits: {fileSize: 16 * 1024 * 1024, files: 1}});
@@ -70,6 +74,7 @@ export async function createApp({directory, seed = true} = {}) {
     };
     const authorize = (request, id) => {
         if (auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey) return null;
+        if (playback.allows(request, id) && store.state.instances.some(item => item.id === playback.get(request.query.token)?.source && item.enabled)) return {token: request.query.token};
         const sub = authorizedSubscription(store.state, request.query.token || request.body?.token, id);
         if (!sub) throw fail('订阅访问凭证无效或该源不在订阅中', 403);
         return sub;
@@ -93,6 +98,82 @@ export async function createApp({directory, seed = true} = {}) {
 
     app.get('/health', async () => ({ok: true, version: '0.1.0', memory: process.memoryUsage(), runtime: runner.status()}));
     app.get('/admin/state', async request => { await store.refreshEnvironment(); return {...store.state, runtime: runner.status(), baseUrl: baseUrl(request)}; });
+    app.get('/watch/sources', async () => store.state.instances.filter(instance => instance.enabled).flatMap(instance => {
+        const script = store.state.scripts.find(item => item.id === instance.scriptId);
+        return script ? [{id: instance.id, name: instance.name, enabled: true, searchable: instance.searchable, filterable: instance.filterable, script: {engine: script.engine}}] : [];
+    }));
+    const watchSource = request => {
+        if (!store.state.instances.some(instance => instance.id === request.params.id)) throw fail('源不存在', 404);
+        const resolved = store.resolve(request.params.id);
+        if (!resolved.instance.enabled) throw fail('此源已停用，请选择其他源', 409);
+        return resolved;
+    };
+    const watchHandler = async request => {
+        const {instance, script, file} = watchSource(request);
+        const {ac, t, pg = '1', wd, ids, ext} = request.query;
+        let query = {};
+        if (wd !== undefined) {
+            if (!instance.searchable) throw fail('此源不支持搜索');
+            if (!checkString(wd, 200)) throw fail('搜索内容不能为空');
+            query = {wd, pg};
+        } else if (ac === 'detail') {
+            if (!checkString(ids, 10000)) throw fail('影片 ID 无效');
+            query = {ac, ids};
+        } else if (ac === 'list') query = {ac, t: t || '', pg, ...(ext ? {ext} : {})};
+        return runner.run({engine: script.engine, file, instanceId: instance.id}, query, contextFor(request, instance, script));
+    };
+    app.get('/watch/sources/:id', watchHandler);
+    app.get('/admin/watch/:id', watchHandler);
+    const playHandler = async request => {
+        const {instance, script, file} = watchSource(request);
+        const {play, flag = '', parser} = request.body || {};
+        if (!checkString(play, 50000) || typeof flag !== 'string') throw fail('请选择要播放的剧集');
+        const env = contextFor(request, instance, script);
+        let result = await runner.run({engine: script.engine, file, instanceId: instance.id}, {play, flag}, env);
+        if (typeof result === 'string') { try { result = JSON.parse(result); } catch { result = {url: result, parse: 0}; } }
+        const parses = store.state.settings.parses || [];
+        const options = parses.map((item, index) => ({index, name: item.name || `解析 ${index + 1}`}));
+        const requiresParse = Number(result?.parse) === 1 || Number(result?.jx) === 1;
+        if (requiresParse) {
+            const index = parser === undefined ? parses.findIndex(item => [1, 2].includes(Number(item.type))) : Number(parser);
+            const selected = parses[index];
+            if (!selected) return {needsParse: true, parses: options};
+            const target = playbackUrl(result.url, baseUrl(request));
+            if (Number(selected.type) === 0) {
+                const iframe = playbackUrl(`${selected.url}${encodeURIComponent(target)}`, baseUrl(request));
+                if (new URL(iframe).origin === new URL(baseUrl(request)).origin) throw fail('网页解析须使用外部解析地址');
+                return {iframe, parses: options, parser: index};
+            }
+            if (Number(selected.type) === 2) {
+                const parsed = new URL(selected.url, baseUrl(request));
+                const name = parsed.pathname.match(/^\/parse\/([^/]+)$/)?.[1];
+                if (!name || parsed.origin !== new URL(baseUrl(request)).origin) throw fail('网页播放仅支持本地 /parse/ 脚本或 JSON 解析');
+                const filename = `${decodeURIComponent(name)}.js`;
+                validFilename('js', filename);
+                result = await runner.run({engine: 'js', file: inside(store.runtime, `jx/${filename}`), instanceId: instance.id}, {url: target}, env, 'parse');
+            } else if (Number(selected.type) === 1) {
+                const {default: axios} = await import('axios');
+                const response = await axios.get(playbackUrl(`${selected.url}${encodeURIComponent(target)}`, baseUrl(request)), {timeout: store.state.settings.timeout, headers: playbackHeaders(selected.ext?.header)});
+                result = response.data?.data?.url ? response.data.data : response.data;
+            } else throw fail('此解析类型暂不支持网页播放');
+            if (typeof result === 'string') { try { result = JSON.parse(result); } catch { result = {url: result}; } }
+            if (!result?.url || Number(result.parse) === 1) throw fail('解析未返回可播放的媒体地址');
+        }
+        let url = playbackUrl(result?.url, baseUrl(request));
+        const parsed = new URL(url), segments = parsed.pathname.split('/');
+        if (parsed.origin === new URL(baseUrl(request)).origin && segments[1] === 'proxy' && decodeURIComponent(segments[2] || '') === script.file.replace(/\.[^.]+$/, '')) {
+            segments[2] = instance.id; parsed.pathname = segments.join('/'); url = parsed.href;
+        }
+        const ticket = playback.create(instance.id, url, playbackHeaders(result.header || result.headers));
+        return {url: `/watch/media/${ticket}`, type: mediaType(url, result.type), parses: options, parser: parser ?? null};
+    };
+    app.post('/watch/sources/:id/play', playHandler);
+    app.post('/admin/watch/:id/play', playHandler);
+    app.route({method: ['GET', 'HEAD'], url: '/watch/media/:ticket', handler: async (request, reply) => {
+        const session = playback.get(request.params.ticket);
+        if (!session || !store.state.instances.some(item => item.id === session.source && item.enabled)) throw fail('播放链接已过期，请重新选择剧集', 403);
+        return serveMedia(request, reply, session.url, session.headers, request.params.ticket);
+    }});
     app.get('/admin/logs', async request => runner.logs.filter(entry => !request.query.source || entry.source === request.query.source).slice(-150));
     app.post('/admin/scan', async () => ({added: await store.mutate(() => store.scan())}));
     app.get('/admin/instances/:id/environment', async request => {
@@ -164,6 +245,12 @@ export async function createApp({directory, seed = true} = {}) {
         }
         runner.reset('源包已更新'); return result;
     });
+    app.post('/admin/import/tvbox/preview', async request => tvboxImporter.preview(request.body?.url));
+    app.post('/admin/import/tvbox', async request => {
+        const result = await tvboxImporter.commit(request.body);
+        if (result.imported) runner.reset('TVBox 源已导入');
+        return result;
+    });
     const instanceFields = body => {
         if (!checkString(body.name)) throw fail('站点名称不能为空');
         if (typeof body.params !== 'string' || body.params.length > 50000) throw fail('参数必须为文本，且小于 50KB');
@@ -192,6 +279,19 @@ export async function createApp({directory, seed = true} = {}) {
         if (!Array.isArray(ids) || typeof enabled !== 'boolean') throw fail('批量参数无效');
         await store.mutate(state => { for (const instance of state.instances) if (ids.includes(instance.id)) instance.enabled = enabled; });
         return {ok: true};
+    });
+    app.delete('/admin/instances/batch', async request => {
+        const ids = request.body?.ids;
+        if (!Array.isArray(ids) || !ids.length || ids.length > 10000 || ids.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(id))) throw fail('请选择需要删除的源');
+        const selected = new Set(ids);
+        const deleted = await store.mutate(state => {
+            const count = state.instances.filter(item => selected.has(item.id)).length;
+            state.instances = state.instances.filter(item => !selected.has(item.id));
+            for (const sub of state.subscriptions) sub.instances = sub.instances.filter(id => !selected.has(id));
+            return count;
+        });
+        if (deleted) runner.reset('所选源已删除');
+        return {ok: true, deleted};
     });
     app.delete('/admin/instances/:id', async request => {
         await store.mutate(state => {
@@ -400,6 +500,7 @@ export async function createApp({directory, seed = true} = {}) {
     await app.register(staticPlugin, {root: path.join(ROOT, 'dist/assets'), prefix: '/assets/', decorateReply: false});
     app.get('/', async (_, reply) => reply.type('text/html').send(await fs.readFile(path.join(ROOT, 'dist/index.html'))));
     app.get('/sources/:id/edit', async (_, reply) => reply.type('text/html').send(await fs.readFile(path.join(ROOT, 'dist/index.html'))));
+    for (const url of ['/admin', '/watch', '/watch/play', '/watch/history']) app.get(url, async (_, reply) => reply.type('text/html').send(await fs.readFile(path.join(ROOT, 'dist/index.html'))));
     app.server.on('upgrade', (request, socket, head) => {
         // 源需要的 WebSocket 继续经主端口，管理页面本身不建立日志 WS。
         if (!runner.wsPort) { socket.end('HTTP/1.1 503 Service Unavailable\r\n\r\n'); return; }

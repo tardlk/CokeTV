@@ -56,6 +56,9 @@ test('后台登录与空闲启动：管理页面/订阅不会启动任何引擎'
 for (const engine of engines) test(`${engine} 引擎：中文源名、首页、分类、搜索、详情、播放和代理`, async () => {
     const id = ids[engine];
     const home = await call(`/api/${id}`);
+    const publicHome = await app.inject(`/watch/sources/${id}`);
+    assert.equal(publicHome.statusCode, 200, publicHome.body);
+    assert.equal(publicHome.json().list[0].vod_name, '样本电影');
     assert.equal(home.class[0].type_id, 'movie');
     assert.equal(home.list[0].vod_name, '样本电影');
     const category = await call(`/api/${id}?ac=list&t=movie&pg=2`);
@@ -276,4 +279,26 @@ test('同步死循环可回收，管理服务和后续源调用继续工作', as
     assert.equal((await app.inject('/health')).statusCode, 200);
     app.store.state.settings.timeout = 30000;
     const healthy = await call(`/api/${ids.js}`); assert.equal(healthy.class[0].type_id, 'movie');
+});
+test('批量删除原子移除所选实例和订阅引用，保留脚本、ENV和其他实例', async () => {
+    const create = name => call('/admin/instances', {method:'POST',payload:{scriptId:ids.js,name,params:'batch-delete',enabled:true,searchable:true,filterable:false}});
+    const first=await create('删除A'), second=await create('删除B'), kept=await create('保留C');
+    const sub=await call('/admin/subscriptions',{method:'POST',payload:{name:'批量删除测试',enabled:true,instances:[first.id,kept.id,second.id]}});
+    const script=app.store.state.scripts.find(item=>item.id===ids.js), code=await fs.readFile(app.store.scriptPath(script),'utf8');
+    await call('/admin/instances/'+first.id+'/environment',{method:'PUT',payload:{values:{fixture_cookie:'keep-cookie'}}});
+    const envFile=app.store.sourceEnvPath(first.id), env=await fs.readFile(envFile,'utf8');
+    assert.equal((await app.inject({url:'/admin/instances/batch',method:'DELETE',payload:{ids:[first.id]}})).statusCode,401);
+    for(const invalid of [[],[null],['../escape']]){
+        assert.equal((await app.inject({url:'/admin/instances/batch',method:'DELETE',headers:{authorization},payload:{ids:invalid}})).statusCode,400);
+    }
+    const removed=await call('/admin/instances/batch',{method:'DELETE',payload:{ids:[first.id,second.id,first.id,'missing']}});
+    assert.equal(removed.deleted,2);
+    assert.ok(!app.store.state.instances.some(item=>[first.id,second.id].includes(item.id)));
+    assert.ok(app.store.state.instances.some(item=>item.id===kept.id));
+    assert.deepEqual(app.store.state.subscriptions.find(item=>item.id===sub.id).instances,[kept.id]);
+    assert.equal(await fs.readFile(app.store.scriptPath(script),'utf8'),code);
+    assert.equal(await fs.readFile(envFile,'utf8'),env);
+    assert.equal((await app.inject('/watch/sources/'+first.id)).statusCode,404);
+    assert.equal((await app.inject('/api/'+first.id+'?token='+sub.token)).statusCode,404);
+    assert.deepEqual(JSON.parse(await fs.readFile(app.store.stateFile)).subscriptions.find(item=>item.id===sub.id).instances,[kept.id]);
 });

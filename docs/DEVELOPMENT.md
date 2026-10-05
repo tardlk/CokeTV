@@ -26,7 +26,7 @@ TEST_PYTHON="$PWD/.venv/bin/python3" TEST_PHP=php npm test
 
 ## 当前验证
 
-本机 macOS arm64 / Node 22 / Python 3.12 / PHP 8.4 已通过 46 项测试、110 个文件语法检查与生产构建。涵盖：
+本机 macOS arm64 / Node 22 / Python 3.12 / PHP 8.4 已通过89项测试（42后端、47 UI）、115个文件语法检查和空壳发行检查与生产构建。涵盖：
 
 - JS、CatVod、HIPY、PHP、DR2 的首页、分类、搜索、详情、播放与代理协议。
 - 实例参数、源级 ENV 隔离、配置持久化、备份与订阅范围。
@@ -34,8 +34,21 @@ TEST_PYTHON="$PWD/.venv/bin/python3" TEST_PHP=php npm test
 - 源导入、压缩源编辑、语法检查、版本恢复与同名创建保护。
 - 同步死循环回收，后续调用与管理服务可继续运行。
 - UI 创建后跳转、重命名、语言筛选、订阅排序、配置表单与退出保护。
+- 批量删除确认/取消、所选实例 ID、订阅引用清理与脚本/ENV保留，删除接口继续要求管理密码。
+- 匿名观影、管理鉴权、只读执行、播放短期凭证、Range/206、HLS 分片与密钥请求头、JSON 解析和源代理范围。
+- 网页搜索、详情、线路/选集、直接刷新、收藏和切集时过期响应处理。
+- 搜索下拉、点击图标/表单提交、空输入与不支持搜索的源、首页失败时仍可搜索、桌面/手机影视站选源入口。
+- 未登录/首次部署首页与播放直达、首次设置仅在管理入口、进入后台登录/退出/返回观影、公开请求不发送管理凭据、选源列表无参数与敏感配置。
+- TVBox 链接预览只读、五种引擎识别、JSON/XML 采集协议、CatVod 依赖、相对 URL/扩展参数、重复导入、文件冲突与持久化失败回滚。
+- 采集首页简略列表没有封面时补取 JSON `ac=detail` / XML `ac=videolist`，协议相对封面地址转为完整 URL。
 
-这些结果不替代整个第三方源库的持续网络可用性、实际 TVBox 播放、外部插件或 Docker/Linux 验收。GitHub CI 尚未远程运行。
+TVBox 链接导入位于 `src/tvbox-import.js`；生成的采集脚本调用 `engine/utils/tvbox-cms.js`，使用现有 CatVod 引擎，没有添加 Android JAR 运行器。`Store.importSources()` 在一笔状态事务内导入所选站点，创建文件失败或状态持久化失败时回滚新文件，保留既有源与订阅。
+
+用户示例链接在临时目录实测：56个站点中47个采集接口通过并导入，9个跳过；生成的“蜜源”源返回43个分类、20条视频。数量随第三方站点状态改变，不是全库播放验收。正式用户源库未由该测试改写。
+
+网页播放已在独立临时数据目录中用公开 CC0 MP4 样片验证浏览器解码、实际播放、切集和切换线路。桌面与手机布局对照用户的 OmniBox 实测。正式本地服务中还验证了贝乐虎源的《小兔子乖乖》实际播放（129.16秒）。FLV/TS、其他第三方源和解析器的实际网络播放需按源验收。
+
+这些结果不替代整个第三方源库的持续网络可用性、实际 TVBox 播放、外部插件或 Docker/Linux 验收。远程检查结果以 GitHub Actions 日志为准。
 
 ## 源诊断
 
@@ -51,8 +64,18 @@ HTTP 服务启动时不初始化源引擎。执行子进程按需启动，可超
 
 源编辑工作区与 Monaco 代码编辑器独立按需加载。管理列表打开时不加载代码编辑器。
 
+`WatchApp.vue`、`WebPlayer.vue` 与 mpegts.js 同样按需加载，管理列表不加载播放器。公开源列表在 `/watch/sources`，网页播放 API 在 `/watch/sources/:id`；原 `/admin/watch/:id` 保留鉴权兼容入口。媒体凭证在 `src/playback.js`；不复用会写入 `lastCheck` 的接口验证入口。
+
 ## Git 约定
 
 仓库只提交源码、依赖锁文件、正式文档和配置模板。`data/`、`.tools/`、`.venv/`、`node_modules/`、`dist/`、`.env` 和本地截图/调研历史均忽略。
 
 本地历史资料保存在 `docs/local-history/`，不参与代码构建或发布。原始 drpy-node 源码位于 CokeTV 目录之外，作为对照保留。
+
+## 空壳发行与 x86 镜像
+
+`scripts/check-shell.mjs` 检查发行树没有可注册站点、解析脚本或 JSON 站点资源；`tests/shell.test.js` 使用默认启动路径验证零源和空默认配置。必要的 JS/CatVod 辅助模块、HIPY core/base、PHP bridge/lib 和 WASM 保留，不能因“空壳”删除兼容内核。
+
+`.github/workflows/docker.yml` 在 main、v* 标签或手动运行时执行源码测试，然后在原生 x86 GitHub runner 构建 linux/amd64 镜像。先加载本地镜像，用 `scripts/container-smoke.mjs` 验证零源/首次密码/真实 JS、Python、PHP 调用，再发布 latest、sha-* 或版本标签到 GHCR。测试使用临时容器和临时数据，不能拿正式数据作构建输入。
+
+本机无 Docker 引擎，真实容器结果以工作流日志为准。失败时修复后重试，不在检查失败时发布。接手摘要见 `docs/AI_HANDOFF.md`。

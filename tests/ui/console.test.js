@@ -16,7 +16,7 @@ function useAllEngines(){
 function button(text,root=wrapper){return root.findAll('button').find(item=>item.text().trim()===text);}
 async function start(){wrapper=mount(App,{attachTo:document.body,global:{plugins:[{install:registerUI}]}});await flushPromises();}
 beforeEach(()=>{
-    state=initial();requests=[];setupRequired=false;
+    history.replaceState({},'','/admin');state=initial();requests=[];setupRequired=false;
     sessionStorage.setItem('coketv-access',btoa(':test'));
     window.matchMedia=vi.fn(()=>({matches:false,addEventListener:vi.fn(),removeEventListener:vi.fn(),addListener:vi.fn(),removeListener:vi.fn()}));
     global.ResizeObserver=class{observe(){}unobserve(){}disconnect(){}};
@@ -26,7 +26,8 @@ beforeEach(()=>{
         requests.push({url,method:options.method||'GET',payload});
         if(url==='/access/status')return {ok:true,status:200,json:async()=>({requiresSetup:setupRequired})};
         if(url==='/admin/access/setup'){setupRequired=false;return {ok:true,status:200,json:async()=>({ok:true})};}
-        if(url==='/admin/instances/batch')for(const instance of state.instances)if(payload.ids.includes(instance.id))instance.enabled=payload.enabled;
+        if(url==='/admin/instances/batch'&&options.method==='POST')for(const instance of state.instances)if(payload.ids.includes(instance.id))instance.enabled=payload.enabled;
+        if(url==='/admin/instances/batch'&&options.method==='DELETE')state.instances=state.instances.filter(item=>!payload.ids.includes(item.id));
         if(url.startsWith('/admin/instances/')&&options.method==='PUT')Object.assign(state.instances.find(s=>s.id===url.split('/').at(-1)),payload);
         if(url==='/admin/subscriptions'&&options.method==='POST')state.subscriptions.push({id:'s',token:'test',...payload});
         if(url==='/admin/scripts/create'&&options.method==='POST'){
@@ -42,7 +43,7 @@ afterEach(()=>{wrapper?.unmount();document.body.innerHTML='';sessionStorage.clea
 describe('shadcn 控制台绑定',()=>{
     it('首次进入创建密码，输入不一致不提交，成功后进入并保存新凭据',async()=>{
         setupRequired=true;await start();
-        expect(wrapper.text()).toContain('首次使用，请创建访问密码');
+        expect(wrapper.text()).toContain('首次进入管理后台，请创建访问密码');
         expect(requests.some(item=>item.url==='/admin/state')).toBe(false);
         await wrapper.find('#new-password').setValue('new-password');await wrapper.find('#confirm-password').setValue('different');
         await wrapper.find('form').trigger('submit');await flushPromises();
@@ -75,10 +76,15 @@ describe('shadcn 控制台绑定',()=>{
         expect(wrapper.find('.source-table').exists()).toBe(false);
         expect(sessionStorage.getItem('coketv-access')).toBeNull();
     });
-    it('导入直接打开文件选择，标签与添加源说明都已移除',async()=>{
+    it('导入提供TVBox链接和本地文件入口，标签与添加源说明都已移除',async()=>{
         await start();
         const chooser=wrapper.find('#source-upload');const click=vi.spyOn(chooser.element,'click').mockImplementation(()=>{});
-        await button('导入').trigger('click');expect(click).toHaveBeenCalledOnce();
+        await button('导入').trigger('click');await flushPromises();
+        await vi.waitFor(()=>expect(document.querySelector('#tvbox-url')).not.toBeNull());
+        const fileTab=[...document.querySelectorAll('[role="tab"]')].find(item=>item.textContent.includes('本地文件'));
+        fileTab.dispatchEvent(new MouseEvent('mousedown',{button:0,bubbles:true}));await flushPromises();
+        [...document.querySelectorAll('button')].find(item=>item.textContent.trim()==='选择文件').click();expect(click).toHaveBeenCalledOnce();
+        [...document.querySelectorAll('button')].find(item=>item.textContent.trim()==='关闭').click();await flushPromises();
         expect(wrapper.text()).not.toContain('标签');
         expect(document.querySelector('[role="menu"]')).toBeNull();
         await button('添加源').trigger('click');await flushPromises();
@@ -194,6 +200,24 @@ describe('shadcn 控制台绑定',()=>{
         await button('停用',wrapper.find('.selection-tools')).trigger('click');await flushPromises();
         expect(requests.find(request=>request.url==='/admin/instances/batch').payload).toEqual({ids:['a'],enabled:false});
         expect(wrapper.find('[aria-label="启用源A"]').attributes('aria-checked')).toBe('false');
+    });
+    it('批量删除先确认，提交精确的所选ID并清除选择，脚本保留',async()=>{
+        await start();
+        await wrapper.find('[aria-label="选择源A"]').trigger('click');
+        await wrapper.find('[aria-label="选择源B"]').trigger('click');await flushPromises();
+        await button('删除',wrapper.find('.selection-tools')).trigger('click');await flushPromises();
+        const dialog=document.querySelector('[role="alertdialog"]');
+        expect(dialog.textContent).toContain('选中的 2 个源实例');expect(dialog.textContent).toContain('脚本文件保留');
+        expect(requests.some(item=>item.method==='DELETE')).toBe(false);
+        [...dialog.querySelectorAll('button')].find(item=>item.textContent==='删除').click();await flushPromises();
+        expect(requests.find(item=>item.method==='DELETE')).toMatchObject({url:'/admin/instances/batch',payload:{ids:['a','b']}});
+        expect(wrapper.find('.selection-tools').exists()).toBe(false);expect(state.instances).toHaveLength(0);expect(state.scripts).toHaveLength(1);
+    });
+    it('取消批量删除保留选择，不发送删除请求',async()=>{
+        await start();await wrapper.find('[aria-label="选择源A"]').trigger('click');
+        await button('删除',wrapper.find('.selection-tools')).trigger('click');await flushPromises();
+        [...document.querySelectorAll('[role="alertdialog"] button')].find(item=>item.textContent==='取消').click();await flushPromises();
+        expect(requests.some(item=>item.method==='DELETE')).toBe(false);expect(wrapper.find('.selection-tools').text()).toContain('已选择 1');
     });
     it('源开关通过实例更新 API 写入，不丢已有参数',async()=>{
         await start();await wrapper.find('[aria-label="启用源B"]').trigger('click');await flushPromises();

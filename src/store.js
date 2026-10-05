@@ -60,11 +60,11 @@ export class Store {
         finally { await fs.rm(temporary, {force: true}); }
     }
     async persist() { await this.atomic(this.stateFile, JSON.stringify(this.state, null, 2)); }
-    async mutate(fn) {
+    async mutate(fn, {rollback} = {}) {
         const job = this.tail.then(async () => {
             const before = structuredClone(this.state);
             try { const value = await fn(this.state); await this.persist(); return value; }
-            catch (error) { this.state = before; throw error; }
+            catch (error) { this.state = before; if (rollback) await rollback(); throw error; }
         });
         this.tail = job.catch(() => {});
         return job;
@@ -161,5 +161,50 @@ export class Store {
             script.updatedAt = new Date().toISOString();
             return script;
         });
+    }
+    async importSources(entries) {
+        const createdFiles = [];
+        return this.mutate(async state => {
+            const writes = new Map(), imported = [], existing = [];
+            const prepare = async (engine, file, code, library = false) => {
+                validFilename(engine, file, {library});
+                const target = inside(this.runtime, `spider/${ENGINE_DIRS[engine]}/${file}`);
+                let current;
+                try { current = await fs.readFile(target, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+                if (current !== undefined && current !== code) return false;
+                if (writes.has(target) && writes.get(target) !== code) return false;
+                if (current === undefined) writes.set(target, code);
+                return true;
+            };
+            try {
+                for (const entry of entries) {
+                    let filename = entry.file;
+                    if (!await prepare(entry.engine, filename, entry.code)) {
+                        filename = filename.replace(/\.[^.]+$/, `-${stableId(entry.code).slice(0, 8)}${EXTENSIONS[entry.engine]}`);
+                        if (!await prepare(entry.engine, filename, entry.code)) throw new Error(`脚本文件冲突：${entry.name}`);
+                    }
+                    for (const dependency of entry.dependencies || []) {
+                        if (!await prepare(entry.engine, dependency.file, dependency.code, true)) throw new Error(`辅助库已有不同内容：${dependency.file}，不会覆盖`);
+                    }
+                    const scriptId = stableId(`${entry.engine}:${filename}`);
+                    if (!state.scripts.some(item => item.id === scriptId)) state.scripts.push({id: scriptId, engine: entry.engine, file: filename, name: entry.name, updatedAt: new Date().toISOString()});
+                    const identity = stableId(`tvbox:${scriptId}:${entry.key}:${entry.params}`);
+                    const found = state.instances.find(item => item.id === identity);
+                    if (found) { existing.push({id: found.id, name: found.name}); continue; }
+                    const instance = {id: identity, scriptId, name: entry.name, params: entry.params, enabled: true, searchable: entry.searchable, filterable: entry.filterable};
+                    state.instances.push(instance); imported.push({id: identity, name: entry.name});
+                }
+                // Validate the entire selection and collisions before creating files.
+                for (const [target, code] of writes) {
+                    await fs.mkdir(path.dirname(target), {recursive: true});
+                    try { await fs.writeFile(target, code, {flag: 'wx'}); createdFiles.push(target); }
+                    catch (error) { if (error.code !== 'EEXIST' || await fs.readFile(target, 'utf8') !== code) throw error; }
+                }
+                return {imported: imported.length, existing: existing.length, sources: imported, duplicates: existing};
+            } catch (error) {
+                for (const target of createdFiles) await fs.rm(target, {force: true});
+                throw error;
+            }
+        }, {rollback: async () => { for (const target of createdFiles) await fs.rm(target, {force: true}); }});
     }
 }

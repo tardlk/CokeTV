@@ -2,7 +2,7 @@
 
 基于 drpy-node 兼容内核的源执行与 TVBox 订阅管理服务。
 
-CokeTV 集中提供服务器执行脚本、TVBox 订阅和网页管理。保留 JS、DR2、CatVod、PHP、HIPY 的运行入口；列表按语言显示 JS、Python、PHP。管理界面参考 OmniBox，源执行仍沿用 drpy-node 协议。
+CokeTV 是不预装任何站点源的空壳，提供服务器执行脚本、TVBox 订阅、网页管理与网页观影。保留 JS、DR2、CatVod、PHP、HIPY 的运行入口；列表按语言显示 JS、Python、PHP。管理与播放界面参考 OmniBox，源执行仍沿用 drpy-node 协议。
 
 仓库：[tardlk/CokeTV](https://github.com/tardlk/CokeTV)。当前版本：`0.1.0`。
 
@@ -21,7 +21,7 @@ python3 -m venv .venv
 PYTHON_PATH="$PWD/.venv/bin/python3" PHP_PATH=php npm start
 ```
 
-打开 [http://127.0.0.1:54058](http://127.0.0.1:54058)。全新部署没有初始密码，第一次打开页面直接创建访问密码。创建后直接进入，后续只需输入新密码，没有用户或账号管理。配置保存到 `data/admin.json`，重启不会再次要求创建。也可以通过 `ADMIN_PASSWORD` 预设访问密码。
+打开 [http://127.0.0.1:54058](http://127.0.0.1:54058) 直接进入观影首页，浏览、搜索和播放无需密码。进入“管理后台”（`/admin`）才需要访问密码；全新部署首次进入管理后台时创建密码，没有默认密码、用户或账号系统。管理密码保存到 `data/admin.json`，重启不会再次要求创建，也可以通过 `ADMIN_PASSWORD` 预设。
 
 已安装运行环境并构建前端后，可以用 `./start.sh` 启动。本机开发工具若放在 `.tools/`，启动脚本会自动识别；这些工具不随仓库分发。
 
@@ -29,25 +29,43 @@ PHP 源按需要安装 curl、mbstring、xml 等扩展。浏览器、外部插�
 
 ## Docker
 
-```sh
-docker compose up -d --build
-```
-
-镜像使用 Node.js 22，包含 Python、PHP、ffmpeg。`./data` 挂载到容器持久化数据。需要浏览器时：
+镜像通过 GitHub Actions 构建、验收并发布到 GHCR，仅提供 **linux/amd64（x86-64）**：
 
 ```sh
-docker build --build-arg INSTALL_BROWSER=1 -t coketv:0.1.0 .
+docker pull --platform linux/amd64 ghcr.io/tardlk/coketv:latest
+docker compose up -d
 ```
 
-浏览器路径填写 `/usr/bin/chromium`。本地尚未完成 Docker 构建与 Linux 实机验收。
+也可以单独运行：
+
+```sh
+docker run -d --name coketv --platform linux/amd64 \
+  -p 54058:54058 -v "$(pwd)/data:/app/data" \
+  --restart unless-stopped ghcr.io/tardlk/coketv:latest
+```
+
+首次使用空数据目录时，源、解析、直播和环境变量均为空；进入 /admin 创建管理密码，再导入 TVBox 链接或自己的脚本。镜像保留 Node.js 22、Python、PHP、ffmpeg 及兼容辅助库。挂载的 data 持久化用户数据，更新镜像不会清空已有源。
+
+从源码构建 x86 镜像（可选浏览器）：
+
+```sh
+docker buildx build --platform linux/amd64 --load -t coketv:local .
+docker buildx build --platform linux/amd64 --load \
+  --build-arg INSTALL_BROWSER=1 -t coketv:browser .
+```
+
+浏览器版在设置中填写 /usr/bin/chromium。镜像发布前会验证全新空数据启动、管理鉴权与 JS/Python/PHP 实际执行。构建状态见 [GitHub Actions](https://github.com/tardlk/CokeTV/actions)。
 
 ## 使用流程
 
 1. **添加源**：选择 JS、Python 或 PHP，填写脚本名，保存后进入编辑页。自动补文件后缀，同名脚本不会被覆盖。
-2. **导入源**：点击导入直接选择 `.js`、`.py`、`.php` 或 ZIP。自动识别语言、明确的 JS 运行格式及源包目录；不明确的 JS 再选择 drpyS、DR2 或 CatVod。
+2. **导入源**：点击导入，粘贴 TVBox 配置链接并读取，选择兼容项后导入。直接引用的 JS/Python/PHP 脚本会下载并识别，JSON/XML 采集接口会生成兼容源脚本，Android JAR 等不兼容项列出跳过原因。“本地文件”仍支持 `.js`、`.py`、`.php` 和 ZIP；不明确的 JS 再选择运行格式。
 3. **编辑与验证**：编辑页提供 Monaco 代码编辑器、本源环境变量、扩展参数、接口预览和日志。代码与配置独立保存，验证使用已保存版本。
-4. **管理列表**：单击名称重命名；列表开关控制启用、搜索和筛选；勾选源后批量启用或停用。扫描源目录、新建参数化实例在设置页。
+4. **管理列表**：单击名称重命名；列表开关控制启用、搜索和筛选；勾选源后批量启用、停用或删除。删除先确认，移除源实例及订阅引用，保留脚本文件。扫描源目录、新建参数化实例在设置页。
 5. **生成订阅**：创建订阅，选择源并排序，复制地址填入 TVBox。修改后刷新 TVBox 配置生效。
+6. **网页观影**：侧栏进入“网页观影”，点击“影视站”选择已启用的源，浏览分类；搜索框点击后展开推荐和本地搜索记录，输入关键词后点击搜索或按回车。打开详情后选集、切换线路并播放。支持观看历史、续播和收藏；这些信息只保存在当前浏览器。
+
+网页观影入口为 `/`（兼容 `/watch`），播放页面为 `/watch/play?source=<实例ID>&vod=<影片ID>`，直接访问和刷新都无需密码。播放器按需加载 ArtPlayer、HLS.js 与 mpegts.js，支持浏览器可解码的普通视频、HLS、FLV/TS。源要求解析时使用设置中的解析服务；没有解析配置、外部插件或站点凭据时会显示具体原因。TVBox 可以播放的编码不一定受浏览器支持。
 
 TVBox 在另一台设备上时，在设置中填写可达的服务对外地址，例如 `http://192.168.1.10:54058`。停用源不会出现在订阅中；删除实例会移除订阅引用，原脚本仍保留。
 
@@ -77,7 +95,7 @@ data/runtime/config/source-env/    按源实例保存的环境变量
 data/revisions/                    脚本历史版本
 ```
 
-首次启动复制初始源与资源；后续启动刷新内核代码，保留用户源与配置。备份整个 `data/` 可完整恢复。管理配置导出包含源环境变量，不包含脚本和插件二进制。
+首次启动准备引擎辅助库和空源目录，不添加站点源；后续启动刷新内核代码，保留用户源与配置。备份整个 `data/` 可完整恢复。管理配置导出包含源环境变量，不包含脚本和插件二进制。
 
 详见 [配置与源包](docs/CONFIGURATION.md) 和 [开发说明](docs/DEVELOPMENT.md)。
 
@@ -91,14 +109,14 @@ npm run build
 
 测试覆盖源协议、环境隔离、订阅、代理、执行进程回收与 UI 操作。多语言测试使用真实 Python/PHP；可通过 `TEST_PYTHON`、`TEST_PHP` 指定路径。
 
-GitHub Actions 已配置相同检查，尚未在远程执行。
+GitHub Actions执行相同检查，Docker工作流通过后才发布镜像。AI接手先读 [AGENTS.md](AGENTS.md) 和 [AI接手文档](docs/AI_HANDOFF.md)。
 
 ## 项目目录
 
 ```text
 src/          HTTP 服务、源调度、管理数据、订阅
 web/          Vue 管理界面与 UI 组件
-engine/       drpy-node 兼容内核、初始源与辅助资源
+engine/       drpy-node 兼容内核和辅助库，无预置站点
 tests/        固定样本、协议与 UI 回归
 scripts/      检查与验证工具
 docs/         正式配置及开发文档

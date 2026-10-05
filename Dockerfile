@@ -21,6 +21,8 @@ COPY --from=build /app/dist ./dist
 COPY package.json ./
 COPY src ./src
 COPY engine ./engine
+COPY scripts/check-shell.mjs scripts/container-smoke.mjs ./scripts/
+RUN node scripts/check-shell.mjs
 ENV NODE_ENV=production TZ=Asia/Shanghai PORT=54058 HOST=0.0.0.0 PYTHON_PATH=/opt/python/bin/python3 PHP_PATH=php
 VOLUME /app/data
 EXPOSE 54058
