@@ -9,6 +9,13 @@ var rule = {
 `;
     if (language === 'py') return `# 在这里编写 HIPY Spider，或粘贴源代码。
 class Spider:
+    def __init__(self, t4_api=""):
+        self.proxy = t4_api
+        self.extend = ""
+
+    def setExtendInfo(self, extend):
+        self.extend = extend
+
     def getName(self):
         return ${JSON.stringify(name)}
 

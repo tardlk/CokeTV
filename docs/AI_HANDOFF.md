@@ -54,6 +54,8 @@ Node22，Python/PHP真实解释器可用 `TEST_PYTHON` / `TEST_PHP` 指定。当
 
 干净克隆后先build再test：页面路由集成测试需要dist/index.html。不能依赖本机忽略的dist，让GitHub工作流先构建。
 
+Python新建模板必须接受HIPY守护进程的 `t4_api` 构造参数；创建模板测试除语法检查外实际执行首页，容器验收也覆盖这条路径。
+
 未运行原drpy-node-coder CLI，不宣称使用过。协议样本不代表所有第三方站点、解析器或编码可播。
 
 ## 发布

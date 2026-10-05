@@ -120,7 +120,10 @@ test('三种类型创建语法有效的初始脚本，重复创建不能覆盖�
         assert.equal(script.engine,type);
         const content=await call(`/admin/scripts/${script.id}`);
         assert.ok(content.code.trim());
-        assert.equal(app.store.state.instances.find(item=>item.scriptId===script.id).name,'新建测试');
+        const instance=app.store.state.instances.find(item=>item.scriptId===script.id);
+        assert.equal(instance.name,'新建测试');
+        const home=await call(`/watch/sources/${instance.id}`);
+        assert.ok(Array.isArray(home.class));
         const file=app.store.scriptPath(script);
         await fs.writeFile(file,content.code+'\n// saved content');
         const results=await Promise.all([1,2].map(()=>app.inject({url:'/admin/scripts/create',method:'POST',headers:{authorization},payload:{type,name:'新建测试'}})));
