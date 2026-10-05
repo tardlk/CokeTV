@@ -60,6 +60,9 @@ Python新建模板必须接受HIPY守护进程的 `t4_api` 构造参数；创建
 
 ## 发布
 
+- 2026-10-05首次发布已完成：功能提交 `3b17276`，源码 [Verify 37252776598](https://github.com/tardlk/CokeTV/actions/runs/37252776598) 和 [Docker amd64 37252776569](https://github.com/tardlk/CokeTV/actions/runs/37252776569) 均成功。真实Linux x86容器验收通过零源、首次管理密码和JS/Python/PHP实际执行。
+- 已发布 `ghcr.io/tardlk/coketv:latest` 与 `ghcr.io/tardlk/coketv:sha-3b17276`，digest为 `sha256:8e733b3cc506be4682015e9df004ba9b3705f31c058d9da263e28dbfa049461c`；匿名读取镜像manifest/config成功，确认 `linux/amd64`。
+- 前两次工作流发现并修复了干净克隆先build再test、新建HIPY模板缺少t4_api的问题。这些修正已进入功能提交；失败镜像没有发布。
 - Verify工作流：语法、空壳、测试、构建。
 - Docker amd64工作流：main/tag/manual→源码验证→原生amd64构建→临时空容器验收→GHCR发布。使用仓库GITHUB_TOKEN的packages权限，不提交任何发布密钥。
 - `latest` 对应main，`sha-*`用于固定提交；`v*`标签发布版本。

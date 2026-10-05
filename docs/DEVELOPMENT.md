@@ -78,4 +78,4 @@ HTTP 服务启动时不初始化源引擎。执行子进程按需启动，可超
 
 `.github/workflows/docker.yml` 在 main、v* 标签或手动运行时执行源码测试，然后在原生 x86 GitHub runner 构建 linux/amd64 镜像。先加载本地镜像，用 `scripts/container-smoke.mjs` 验证零源/首次密码/真实 JS、Python、PHP 调用，再发布 latest、sha-* 或版本标签到 GHCR。测试使用临时容器和临时数据，不能拿正式数据作构建输入。
 
-本机无 Docker 引擎，真实容器结果以工作流日志为准。失败时修复后重试，不在检查失败时发布。接手摘要见 `docs/AI_HANDOFF.md`。
+本机无 Docker 引擎；2026-10-05 GitHub原生x86容器验收与发布已通过，见 [Docker amd64](https://github.com/tardlk/CokeTV/actions/runs/37252776569)。对应功能提交 `3b17276`，镜像 `ghcr.io/tardlk/coketv:sha-3b17276`，同digest也发布为latest，匿名拉取元数据已验证。失败时修复后重试，不在检查失败时发布。接手摘要见 `docs/AI_HANDOFF.md`。
