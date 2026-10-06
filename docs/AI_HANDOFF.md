@@ -20,9 +20,9 @@
 | 已发行源码 | `c2a1f21f9be005e1855bd78b00613033791c0dbb`；PR #1 已合并，R1–R10 与媒体请求头兼容修复已包含 |
 | 固定镜像 | `ghcr.io/tardlk/coketv:sha-c2a1f21`，已验收 digest：`sha256:c269b482eddaff2668a43773b82fcd98f23c89b90bd48542eb4a2a6b95c8d1a2`；当时 latest 同 digest，后续追踪优先固定 SHA/digest |
 | 已执行门禁 | 源码 169 全过、0 跳过；发布前/发布后各 116 容器回归全过、0 跳过；GitHub 原生 linux/amd64、UID 1000。CI、镜像 ID 与 artifact 校验见 7.13 |
-| 工具与数据边界 | 本机无 Docker CLI；容器证据来自 GitHub，不是本机。正式 data 未用于验收，也没有因分支清理被改写；不宣称运行过 drpy-node-coder CLI |
+| 工具与数据边界 | 本机已新增隔离 Docker 测试环境（7.15）：Apple 芯片通过 QEMU 兼容运行 amd64 镜像；GitHub 原生 amd64 证据仍独立保留。正式 data 未用于验收或部署测试，未运行 drpy-node-coder CLI |
 | 当前保留行为 | 五引擎、原源协议、发行零预置源、源与宿主同权限。管理员失败预算耗尽后同 IP 正确密码仍 429，本次不改变该产品决策 |
-| 近期未完成事项 | 实际部署与用户源的外站/TVBox/浏览器音视频验收尚未重跑；先备份部署数据，再在明确的部署目标上按固定版本验收。不要自行更新正式 data 或拿它作测试 |
+| 近期未完成事项 | 本机 Docker 测试部署、生成样片的 MP4/HLS 浏览器解码和重启恢复已通过（7.15）；用户真实源、外部影片/TVBox 设备与正式部署仍未执行。先备份部署数据，不能拿正式 data 测试 |
 | 长期事项 | 每源隔离方案、供应链 SHA/hash 固定、依赖专项升级、fServer WebSocket、补充覆盖；详见 7.2。npm audit 四项已登记，不通过无关大升级掩盖风险 |
 
 继续本机源码验证时使用现有工具（不要因为系统 Node/Python 版本不同而跳过用例）：
@@ -103,7 +103,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 - 干净克隆必须先 `npm run build` 再 `npm test`；不能依赖被忽略的本机 `dist/`。CI 已按此顺序。
 - Python 新建模板必须接受 HIPY 守护进程的 `t4_api` 构造参数；创建模板测试除语法检查外实际执行首页，容器验收也覆盖这条路径。
-- 本机没有 Docker，**不能声称做过本机容器验收**；本轮 GitHub 原生 amd64 候选验收已通过，证据见第 7.12 节。
+- 原生 amd64 验收来自 GitHub（7.12–7.13）；随后已安装本机 Docker 并兼容运行同一镜像（7.15）。Mac 为 arm64，不能把本机兼容测试说成原生 amd64 验收。
 - 未运行原 drpy-node-coder CLI，不宣称使用过。协议样本不代表所有第三方站点、解析器或编码可播。
 - 测试数量与文件数以脚本实际输出为准；`docs/DEVELOPMENT.md` 已移除固定计数，并由回归用例防止重新写入。
 
@@ -115,7 +115,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - 历史镜像 `:sha-3b17276`，当时同 digest 发布为 `:latest`：`sha256:8e733b3cc506be4682015e9df004ba9b3705f31c058d9da263e28dbfa049461c`（匿名读取 manifest/config 确认 `linux/amd64`）。独立拉取验收：[Verify published image 37253476492](https://github.com/tardlk/CokeTV/actions/runs/37253476492)。这个 digest 只代表旧发布，不能据此断言当前 latest 的版本。
 - **2026-10-06 历史源码同步**：用户明确授权推送。GitHub `main` 的代码快照为 `984ccf0ff2ed2d0f63c96f2f5b7b2098cba023d3`，Git tree 与本地整理后的 `da3ce44` 完全相同（`eed21e5c7d44212cec56f80ee0b2ba08cc3f708c`）；包括此前 9 个未推送提交、本轮限流修复和接手审查记录。原始本地 11 个提交保留在 `handoff-local-20261006`，本地 main 已跟随远端。收尾文档补记使用 `[skip ci]`，不重复发布相同代码。
 - **历史 CI / 镜像状态（当时已核对）**：[Verify 37429832617](https://github.com/tardlk/CokeTV/actions/runs/37429832617) 与 [Docker amd64 37429832738](https://github.com/tardlk/CokeTV/actions/runs/37429832738) 均成功；后者的源码检查、发布前空容器验收、镜像发布三个步骤分别为 success。已发布 `ghcr.io/tardlk/coketv:sha-984ccf0` 与 `:latest`，两者 digest 相同：`sha256:8329ad339a36d81e6bfc7771104f0a9d106a8e08a210c5bbbbad9e8e255488f0`。匿名读取 manifest/config 确认 `linux/amd64`、`User=node`、revision 为 `984ccf0ff2ed2d0f63c96f2f5b7b2098cba023d3`。
-- 上述历史 984ccf0 发布没有本机 Docker 或发布后五引擎/重启拉取复验，也未修复 R1–R10。本轮 c2a1f21 已通过完整发布前/后矩阵；本机仍无 Docker，发布前/后容器结果均来自 GitHub 原生 amd64。
+- 上述历史 984ccf0 发布没有本机 Docker 或发布后五引擎/重启拉取复验，也未修复 R1–R10。本轮 c2a1f21 已通过完整发布前/后矩阵；发布当时本机无 Docker，这两组证据来自 GitHub 原生 amd64。随后新增的本机兼容运行部署见 7.15。
 - 发布链路：Verify 工作流跑语法/空壳/测试/构建；Docker amd64 工作流在 main/tag 发布事件上做源码验证 → 原生 amd64 单次构建 → 完整临时容器矩阵 → artifact 保存/身份校验 → GHCR 发布；PR 和默认手动 dry-run 只读验收，使用仓库 `GITHUB_TOKEN` 的 packages 权限，不提交发布密钥。`latest` 对应 main，`sha-*` 固定提交，`v*` 发布版本。
 - `compose.yaml` 用 GHCR 镜像并挂载 `./data:/app/data`，容器以非 root `node` 运行；挂载旧版本（root 属主）数据目录需先 `chown -R 1000:1000 data`（README 有命令）。
 - `.github/workflows/image-verify.yml` + `scripts/image-verify.mjs` 可手动验证已发布镜像（五引擎、重启持久化、非 root 断言）；只在临时容器创建样本，不能用于正式数据目录。
@@ -388,6 +388,17 @@ GitHub 的 work/media-release-gates-20261006 已通过分支页 Delete branch �
 本次实际执行本机 `npm run check && npm run build && npm test`（使用第 0 节指定的真实工具路径），全部退出 0：122 宿主/辅助语法、143 桥接语法、spider 37/engine 156 空壳检查、120 后端 + 49 UI = 169 全过、0 跳过；保留构建 chunk 提示，没有新跑 Docker 或外部站点验收。
 
 本文新增第 0 节当前接手入口，补齐本机实际工具命令、main 与发行 SHA 的区别、验证证据和下一步；纠正发布门/坏配置覆盖仍待执行的旧说法。旧修复与失败/通过证据保留，但明确标为历史，旧分支名不再作为开发入口。本次仅文档整理，用 `[skip ci]` 同步 main，不触发新的镜像发布；7.13 的源码 SHA/digest 与验收结论保持。
+
+### 7.15 本机 Docker 部署与实际浏览器播放（2026-10-06）
+
+- **授权与隔离**：用户要求“部署这个 Docker，测试一下”，并表示不懂编程；本轮由助手安装运行环境并交付可直接打开的本机测试页面。部署固定 7.13 已发布 digest，不构建/推送新镜像、不创建新分支、不复制或挂载正式 data，也不恢复原站点。运行环境无 Mac 主目录/项目挂载；测试数据只在新建 Docker 命名卷中。
+- **实际运行环境**：Mac arm64，Lima 2.2.1 的 VZ Ubuntu arm64 VM（4 CPU/4 GiB）与 Docker CLI/Engine 29.8.2，按 Lima 官方支持的 QEMU user-mode 方式兼容 amd64；未安装 Docker Desktop 或 Rosetta。程序仍以 UID 1000/node 运行，cap_drop=ALL、no-new-privileges。固定镜像 revision c2a1f21 与 registry digest c269b482…保持 7.13 的完整值。Docker 29 containerd store 的 inspect ID 展示 manifest ID，与旧 classic store 的 config ID 形式不同；本轮以固定 RepoDigest、平台、OCI revision 和实际运行核对身份，不据显示差异误称换了镜像。
+- **容器协议实际测试**：独立 coketv-check 测试容器执行空数据/首装/边界/模板 smoke、五引擎完整协议/正式 CLI、实际 GET/HEAD/Range/HLS 与同卷重启复验；17 个容器回归文件以 concurrency=2 执行，TAP **116/116、0 失败、0 跳过**。兼容运行速度不同，不改断言、不跳过测试，也不替代已有 GitHub 原生结论。
+- **可使用的测试部署**：coketv-local 仅绑定 127.0.0.1:54058；数据卷 coketv-local-test-data、只读样片卷 coketv-local-demo-media，与仓库正式 data 分开。测试源是在运行卷通过管理 API 创建的“Docker测试样片”，发行镜像自身仍零源。公开页面无需密码；后台的随机测试凭据仅保存本机私密说明/会话文件（0600），不写入本文件、Git 或镜像。
+- **真实媒体/浏览器实测**：镜像自带 ffmpeg 生成 12 秒、640×360 H264/AAC 样片与 AES-128 加密 HLS（主/子列表、key、TS 分片）。源要求 Referer/User-Agent，上游实际检查；MP4 Range 返回 206/正确 Content-Range 和 128 字节，HLS 主/子列表、16 字节 key、分片和 HEAD 实际请求成功。在本机浏览器实际点击播放，MP4 播放到 12 秒、切第二段后自动播放成功，HLS 解密后播放至约 12.028 秒、640×360、readyState=4、无媒体错误。这是生成样片的解码/播放，不是外部电影站或真实 TVBox 设备验收。
+- **重启与自动启动实测**：coketv-local restart 后密码、state、全局 ENV、测试源脚本逐字节 hash 相同，实际媒体恢复；Docker VM stop/start 后源/密码和 HLS 恢复。首次登录自动启动配置在项目 Desktop 路径中失败，未掩盖该失败；运行环境迁到用户专用 .coketv-docker 目录，LaunchAgent 显式设置 LIMA_HOME 后，由 launchctl bootstrap 从停止状态拉起 VM 的通路实际通过、应用 healthy。guest 内 binfmt 服务保持兼容执行支持；未重启/注销整台 Mac，不声称实测过完整 Mac 登录。
+- **宿主文档门禁实际情况**：check 通过（122/143/空壳）；标准 build 和 UI 命令本轮在默认 esbuild config bundle 阶段挂起，停止了仅本轮的挂起进程，没有把它报成成功。使用 Vite 已有 `--configLoader native` 后构建 3275 模块成功；后端 120/120、UI 使用同一 native loader 后 49/49 全过、0 跳过。源码、依赖锁文件和镜像未改，也没有删/放宽断言。这组替代命令不等于标准串行命令已直接通过；后续若本机重现，先查日志，不以反复等待代替诊断。
+- **交付与运维入口**：打开本机 127.0.0.1:54058；浏览器测试页保留，截图、TAP、私密登录说明与辅助脚本在忽略的 .tools/container 中。`.tools/container/docker-coketv` 指向专用 daemon；start-test/stop-test 辅助脚本仅管理本轮 VM，stop-test 会先取消登录自启。coketv-check 与 coketv-media-prep 已停止，保留测试卷/证据，只有 coketv-local 继续服务。公开交接不包含本机绝对路径或后台测试密码，正式 data 保持未改。
 
 ## 8. 验证证据与探测脚本
 
