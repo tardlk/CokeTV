@@ -81,7 +81,8 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - 2026-10-05 首次发布：功能提交 `3b17276`，源码 [Verify 37252776598](https://github.com/tardlk/CokeTV/actions/runs/37252776598) 与 [Docker amd64 37252776569](https://github.com/tardlk/CokeTV/actions/runs/37252776569) 均成功。
 - 历史镜像 `:sha-3b17276`，当时同 digest 发布为 `:latest`：`sha256:8e733b3cc506be4682015e9df004ba9b3705f31c058d9da263e28dbfa049461c`（匿名读取 manifest/config 确认 `linux/amd64`）。独立拉取验收：[Verify published image 37253476492](https://github.com/tardlk/CokeTV/actions/runs/37253476492)。这个 digest 只代表旧发布，不能据此断言当前 latest 的版本。
 - **2026-10-06 源码同步已完成**：用户明确授权推送。GitHub `main` 的代码快照为 `984ccf0ff2ed2d0f63c96f2f5b7b2098cba023d3`，Git tree 与本地整理后的 `da3ce44` 完全相同（`eed21e5c7d44212cec56f80ee0b2ba08cc3f708c`）；包括此前 9 个未推送提交、本轮限流修复和接手审查记录。原始本地 11 个提交保留在 `handoff-local-20261006`，本地 main 已跟随远端。收尾文档补记使用 `[skip ci]`，不重复发布相同代码。
-- **本次 CI / 镜像状态**：收尾核对时 [Verify 37429832617](https://github.com/tardlk/CokeTV/actions/runs/37429832617) 已成功；[Docker amd64 37429832738](https://github.com/tardlk/CokeTV/actions/runs/37429832738) 仍在运行，目标标签 `:sha-984ccf0` 与 `:latest`。尚未确认本次镜像发布成功或新 digest，不能将旧 digest 写作新镜像结果；新对话先核对这个 run，成功后再读取 manifest/config 并更新本节。
+- **本次 CI / 镜像状态（已核对）**：[Verify 37429832617](https://github.com/tardlk/CokeTV/actions/runs/37429832617) 与 [Docker amd64 37429832738](https://github.com/tardlk/CokeTV/actions/runs/37429832738) 均成功；后者的源码检查、发布前空容器验收、镜像发布三个步骤分别为 success。已发布 `ghcr.io/tardlk/coketv:sha-984ccf0` 与 `:latest`，两者 digest 相同：`sha256:8329ad339a36d81e6bfc7771104f0a9d106a8e08a210c5bbbbad9e8e255488f0`。匿名读取 manifest/config 确认 `linux/amd64`、`User=node`、revision 为 `984ccf0ff2ed2d0f63c96f2f5b7b2098cba023d3`。
+- 本次没有本机 Docker 验收，也没有运行新镜像的发布后五引擎拉取/重启持久化手动工作流；容器 Range/HLS 与旧数据升级覆盖仍有第 7 节所列缺口。发布成功不表示 R1–R10 已修复。
 - 发布链路：Verify 工作流跑语法/空壳/测试/构建；Docker amd64 工作流在 main/tag/manual 上做源码验证 → 原生 amd64 构建 → 临时空容器验收 → GHCR 发布，使用仓库 `GITHUB_TOKEN` 的 packages 权限，不提交发布密钥。`latest` 对应 main，`sha-*` 固定提交，`v*` 发布版本。
 - `compose.yaml` 用 GHCR 镜像并挂载 `./data:/app/data`，容器以非 root `node` 运行；挂载旧版本（root 属主）数据目录需先 `chown -R 1000:1000 data`（README 有命令）。
 - `.github/workflows/image-verify.yml` + `scripts/image-verify.mjs` 可手动验证已发布镜像（五引擎、重启持久化、非 root 断言）；只在临时容器创建样本，不能用于正式数据目录。
@@ -192,7 +193,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **本轮实际改动**：本地提交 `a0882c2`（已包含于 GitHub `984ccf0`）收紧票据限流豁免，新增 `tests/rate-limit.test.js` / `tests/documentation.test.js`；README、配置、开发、安全策略同步真实边界和验证口径。本文件集中登记审查发现，未另建接手报告；`verify` 文档新增显式密码的临时用法，R10 的 CLI 实现仍待修。
 - **收尾门禁**：再次运行 `npm run check && npm run build && TEST_PYTHON=python3 TEST_PHP=php npm test`，退出 0，118 宿主/辅助语法文件、143 桥接语法文件、空壳检查、生产构建通过；124 项 = 75 后端 + 49 UI，0 跳过。仅保留构建 chunk 大小提示。未做本机 Docker 或新增外部站点播放验证。
 - **当前测试服务**：本机 `http://127.0.0.1:54058` 保持运行，首页、后台、健康接口实际返回 200；使用独立临时 DATA_DIR，未启动或改写仓库正式用户 data。测试数据保留，不要为清理仓库而删掉。仓库外 `../coketv-audit/preview-session.json` 记录 PID 与测试数据位置，不含密码或初始化码；换对话后先确认进程是否仍在，避免重复启动或覆盖测试数据。该记录与全部探测脚本都不提交。
-- **提交/推送状态**：源码和接手文档已同步到 GitHub，本地 main 已与远端一致；原本地提交保留在 `handoff-local-20261006`。本机 Git HTTPS 没有登录凭据、也没有现成 SSH 身份，本次使用已登录且有仓库写权限的 GitHub 连接追加快照提交，未强推或覆盖原远端历史；以 Git tree 相等核对全部文件内容和权限。下一轮推送需使用该连接或先配置正常 Git 登录，不能因为认证失败强制改写远端。CI/镜像状态见第 5 节；本次收尾纯文档补记标记 `[skip ci]`，这不用于跳过代码变更的验证。
+- **提交/推送状态**：源码和接手文档已同步到 GitHub，本地 main 已与远端一致；原本地提交保留在 `handoff-local-20261006`。本机 Git HTTPS 没有登录凭据、也没有现成 SSH 身份，本次使用已登录且有仓库写权限的 GitHub 连接追加快照提交，未强推或覆盖原远端历史；以 Git tree 相等核对全部文件内容和权限。下一轮推送需使用该连接或先配置正常 Git 登录，不能因为认证失败强制改写远端。CI/镜像发布已成功并回填 digest，详见第 5 节；本次收尾纯文档补记标记 `[skip ci]`，这不用于跳过代码变更的验证。
 - **新对话按顺序读**：AGENTS → 本文件 → 需要改代码时读正式开发/配置/安全文档。先读取第 7.1 节保留项及第 7.3 节 R1–R10，再结合第 8 节的本机探测脚本继续；建议优先 R1、R2/R7，保持五引擎和原源协议，先建立能失败的回归再修。
 
 ## 8. 验证证据与探测脚本
