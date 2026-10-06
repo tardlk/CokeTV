@@ -121,7 +121,7 @@ test('C2 停用源后原有媒体票据失效', async () => {
         assert.equal((await app.inject(`/watch/media/${ticket}`)).statusCode, 403);
     } finally { entry.enabled = true; }
 });
-test('C2 篡改签名或过期票据都被拒绝', async () => {
+test('C2 篡改或过期票据都被拒绝', async () => {
     const ticket = await ticketFor();
     const tampered = `${ticket.slice(0, -2)}xx`;
     assert.equal((await app.inject(`/watch/media/${tampered}`)).statusCode, 403);

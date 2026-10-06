@@ -124,7 +124,7 @@ process.on('message', async message => {
     if (message.kind !== 'run') return;
     const {id, source, query, env: rawEnv, operation} = message;
     currentSource = source.instanceId;
-    await withSourceEnvironment({file: rawEnv.sourceEnvPath}, async () => {
+    await withSourceEnvironment({file: rawEnv.sourceEnvPath, params: rawEnv.ext, privatePaths: [root, source.file, process.env.PHP_PATH]}, async () => {
     try {
         process.env.DRPY_PUBLIC_URL = rawEnv.requestHost;
         process.env.DRPY_HTTP_PORT = String(rawEnv.localPort || new URL(rawEnv.requestHost).port || 54058);
@@ -155,7 +155,8 @@ process.on('message', async message => {
         }
         process.send?.({kind: 'result', id, result});
     } catch (error) {
-        process.send?.({kind: 'result', id, error: redactSourceSecrets(error.message)});
+        const message = source.engine === 'php' && error.code === 'PHP_SOURCE_FAILED' ? 'PHP 源执行失败' : redactSourceSecrets(error.message);
+        process.send?.({kind: 'result', id, error: message});
     } finally { currentSource = null; report(); }
     });
 });

@@ -9,6 +9,7 @@ import {computeHash, deepCopy, getNowTime} from "../utils/utils.js";
 import {prepareBinary} from "../utils/binHelper.js";
 import {md5} from "../libs_drpy/crypto-util.js";
 import {fastify} from "../controllers/fastlogger.js";
+import {redactSourceSecrets, sourceEnvironment} from '../utils/source-env.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -50,30 +51,24 @@ function json2Object(json) {
 // Execute PHP bridge
 const callPhpMethod = async (filePath, methodName, env, ...args) => {
     let phpPath = process.env.PHP_PATH || 'php';
-    
-    const validPath = prepareBinary(phpPath);
-    if (!validPath) {
-         throw new Error(`PHP executable not found or invalid: ${phpPath}`);
-    }
-    phpPath = validPath;
-
     const phpMethodName = methodMapping[methodName] || methodName;
-
-    const cliArgs = [
-        _bridge_path,
-        filePath,
-        phpMethodName,
-        JSON.stringify(env),
-        ...args.map(stringify)
-    ];
-
+    const scope = sourceEnvironment();
+    const redact = message => redactSourceSecrets(message, {...scope, file: env?.sourceEnvPath || scope?.file, params: env?.ext,
+        privatePaths: [...(scope?.privatePaths || []), filePath, _bridge_path, phpPath]});
+    const failure = () => Object.assign(new Error('PHP 源执行失败'), {code: 'PHP_SOURCE_FAILED'});
+    const diagnostic = (details, stderr = '') => {
+        logError(redact(`PHP ${phpMethodName} failed: ${details}`));
+        if (stderr) logError(redact(`PHP stderr: ${stderr}`));
+    };
     try {
-        // fastify.log.info(`Calling PHP: ${phpPath} ${cliArgs.join(' ')}`);
+        const validPath = prepareBinary(phpPath);
+        if (!validPath) { diagnostic('解释器不存在或不可用'); throw failure(); }
+        phpPath = validPath;
+        const cliArgs = [_bridge_path, filePath, phpMethodName, JSON.stringify(env), ...args.map(stringify)];
         const {stdout, stderr} = await execFileAsync(phpPath, cliArgs, {
             encoding: 'utf8',
             maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-            // 比 Node 侧 withTimeout(API_TIMEOUT) 多 5s 宽限：超时后 kill php 进程，
-            // 避免孤儿进程继续占用连接与内存（输家 rejection 由 with-timeout 的 noop 分支静默）
+            // 超时后 execFile 回收 PHP 子进程；保留原 API_TIMEOUT + 5s 预算。
             timeout: (parseInt(process.env.API_TIMEOUT || '20') + 5) * 1000,
             killSignal: 'SIGTERM',
             env: {
@@ -82,23 +77,27 @@ const callPhpMethod = async (filePath, methodName, env, ...args) => {
             }
         });
 
-        if (stderr) {
-            // Log stderr but don't fail immediately unless stdout is empty or error
-            // fastify.log.warn(`PHP Stderr: ${stderr}`);
-            logError(`PHP Stderr: ${stderr}`);
-        }
+        if (stderr) logError(redact(`PHP stderr: ${stderr}`));
 
         const result = json2Object(stdout.trim());
 
         if (result && result.error) {
-            throw new Error(`PHP Error: ${result.error}\nTrace: ${result.traceback}`);
+            diagnostic(`${String(result.error)}\n${String(result.traceback || '')}`);
+            throw failure();
         }
 
         return result;
 
     } catch (error) {
-        logError(`Error calling PHP method ${methodName}:`, error);
-        throw error;
+        if (error.code === 'PHP_SOURCE_FAILED') throw error;
+        // execFile rejects on a bridge exit(1). Parse its stdout error envelope;
+        // never log/throw the raw Error, whose message/cmd contain all CLI args.
+        let bridge;
+        try { bridge = JSON.parse(String(error.stdout || '').trim()); } catch {}
+        const details = bridge?.error ? `${String(bridge.error)}\n${String(bridge.traceback || '')}` :
+            error.killed ? '调用超时或进程中断' : '解释器启动失败或进程异常退出';
+        diagnostic(details, String(error.stderr || ''));
+        throw failure();
     }
 };
 
@@ -131,7 +130,7 @@ const init = async function (filePath, env = {}, refresh) {
             }
         }
 
-        fastify.log.info(`Loading PHP module: ${filePath}`);
+        fastify.log.info(`Loading PHP module: ${path.basename(filePath)}`);
         let t1 = getNowTime();
 
         const module = await loadEsmWithHash(filePath, fileHash, env);
@@ -148,8 +147,9 @@ const init = async function (filePath, env = {}, refresh) {
         return {...moduleObject, ...initValue};
 
     } catch (error) {
-        fastify.log.error(`Error in php.init :${filePath}`, error);
-        throw new Error(`Failed to initialize PHP module:${error.message}`);
+        if (error.code !== 'PHP_SOURCE_FAILED') logError(redactSourceSecrets(`PHP 初始化失败: ${error.message}`, {
+            ...sourceEnvironment(), file: env?.sourceEnvPath, params: env?.ext, privatePaths: [filePath, _bridge_path, process.env.PHP_PATH]}));
+        throw Object.assign(new Error('PHP 源执行失败'), {code: 'PHP_SOURCE_FAILED'});
     }
 };
 

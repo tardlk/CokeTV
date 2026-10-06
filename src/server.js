@@ -20,6 +20,7 @@ import {syntaxCheck, importBundle, decodeSource, detectSourceEngine} from './sou
 import {sourceTemplate} from './source-templates.js';
 import {createPlaybackSessions, playbackUrl, playbackHeaders, mediaType} from './playback.js';
 import {assertTargetAllowed} from './ssrf.js';
+import {guardedHttp} from './outbound.js';
 import {createTvboxImporter} from './tvbox-import.js';
 
 dotenv.config();
@@ -128,7 +129,7 @@ export async function createApp({directory, seed = true} = {}) {
         return value;
     };
     // 调用方提供的出站请求头白名单：禁止改写 Host/Cookie/Authorization/转发头，
-    // 否则 /mediaProxy 会变成「带自定义请求头的开放代理」。源签名票据里的头不受此限。
+    // 否则 /mediaProxy 会变成「带自定义请求头的开放代理」。源能力票据绑定的头不受此限。
     const BLOCKED_PROXY_HEADERS = new Set(['host', 'cookie', 'authorization', 'proxy-authorization', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-drpy-runtime', 'connection', 'content-length', 'transfer-encoding']);
     const safeProxyHeaders = value => Object.fromEntries(Object.entries(value || {}).filter(([key, val]) =>
         /^[\w-]+$/.test(key) && typeof val === 'string' && !/[\r\n]/.test(val) && !BLOCKED_PROXY_HEADERS.has(key.toLowerCase())));
@@ -171,7 +172,7 @@ export async function createApp({directory, seed = true} = {}) {
         if (!sub) throw fail('访问凭证无效', 403);
         return sub;
     };
-    // 代理出口：管理员/内部、订阅 Token，或一张恰好绑定到该 URL 的签名代理票。
+    // 代理出口：管理员/内部、订阅 Token，或一张恰好绑定到该 URL 的代理能力票。
     const authorizeProxy = async (request, target) => {
         if (await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey) return {kind: 'admin'};
         const ticket = playback.get(request.query.token);
@@ -298,7 +299,7 @@ export async function createApp({directory, seed = true} = {}) {
     app.route({method: ['GET', 'HEAD'], url: '/watch/media/:ticket', handler: async (request, reply) => {
         const session = playback.get(request.params.ticket);
         if (!session || session.kind !== 'media' || !store.state.instances.some(item => item.id === session.source && item.enabled)) throw fail('播放链接已过期，请重新选择剧集', 403);
-        // 只抓票据里签过的那个 URL 与那组请求头，绝不接受请求方传入的目标。
+        // 只抓服务端票据绑定的 URL 与请求头，绝不接受请求方传入的目标。
         return serveMedia(request, reply, session.url, session.headers || {}, request.params.ticket,
             url => playback.createProxy(url, session.headers || {}));
     }});
@@ -311,7 +312,7 @@ export async function createApp({directory, seed = true} = {}) {
     app.put('/admin/instances/:id/environment', async request => {
         const values = request.body?.values;
         validateEnvironment(values);
-        await store.atomic(store.sourceEnvPath(request.params.id), JSON.stringify(values, null, 2));
+        await store.atomic(store.sourceEnvPath(request.params.id), JSON.stringify(values, null, 2), {mode: 0o600});
         await fs.chmod(store.sourceEnvPath(request.params.id), 0o600);
         runner.reset('源环境变量已更新');
         return {ok: true};
@@ -516,7 +517,7 @@ export async function createApp({directory, seed = true} = {}) {
             state.instances = value.instances; state.subscriptions = value.subscriptions;
             for (const [id, variables] of Object.entries(value.environments || {})) {
                 const file = store.sourceEnvPath(id);
-                await store.atomic(file, JSON.stringify(variables, null, 2)); await fs.chmod(file, 0o600);
+                await store.atomic(file, JSON.stringify(variables, null, 2), {mode: 0o600}); await fs.chmod(file, 0o600);
             }
         });
         runner.reset('管理配置已导入'); return {ok: true};
@@ -557,7 +558,7 @@ export async function createApp({directory, seed = true} = {}) {
         const mint = url => playback.createProxy(url, streamHeaders);
         for (const key of Object.keys(headers || {})) if (key.toLowerCase() === 'location') headers[key] = localToken(headers[key], baseUrl(request), sub?.token);
         if ([2, 3].includes(bytes) && typeof target === 'string' && /^https?:/.test(target)) {
-            // toBytes=3：宿主直接拉流；toBytes=2：302 到签好票据的 /mediaProxy。
+            // toBytes=3：宿主直接拉流；toBytes=2：302 到绑定能力票据的 /mediaProxy。
             // 两条路径携带同一组头，规避播放器 302 丢自定义头。
             if (bytes === 3) return serveMedia(request, reply, target, streamHeaders, sub?.token, mint);
             return reply.redirect(`/mediaProxy?${new URLSearchParams({url: target, token: playback.createProxy(target, streamHeaders)})}`);
@@ -600,11 +601,9 @@ export async function createApp({directory, seed = true} = {}) {
     }});
     app.post('/http', async (request, reply) => {
         await authorizeService(request);
-        const {default: axios} = await import('axios');
         const {url, method = 'GET', headers = {}, params = {}, data, responseType, maxRedirects} = request.body || {};
         if (!/^https?:/.test(url || '')) throw fail('HTTP 请求地址无效');
-        await targetGuard(url);
-        const response = await axios({url, method, headers, params, data, responseType, maxRedirects, timeout: store.state.settings.timeout, validateStatus: () => true});
+        const response = await guardedHttp({url, method, headers, params, data, responseType, maxRedirects, timeout: store.state.settings.timeout}, targetGuard);
         return reply.code(response.status).send({status: response.status, headers: response.headers, data: response.data});
     });
     app.get('/req/*', async (request, reply) => {

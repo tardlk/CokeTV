@@ -3,49 +3,12 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 import {ROOT} from '../src/paths.js';
+import {SPIDER_FRAMEWORK_FILES} from '../src/runtime-files.js';
 
 // 发行树 engine/spider 下允许出现的文件白名单（新增文件必须显式登记）。
 // 旧的“`_` 前缀即免检 + 只查顶层 + 复用 scan() 判据”会让检查空转：既漏掉子目录与
 // .py/.mjs，又只能证明“不会被注册”。白名单 + 递归才能证明“发行树零预置源”。
-export const ALLOWED = new Set([
-    'spider/catLib/cat.js',
-    'spider/catLib/cheerio.min.js',
-    'spider/catLib/crypto-js.js',
-    'spider/catLib/http.js',
-    'spider/catLib/mod.js',
-    'spider/catLib/similarity.js',
-    'spider/catLib/sortName.js',
-    'spider/catLib/spider.js',
-    'spider/catvod/_dsutil.js',
-    'spider/js/_lib.action.js',
-    'spider/js/_lib.cntv-urlparse.cjs',
-    'spider/js/_lib.cntv-wasm.cjs',
-    'spider/js/_lib.cntv.js',
-    'spider/js/_lib.cntv.live.js',
-    'spider/js/_lib.cntv2026.cjs',
-    'spider/js/_lib.douyin_pb.cjs',
-    'spider/js/_lib.douyin_sign.cjs',
-    'spider/js/_lib.douyu.cjs',
-    'spider/js/_lib.random.js',
-    'spider/js/_lib.request.cjs',
-    'spider/js/_lib.request.js',
-    'spider/js/_lib.scan.js',
-    'spider/js/_lib.tingyou.js',
-    'spider/js/_lib.waf.js',
-    'spider/js_dr2/.gitkeep',
-    'spider/php/_bridge.php',
-    'spider/php/lib/HtmlParser.php',
-    'spider/php/lib/spider.php',
-    'spider/py/_bridge.py',
-    'spider/py/base/htmlParser.py',
-    'spider/py/base/requirements.txt',
-    'spider/py/base/spider.py',
-    'spider/py/core/bridge.js',
-    'spider/py/core/bridge.py',
-    'spider/py/core/t4_daemon.py',
-    'spider/py/core/t4_daemon_lite.py',
-    'spider/xbpq/test.json',
-]);
+export const ALLOWED = new Set([...SPIDER_FRAMEWORK_FILES, 'spider/js_dr2/.gitkeep']);
 // 允许在发行树里出现“规则/站点清单”标记的文件（相对 engine/ 的路径）。当前为空：
 // 基类与辅助库都不定义站点规则，引擎自身也不内置站点清单。
 export const ALLOWED_RULE_FILES = new Set([]);

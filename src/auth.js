@@ -56,7 +56,7 @@ export async function createAuth(store) {
             const newSalt = randomBytes(16).toString('base64');
             const digest = await derive(credentials.password, newSalt);
             const saved = {version: 2, salt: newSalt, hash: digest.toString('base64'), requiresSetup: false};
-            await store.atomic(file, JSON.stringify(saved, null, 2));
+            await store.atomic(file, JSON.stringify(saved, null, 2), {mode: 0o600});
             await fs.chmod(file, 0o600);
             credentials = saved; expected = digest; salt = newSalt; legacy = false;
         } finally { migrating = false; }
@@ -88,7 +88,7 @@ export async function createAuth(store) {
             salt = randomBytes(16).toString('base64');
             const digest = await derive(password, salt);
             const saved = {version: 2, salt, hash: digest.toString('base64'), requiresSetup: false};
-            await store.atomic(file, JSON.stringify(saved, null, 2));
+            await store.atomic(file, JSON.stringify(saved, null, 2), {mode: 0o600});
             await fs.chmod(file, 0o600);
             await fs.rm(codeFile, {force: true});
             credentials = saved; expected = digest; legacy = false; setupCode = null;
