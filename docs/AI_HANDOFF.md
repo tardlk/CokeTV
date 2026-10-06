@@ -74,7 +74,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 - 干净克隆必须先 `npm run build` 再 `npm test`；不能依赖被忽略的本机 `dist/`。CI 已按此顺序。
 - Python 新建模板必须接受 HIPY 守护进程的 `t4_api` 构造参数；创建模板测试除语法检查外实际执行首页，容器验收也覆盖这条路径。
-- 本机没有 Docker，**不能声称做过本机容器验收**；容器结论只以 GitHub Actions 日志为准。
+- 本机没有 Docker，**不能声称做过本机容器验收**；本轮 GitHub 原生 amd64 候选验收已通过，证据见第 7.12 节。
 - 未运行原 drpy-node-coder CLI，不宣称使用过。协议样本不代表所有第三方站点、解析器或编码可播。
 - 测试数量与文件数以脚本实际输出为准；`docs/DEVELOPMENT.md` 已移除固定计数，并由回归用例防止重新写入。
 
@@ -128,7 +128,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 ## 7. 当前状态与下一步待办
 
-接手时 `main` 领先 `origin/main` 9 个提交的描述是历史快照。本轮限流修复的本地提交是 `a0882c2`，其内容现已同步到 GitHub 代码快照 `984ccf0`；本地 main 已跟随远端，原本地提交保留在交接分支。源码同步/镜像结果见第 5 节与第 7.4 节。**R1–R10 已在本地接手修复**，见第 7.5–7.8 节；第 7.1 节第 3 项媒体头兼容也已本地修复（第 7.10 节），第 4 项管理员锁出行为保持原产品约定；原生容器验收与发布未执行。当前工作分支与本地检查点见第 7.10 节，第 5 节镜像只是历史产物，不包含本次本地修复。
+接手时 `main` 领先 `origin/main` 9 个提交的描述是历史快照。本轮限流修复的本地提交是 `a0882c2`，其内容现已同步到 GitHub 代码快照 `984ccf0`；本地 main 已跟随远端，原本地提交保留在交接分支。源码同步/镜像结果见第 5 节与第 7.4 节。**R1–R10 已在本地接手修复**，见第 7.5–7.8 节；第 7.1 节第 3 项媒体头兼容也已本地修复（第 7.10 节），第 4 项管理员锁出行为保持原产品约定；原生候选容器验收已通过（第 7.12 节），main 发布仍待安排。当前工作分支与本地检查点见第 7.10 节，第 5 节镜像只是历史产物，不包含本次本地修复。
 
 ### 7.1 建议尽快修（影响已加上的防护或文档正确性）
 
@@ -240,7 +240,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **完整门禁**：新增共七条回归，最终 `npm run check`、`npm run build`、指定真实 Python/PHP 的 `npm test` 全部退出 0；120 宿主/辅助语法、143 桥接语法、spider 37/engine 156 空壳检查；110 后端 + 49 UI = 159 项全部通过，0 跳过。五引擎及前三组回归保留；构建仍有大于 500 kB chunk 提示。测试环境仍为 Node 22.23.3、Python 3.12.14、PHP 8.4.23。
 - **当前状态与范围**：R1–R10 全部在本地修复；没有修改用户 data，未 commit、push、发布或重建镜像；未做 Docker/真实站点/浏览器音视频/原 drpy-node-coder CLI，也未新跑 npm audit。第 7.1 节第 3、4 项和第 7.2 节长期工作保留；容器旧数据升级、真实媒体转发与重启持久化仍须验收，不能把本机源码全绿视为镜像验收完成。
 
-### 7.9 后续执行计划（2026-10-06，阶段 0/1 已执行，容器与发布待执行）
+### 7.9 后续执行计划（2026-10-06，阶段 0–3 已执行，main 发布待安排）
 
 以下保留制定时的计划；实际执行状态见第 7.10 节，不能把配置准备当作容器验收完成。制定时基线为 R1–R10 本地修复、159 项测试通过，尚未 commit/push/发布。本机实际检查没有 Docker CLI，因此容器验收使用 GitHub 原生 linux/amd64 runner，不能以本机源码测试替代。顺序为保存基线 → 请求头兼容 → 候选镜像与发布前门禁 → 容器矩阵 → 审查提交与发布 → 发布后复验。
 
@@ -321,9 +321,14 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 - **工作分支 CI 后续修正**：首轮 Verify 的 check/build 成功，后端 119/120 通过、0 跳过；失败仅为 `private-data.test.js` 把 CI 的 `TEST_PHP=php` 命令名当私密路径，误命中源文件 `.php` 后缀。先在本机用 PATH 命令形式实际复现同一失败，再通过真实解释器 `PHP_BINARY` 取得绝对路径并用于原样保密断言与桥接执行；没有删除/放宽断言、改变宿主错误或跳过测试。命令形式专项 6/6 通过，指定本机解释器的完整 check/build/test 再次退出 0：120 后端 + 49 UI = 169 全过、0 跳过。此修正已同步为远端源码提交 `2e108e91f37e41fca5cf1d017027609411e7a040`，新的 [Verify 37455860875](https://github.com/tardlk/CokeTV/actions/runs/37455860875) 已 success：源码检查、构建和 120 后端 + 49 UI = 169 项测试全过、0 跳过；这是 GitHub Linux 源码验证，原生容器矩阵仍未执行。本机修正检查点保留在 `local-ci-php-checkpoint-20261006`，跟踪分支在远端 tree 核对一致后对齐，文件内容保持不变。
 
-### 7.12 原生 amd64 容器验收执行（2026-10-06）
+### 7.12 原生 amd64 容器验收结果（2026-10-06）
 
-用户已明确授权执行原生 amd64 容器验收。已建立 [PR #1](https://github.com/tardlk/CokeTV/pull/1)，保持 draft，使用工作分支的只读 candidate job；未合并 main、发布镜像或使用正式 data。此前分支末尾是纯文档的 `[skip ci]`，本次追加无跳过标记的执行记录以触发 PR 验收。此处仅记录授权与 PR 创建事实，原生构建、矩阵及发布 job skipped 的结果待实际日志确认。
+- **授权与执行**：用户明确要求执行原生 amd64 容器验收。已建立 [PR #1](https://github.com/tardlk/CokeTV/pull/1)，保持 draft；只读候选工作流 [Docker amd64 37456713645](https://github.com/tardlk/CokeTV/actions/runs/37456713645) 在 GitHub 原生 Ubuntu 24.04 x64 runner 实际构建并运行容器，整体 success。candidate 的源码门禁、构建、完整容器矩阵、原镜像保存和 artifact 上传均 success；publish job 确认为 **skipped**，没有 GHCR 登录/推送、main 合并或正式 data 操作。本机仍无 Docker，不能将此描述为本机容器验收。
+- **源码与镜像对应**：PR head 为 `510c5a2611a6ba3109a7160705cb16d06ca63469`；GitHub 实际 checkout/OCI revision 为 PR 合并候选 `5f58431d8058b413488e87a3c27d28db7d2e66e6`。fetch 该 merge ref 后确认两者 Git tree 同为 `3e93cbe0d2a4f0d766a9278afa70c487d291badd`，git diff 为零。镜像 ID 为 `sha256:2cb7005bdc866699f60aee8823ab2fe3a9f3a5de2cc970b5aaa1587ffb84900e`，平台 `linux/amd64`，实际 UID `1000`；Node `v22.23.3`、Python `3.13.5`、PHP `8.4.26`。这是候选 image ID，不是已发布 GHCR digest。
+- **完整矩阵实际通过**：全新空数据/零源/空默认配置、首装引导码、管理/订阅边界、非 root 和正式 CLI；五引擎首页/分类/搜索/详情/代理/CLI 与实际 GET/HEAD/Range 206、Content-Range/字节、HLS 主子列表/分片/AES key；同卷 Docker 重启后脚本/实例/参数/ENV/配置/订阅/凭据/版本历史快照、旧票据失效及五引擎媒体复验。冻存 ae89c27 桥接升级、PHP 代理/Python JSON 入站及无害 pickle 拒绝、用户内容/ID/Token/顺序保留、私密 0600/异常脱敏、票据与出口/长媒体/头矩阵/CLI 等容器回归全部通过。独立坏 state/ENV 卷实际拒绝启动且保留原字节；旧 root 属主卷实际失败，按 README chown 1000:1000 后恢复并通过 smoke。所有场景仅一次性容器/卷或容器内独立临时目录。
+- **测试与产物核对**：候选任务源码门禁 120 后端 + 49 UI = 169 全过、0 跳过；容器内 17 个回归文件的 TAP 为 **116/116，通过、0 失败、0 跳过**（不含只在源码 CI 检查的文档/工作流四条用例）。`report.json` 的 completed=true、六组检查清单与解释器/UID/镜像 ID 已核对；下载证据 ZIP 并实际校验 SHA256 与 GitHub artifact digest 一致，进一步核对其中 TAP，而非只看工作流 success。
+- **候选产物**：[candidate artifact 11410585112](https://github.com/tardlk/CokeTV/actions/runs/37456713645/artifacts/11410585112)，ZIP SHA256 `b029f14b1009d01c613b26fef200742f2f7a1e3b2d897906ee37193ab41faf8b`，包含原 image.tar、tar 校验文件、image ID 与源码 SHA；[验收证据 artifact 11410385233](https://github.com/tardlk/CokeTV/actions/runs/37456713645/artifacts/11410385233)，ZIP SHA256 `01609e100174061cde4057811b5e10d2d4fccb2e6b828a457cc90f25b0de0731`，包含 report/TAP/脱敏容器日志。候选 artifact 2026-10-09 到期，证据 artifact 2026-10-13 到期；链接不代表长期保存或已发布镜像。测试写层/卷没有 commit 为发行镜像。
+- **本轮收尾与剩余边界**：原生候选首次完整运行即通过，无容器失败需要掩盖或跳过；PR 的只读发布隔离已经实际验证。没有执行额外人工故障注入的失败候选 CI、真实外站/浏览器音视频或 drpy-node-coder CLI。本轮只回填实际验收证据，不改变源协议、管理员锁出或依赖。main/tag 合并与镜像发布仍须另行安排；发布时继续运行门禁并推送该工作流内同一验收 artifact，之后匿名固定 SHA/digest 拉取与完整发布后复验仍待执行。收尾文档提交仅文档，使用 `[skip ci]`，不能把它说成同一 SHA 的重新容器验收。
 
 ## 8. 验证证据与探测脚本
 
