@@ -7,7 +7,6 @@ import importlib.util
 import json
 import logging
 import os
-import pickle
 import signal
 import struct
 import threading
@@ -38,10 +37,10 @@ PORT = int(os.environ.get("DRPY_PY_PORT", "57570"))
 
 # BRIDGE_PACKET_MAX / BRIDGE_TIMEOUT 与 Node 侧 spider/py/core/bridge.js 同名变量对应
 # （默认值=历史硬编码，不配置则行为不变）
-MAX_MSG_SIZE = int(os.environ.get("BRIDGE_PACKET_MAX", 10 * 1024 * 1024))  # 10MB
+MAX_MSG_SIZE = int(os.environ.get("BRIDGE_PACKET_MAX", 32 * 1024 * 1024))  # 32MB，与 Node 侧 bridge.js 对齐
 MAX_CACHED_INSTANCES = 100  # ★ 最大缓存实例数
-INIT_TIMEOUT = 10  # ★ 初始化超时（秒）
 REQUEST_TIMEOUT = int(os.environ.get("BRIDGE_TIMEOUT", 30 * 1000)) / 1000  # ★ 单次请求 socket 超时（秒）
+INIT_TIMEOUT = max(5, int(REQUEST_TIMEOUT))  # ★ 初始化超时（秒），必须 ≤ REQUEST_TIMEOUT
 
 IDLE_EXPIRE = 30 * 60  # 实例空闲过期（秒）
 CLEAN_INTERVAL = 5 * 60  # 清理间隔（秒）
@@ -106,7 +105,9 @@ def recv_exact(rfile, n: int) -> bytes:
 
 
 def send_packet(wfile, obj: dict):
-    payload = pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+    # 该守护进程只被死代码 engine/utils/daemonManager.js 引用；为消除 pickle 反序列化面，
+    # 收发统一改为 JSON（见下方 recv_packet）。
+    payload = json.dumps(obj, ensure_ascii=False).encode("utf-8")
     if len(payload) > MAX_MSG_SIZE:
         raise ValueError(f"payload too large:{len(payload)} > {MAX_MSG_SIZE}")
     wfile.write(struct.pack(">I", len(payload)))
@@ -120,10 +121,11 @@ def recv_packet(rfile) -> dict:
     if length <= 0 or length > MAX_MSG_SIZE:
         raise ValueError("invalid length")
     payload = recv_exact(rfile, length)
+    # 只接受 JSON：pickle 反序列化在无鉴权回环端口上等于本机任意代码执行。
     try:
         return json.loads(payload.decode("utf-8"))
-    except Exception:
-        return pickle.loads(payload)
+    except Exception as exc:
+        raise ValueError(f"invalid JSON packet: {exc}") from exc
 
 
 # =========================

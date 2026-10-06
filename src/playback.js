@@ -1,4 +1,4 @@
-import {randomBytes} from 'node:crypto';
+import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 
 const error = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
 export function playbackUrl(value, base) {
@@ -25,25 +25,40 @@ export function mediaType(url, type = '') {
 }
 // Public viewing uses short-lived, source-scoped media capabilities; these
 // cannot authorize management or subscription access.
-export function createPlaybackSessions({now = Date.now, ttl = 12 * 3600000} = {}) {
-    const sessions = new Map();
-    const prune = () => { for (const [key, value] of sessions) if (value.expires <= now()) sessions.delete(key); };
+//
+// A capability is a self-describing HMAC token: {kind, source?, url, headers?, exp}.
+// Tokens are stateless, so "this ticket is only valid for exactly this URL" is
+// expressed by the signature itself instead of a server-side allow-list.
+export function createPlaybackSessions({now = Date.now, ttl = 12 * 3600000, key = randomBytes(32)} = {}) {
+    const b64 = buffer => Buffer.from(buffer).toString('base64url');
+    const sign = payload => {
+        const body = b64(JSON.stringify(payload));
+        return `${body}.${createHmac('sha256', key).update(body).digest('base64url')}`;
+    };
+    const verify = token => {
+        const [body, mac] = String(token || '').split('.');
+        if (!body || !mac) return null;
+        const expected = createHmac('sha256', key).update(body).digest('base64url');
+        const given = Buffer.from(mac);
+        const want = Buffer.from(expected);
+        if (given.length !== want.length || !timingSafeEqual(given, want)) return null;
+        let payload;
+        try { payload = JSON.parse(Buffer.from(body, 'base64url').toString()); } catch { return null; }
+        return payload && typeof payload === 'object' && payload.exp > now() ? payload : null;
+    };
     return {
-        create(source, url, headers) {
-            prune();
-            while (sessions.size >= 128) sessions.delete(sessions.keys().next().value);
-            const token = randomBytes(24).toString('base64url');
-            sessions.set(token, {source, url, headers, expires: now() + ttl});
-            return token;
-        },
-        get(token) { prune(); return sessions.get(token); },
+        // Media ticket: grants exactly one upstream fetch (url + headers baked in).
+        create(source, url, headers) { return sign({kind: 'media', source, url, headers: headers || {}, exp: now() + ttl}); },
+        // Proxy ticket: authorizes a single proxy request for one absolute URL.
+        createProxy(url, headers) { return sign({kind: 'proxy', url, headers: headers || {}, exp: now() + ttl}); },
+        get(token) { return verify(token) || undefined; },
+        // Playback tickets may only drive the source's own proxy route; every
+        // other proxy route requires a subscription/management credential.
         allows(request, source) {
             if (!['GET', 'HEAD'].includes(request.method)) return false;
-            const session = this.get(request.query.token);
-            if (!session) return false;
-            const route = request.routeOptions.url;
-            if (route === '/proxy/:module/*') return source === session.source;
-            return ['/mediaProxy', '/unified-proxy/proxy', '/file-proxy/proxy', '/m3u8-proxy/playlist', '/m3u8-proxy/ts', '/m3u8-proxy/proxy', '/webdav/*', '/ftp/*', '/req/*', '/image/:id'].includes(route);
+            if (request.routeOptions?.url !== '/proxy/:module/*') return false;
+            const payload = verify(request.query.token);
+            return !!payload && payload.kind === 'media' && payload.source === source;
         },
     };
 }

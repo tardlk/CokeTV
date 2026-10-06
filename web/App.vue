@@ -24,10 +24,10 @@ export default {
         }
         const state = ref(null), page = ref('sources'), query = ref(''), engine = ref('all'), selected = ref([]), currentPage = ref(1);
         const auth = ref(sessionStorage.getItem('coketv-access') || ''), login = ref({password: ''}), loginError = ref('');
-        const requiresSetup = ref(false), accessLoading = ref(true), newPassword = ref(''), confirmPassword = ref('');
+        const requiresSetup = ref(false), accessLoading = ref(true), newPassword = ref(''), confirmPassword = ref(''), setupCode = ref('');
         const busy = ref(false), notices = ref([]), modal = ref(null), form = ref({}), dependencies = ref(null);
         const pageSize=ref(20);
-        const confirming = ref(null), settings = ref({}), importFile = ref(null);
+        const confirming = ref(null), settings = ref({}), importFile = ref(null), targetAllowlistText = ref('');
         const labels = engineLabels;
         const notify=(message,error=false)=>error?toast.error(message):toast.success(message);
         async function watchApi(url, body) {
@@ -51,8 +51,11 @@ export default {
         async function load() {
             state.value = await api('/admin/state');
             settings.value = {...state.value.settings, timeout: state.value.settings.timeout / 1000,
+                jsonPublic: state.value.settings.jsonPublic === true,
+                allowPrivateTargets: state.value.settings.allowPrivateTargets !== false,
                 envText: JSON.stringify(state.value.settings.env, null, 2), pluginsText: JSON.stringify(state.value.settings.plugins, null, 2),
                 parsesText: JSON.stringify(state.value.settings.parses, null, 2), livesText: JSON.stringify(state.value.settings.lives, null, 2)};
+            targetAllowlistText.value = (state.value.settings.targetAllowlist || []).join('\n');
         }
         async function action(fn, message) {
             if (busy.value) return; busy.value = true;
@@ -71,10 +74,10 @@ export default {
             busy.value = true;
             try {
                 auth.value = '';
-                await api('/admin/access/setup', {password: newPassword.value, confirmPassword: confirmPassword.value});
+                await api('/admin/access/setup', {password: newPassword.value, confirmPassword: confirmPassword.value, setupCode: setupCode.value});
                 requiresSetup.value = false;
                 auth.value = btoa(unescape(encodeURIComponent(`:${newPassword.value}`)));
-                newPassword.value = ''; confirmPassword.value = '';
+                newPassword.value = ''; confirmPassword.value = ''; setupCode.value = '';
                 await load(); sessionStorage.setItem('coketv-access', auth.value);
                 const id=location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1];const source=sources.value.find(s=>s.id===id);if(source){workspaceSource.value=source;page.value='workspace';}
             } catch(error) {loginError.value=error.message;auth.value='';} finally {busy.value=false;}
@@ -156,7 +159,8 @@ export default {
         function deleteSub(sub) { confirm('删除订阅', `删除“${sub.name}”后，原订阅链接将失效，源脚本与站点实例不受影响。`, async () => { await api(`/admin/subscriptions/${sub.id}`, undefined, 'DELETE'); await load(); }); }
         function resetToken(sub) { confirm('重置订阅链接', '重置后需要在 TVBox 中更新订阅链接。', async () => { await api(`/admin/subscriptions/${sub.id}/token`, {}); await load(); }); }
         async function saveSettings() {
-            const value = {...settings.value, timeout: Number(settings.value.timeout) * 1000, env: JSON.parse(settings.value.envText), plugins: JSON.parse(settings.value.pluginsText), parses: JSON.parse(settings.value.parsesText), lives: JSON.parse(settings.value.livesText)};
+            const value = {...settings.value, timeout: Number(settings.value.timeout) * 1000, env: JSON.parse(settings.value.envText), plugins: JSON.parse(settings.value.pluginsText), parses: JSON.parse(settings.value.parsesText), lives: JSON.parse(settings.value.livesText), jsonPublic: settings.value.jsonPublic === true, allowPrivateTargets: settings.value.allowPrivateTargets !== false, targetAllowlist: targetAllowlistText.value.split(/[\s,]+/).filter(Boolean)};
+            delete value.targetAllowlistText;
             await api('/admin/settings', value, 'PUT'); await load();
         }
         async function checkDependencies() { dependencies.value = await api('/admin/dependencies'); }
@@ -183,8 +187,8 @@ export default {
         }
         onMounted(async () => { window.addEventListener('popstate', syncWatch); await syncWatch(); });
         onBeforeUnmount(() => window.removeEventListener('popstate', syncWatch));
-        return {removeSelected,openSourceImport,tvboxImported,publicSources,watchLoading,watchError,watchApi,loadWatch,watching,openWatch,closeWatch,requiresSetup,accessLoading,newPassword,confirmPassword,createPassword,requestFile,languageLabels,engineLanguage,renameSource,saveName,importSelected,importFile,pageSize,openLinks,switchCapability,modalTitle, workspaceSource, closeWorkspace, api, state, page, query, engine, selected, currentPage, totalPages, visible, filtered, sources, enabledCount, auth, login, loginError, busy, notices, modal, form, dependencies, confirming, settings, labels,
-            action, signIn, toggle, selectVisible, switchSource, batch, editInstance, saveInstance, editScript, newScript, saveScript, upload, removeSource, openSubscription, saveSubscription, subscriptionUrl, copy, preview, deleteSub, resetToken, saveSettings, checkDependencies, exportConfig, importConfig, logout, acceptConfirm, load, scan};
+        return {removeSelected,openSourceImport,tvboxImported,publicSources,watchLoading,watchError,watchApi,loadWatch,watching,openWatch,closeWatch,requiresSetup,accessLoading,newPassword,confirmPassword,setupCode,createPassword,requestFile,languageLabels,engineLanguage,renameSource,saveName,importSelected,importFile,pageSize,openLinks,switchCapability,modalTitle, workspaceSource, closeWorkspace, api, state, page, query, engine, selected, currentPage, totalPages, visible, filtered, sources, enabledCount, auth, login, loginError, busy, notices, modal, form, dependencies, confirming, settings, labels,
+            action, signIn, toggle, selectVisible, switchSource, batch, editInstance, saveInstance, editScript, newScript, saveScript, upload, removeSource, openSubscription, saveSubscription, subscriptionUrl, copy, preview, deleteSub, resetToken, saveSettings, checkDependencies, exportConfig, importConfig, logout, acceptConfirm, load, scan, targetAllowlistText};
     }
 };
 </script>
@@ -193,7 +197,7 @@ export default {
   <WatchApp v-if="watching && publicSources" :sources="publicSources" :api="watchApi" @close="closeWatch" />
   <div v-else-if="watching" class="login-layout"><Alert v-if="watchError"><AlertTitle>观影页面加载失败</AlertTitle><AlertDescription>{{watchError}}<Button variant="outline" size="sm" :disabled="watchLoading" @click="loadWatch">重试</Button><Button variant="ghost" size="sm" @click="closeWatch">管理后台</Button></AlertDescription></Alert><Skeleton v-else class="h-52 w-80" /></div>
   <div v-else-if="accessLoading" class="login-layout"><Skeleton class="h-52 w-80" /></div>
-  <div v-else-if="requiresSetup" class="login-layout"><section class="login-form-area"><form class="login-form" @submit.prevent="createPassword"><div><h2>CokeTV 管理后台</h2><p>首次进入管理后台，请创建访问密码。</p></div><FieldGroup><Field><FieldLabel for="new-password">新密码</FieldLabel><Input id="new-password" v-model="newPassword" type="password" autocomplete="new-password" minlength="6" maxlength="200" :disabled="busy" required autofocus /></Field><Field :data-invalid="!!loginError"><FieldLabel for="confirm-password">确认密码</FieldLabel><Input id="confirm-password" v-model="confirmPassword" type="password" autocomplete="new-password" :disabled="busy" :aria-invalid="!!loginError" required /><FieldError v-if="loginError">{{loginError}}</FieldError></Field></FieldGroup><Button type="submit" :disabled="busy">{{busy?'创建中…':'创建并进入'}}</Button><Button type="button" variant="ghost" @click="openWatch">返回观影</Button></form></section></div>
+  <div v-else-if="requiresSetup" class="login-layout"><section class="login-form-area"><form class="login-form" @submit.prevent="createPassword"><div><h2>CokeTV 管理后台</h2><p>首次进入管理后台，请填写初始化码并创建访问密码。</p></div><FieldGroup><Field><FieldLabel for="setup-code">初始化码</FieldLabel><Input id="setup-code" v-model="setupCode" type="text" autocomplete="one-time-code" :disabled="busy" required autofocus /><p class="text-muted-foreground text-sm">见服务启动日志或 data/setup-code.txt</p></Field><Field><FieldLabel for="new-password">新密码</FieldLabel><Input id="new-password" v-model="newPassword" type="password" autocomplete="new-password" minlength="6" maxlength="200" :disabled="busy" required autofocus /></Field><Field :data-invalid="!!loginError"><FieldLabel for="confirm-password">确认密码</FieldLabel><Input id="confirm-password" v-model="confirmPassword" type="password" autocomplete="new-password" :disabled="busy" :aria-invalid="!!loginError" required /><FieldError v-if="loginError">{{loginError}}</FieldError></Field></FieldGroup><Button type="submit" :disabled="busy">{{busy?'创建中…':'创建并进入'}}</Button><Button type="button" variant="ghost" @click="openWatch">返回观影</Button></form></section></div>
   <div v-else-if="!auth || !state" class="login-layout">
     <section class="login-form-area"><form class="login-form" @submit.prevent="signIn"><h2>CokeTV 管理后台</h2><FieldGroup><Field :data-invalid="!!loginError"><FieldLabel for="login-password">访问密码</FieldLabel><Input id="login-password" v-model="login.password" type="password" autocomplete="current-password" :aria-invalid="!!loginError" :disabled="busy" required autofocus /><FieldError v-if="loginError">{{loginError}}</FieldError></Field></FieldGroup><Button type="submit" :disabled="busy">{{busy?'验证中…':'进入'}}</Button><Button type="button" variant="ghost" @click="openWatch">返回观影</Button></form></section>
   </div>
@@ -237,6 +241,7 @@ export default {
         <template v-else-if="page==='settings'">
           <div class="page-heading"><div><h1>设置</h1><p>服务连接、运行环境与共享默认配置。</p></div><Button :disabled="busy" @click="action(saveSettings,'设置已保存')"><Icon name="save" data-icon="inline-start" />保存设置</Button></div>
           <div class="settings-layout"><section class="settings-section"><h2>连接与运行</h2><p class="section-description">配置服务器可达地址，以及源需要的运行环境。</p><FieldGroup><Field><FieldLabel for="public-url">服务对外地址</FieldLabel><Input id="public-url" v-model="settings.publicUrl" placeholder="https://drpy.example.com" /><FieldDescription>留空使用当前地址；电视访问时填写服务器可达地址。</FieldDescription></Field><Field><FieldLabel for="timeout">执行超时（秒）</FieldLabel><Input id="timeout" v-model.number="settings.timeout" type="number" min="1" max="300" /></Field><Field><FieldLabel for="python-path">Python 解释器</FieldLabel><Input id="python-path" v-model="settings.pythonPath" /></Field><Field><FieldLabel for="php-path">PHP 解释器</FieldLabel><Input id="php-path" v-model="settings.phpPath" /></Field><Field><FieldLabel for="browser-path">Chrome / Chromium 路径</FieldLabel><Input id="browser-path" v-model="settings.browserPath" placeholder="按源需要配置，可留空" /></Field><div class="flex gap-2 flex-wrap"><Button variant="outline" size="sm" @click="action(checkDependencies)">检测环境</Button><Button variant="outline" size="sm" @click="editInstance()">新建实例</Button><Button variant="outline" size="sm" :disabled="busy" @click="action(scan,'扫描完成')">扫描源目录</Button><Button variant="outline" size="sm" @click="action(exportConfig)">导出配置</Button><Button variant="outline" size="sm" as-child><label>导入配置<input class="sr-only" type="file" accept=".json" @change="importConfig" /></label></Button></div></FieldGroup><div v-if="dependencies" class="dependency-results"><div v-for="key in ['node','python','php']" :key="key"><Icon :name="dependencies[key].ok?'success':'error'" :size="15" /><strong>{{key}}</strong><span>{{dependencies[key].ok?dependencies[key].version:dependencies[key].error}}</span></div></div></section>
+          <section class="settings-section"><h2>代理与参数安全</h2><p class="section-description">媒体代理出口与 /json/ 参数文件的访问策略。公网部署建议关闭内网目标并保持参数文件私有。</p><FieldGroup><Field orientation="horizontal"><Checkbox id="allow-private-targets" v-model="settings.allowPrivateTargets" /><FieldLabel for="allow-private-targets">允许媒体代理访问内网地址</FieldLabel></Field><FieldDescription>家庭访问 NAS/内网媒体需要开启；公网部署建议关闭。云元数据地址（169.254.169.254 等）无论设置如何都拒绝。</FieldDescription><Field orientation="horizontal"><Checkbox id="json-public" v-model="settings.jsonPublic" /><FieldLabel for="json-public">允许匿名读取 /json/ 参数文件</FieldLabel></Field><FieldDescription>参数文件可能含 Cookie/Token；默认仅管理员、订阅 Token 与源内部请求可读。</FieldDescription><Field><FieldLabel for="target-allowlist">代理目标白名单</FieldLabel><Textarea id="target-allowlist" v-model="targetAllowlistText" rows="4" placeholder="每行一个 host 或 CIDR，例如 192.168.1.10、10.0.0.0/8" spellcheck="false" /><FieldDescription>留空表示不限制；非空时只允许名单内的目标地址。</FieldDescription></Field></FieldGroup></section>
           <section class="settings-section"><h2>全局默认环境变量</h2><p class="section-description">专属 Cookie 与 Token 请在源编辑页配置。这里只填写需要共用的默认值。</p><FieldGroup><Field><FieldLabel for="default-env">默认 ENV · JSON 对象</FieldLabel><Textarea id="default-env" v-model="settings.envText" rows="16" class="json-input" spellcheck="false" /><FieldDescription>本源配置优先；未配置的键继承这些默认值。</FieldDescription></Field></FieldGroup></section>
           <section class="settings-section settings-wide"><h2>订阅扩展与辅助插件</h2><p class="section-description">保留源需要的解析器、直播和外部服务配置。</p><FieldGroup><Field><FieldLabel for="parses">解析器 · JSON 数组</FieldLabel><Textarea id="parses" v-model="settings.parsesText" rows="5" class="json-input" /></Field><Field><FieldLabel for="lives">直播配置 · JSON 数组</FieldLabel><Textarea id="lives" v-model="settings.livesText" rows="5" class="json-input" /></Field><Field><FieldLabel for="plugins">外部插件 · JSON 数组</FieldLabel><Textarea id="plugins" v-model="settings.pluginsText" rows="5" class="json-input" /></Field></FieldGroup></section></div>
         </template>

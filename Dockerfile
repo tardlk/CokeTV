@@ -23,7 +23,11 @@ COPY src ./src
 COPY engine ./engine
 COPY scripts/check-shell.mjs scripts/container-smoke.mjs ./scripts/
 RUN node scripts/check-shell.mjs
-ENV NODE_ENV=production TZ=Asia/Shanghai PORT=54058 HOST=0.0.0.0 PYTHON_PATH=/opt/python/bin/python3 PHP_PATH=php
+# 先建好数据目录并交给 node 用户，再声明 VOLUME 并以非 root 运行：
+# 挂载新卷时会继承这里的属主，否则 node 用户无法创建 admin.json/state.json。
+RUN mkdir -p /app/data && chown -R node:node /app/data
+ENV NODE_ENV=production TZ=Asia/Shanghai PORT=54058 HOST=0.0.0.0 PYTHON_PATH=/opt/python/bin/python3 PHP_PATH=php HOME=/home/node
+USER node
 VOLUME /app/data
 EXPOSE 54058
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \

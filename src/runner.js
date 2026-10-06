@@ -37,7 +37,7 @@ export class Runner extends EventEmitter {
             cwd: this.store.runtime, detached: process.platform !== 'win32', serialization: 'advanced',
             env: {...process.env, ROOT: this.store.runtime, PYTHON_PATH: settings.pythonPath,
                 PHP_PATH: settings.phpPath, CHROME_PATH: settings.browserPath,
-                DRPY_INTERNAL_KEY: this.internalKey, DRPY_PLUGINS: settings.plugins.some(p => p.active) ? '1' : '0', DRPY_PY_PORT: String(port), BRIDGE_TIMEOUT: String(settings.timeout)},
+                DRPY_INTERNAL_KEY: this.internalKey, DRPY_PLUGINS: settings.plugins.some(p => p.active) ? '1' : '0', DRPY_PY_PORT: String(port), BRIDGE_TIMEOUT: String(Math.max(60000, settings.timeout))},
             stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
         });
         this.child = child;

@@ -14,7 +14,10 @@ export function localToken(url, base, token) {
     } catch {}
     return url;
 }
-export function rewritePlaylist(body, upstream, base, token, headers = {}, alias = null) {
+// `mint` returns a capability token bound to one absolute URL. When it is
+// provided, cross-origin segments get their own URL-scoped ticket instead of a
+// broad token, so a leaked playlist URL cannot be repurposed as an open proxy.
+export function rewritePlaylist(body, upstream, base, {token, mint, alias} = {}) {
     const wrap = value => {
         const parsed = new URL(value, upstream);
         if (parsed.origin === new URL(base).origin) {
@@ -23,8 +26,9 @@ export function rewritePlaylist(body, upstream, base, token, headers = {}, alias
             return localToken(parsed.href, base, token);
         }
         const absolute = parsed.href;
-        const query = new URLSearchParams({url: absolute, headers: JSON.stringify(headers)});
-        if (token) query.set('token', token);
+        const query = new URLSearchParams({url: absolute});
+        const signed = mint ? mint(absolute) : token;
+        if (signed) query.set('token', signed);
         return `${base}/mediaProxy?${query}`;
     };
     return body.split(/\r?\n/).map(line => {
@@ -34,27 +38,36 @@ export function rewritePlaylist(body, upstream, base, token, headers = {}, alias
     }).join('\n');
 }
 
-export async function streamMedia(url, headers, request, reply, {base, token, redirects = 0, method, body} = {}) {
+export async function streamMedia(url, headers, request, reply, {base, token, mint, guard, redirects = 0, method, body} = {}) {
     let parsed;
     try { parsed = new URL(url); } catch { throw Object.assign(new Error('媒体地址无效'), {statusCode: 400}); }
     if (!['http:', 'https:'].includes(parsed.protocol)) throw Object.assign(new Error('只支持 HTTP/HTTPS 媒体地址'), {statusCode: 400});
+    // 入口与每次重定向后都复核目标地址（SSRF/云元数据）。
+    if (guard) await guard(parsed.href);
     if (redirects > 5) throw new Error('媒体重定向次数过多');
     const outgoingHeaders = {...cleanHeaders(headers), ...(request.headers.range ? {Range: request.headers.range} : {}), 'Accept-Encoding': 'identity'};
     if (body) { outgoingHeaders['Content-Length'] = Buffer.byteLength(body); outgoingHeaders['Content-Type'] ||= 'application/json'; }
     const transport = parsed.protocol === 'https:' ? https : http;
     const upstream = await new Promise((resolve, reject) => {
-        const outgoing = transport.request(parsed, {method: method || (request.method === 'HEAD' ? 'HEAD' : 'GET'), headers: outgoingHeaders}, resolve);
-        const abort = () => outgoing.destroy(new Error('客户端已断开'));
+        let settled = false;
+        const outgoing = transport.request(parsed, {method: method || (request.method === 'HEAD' ? 'HEAD' : 'GET'), headers: outgoingHeaders}, response => { settled = true; resolve(response); });
+        const abort = () => {
+            // 不向 destroy 传 Error：已 settle 的流再抛 error 会成为未捕获异常。
+            if (!settled) { settled = true; reject(new Error('客户端已断开')); }
+            try { outgoing.destroy(); } catch {}
+        };
         request.raw.once('aborted', abort);
         reply.raw.once('close', abort);
-        outgoing.setTimeout(30000, () => outgoing.destroy(new Error('媒体连接空闲超时')));
-        outgoing.once('error', reject);
+        outgoing.setTimeout(30000, () => { if (!settled) { settled = true; reject(new Error('媒体连接空闲超时')); } try { outgoing.destroy(); } catch {} });
+        // 用 on 而非 once：承诺 settle（含守卫抛错导致的提前返回）后再来的 error 必须被吞掉，
+        // 否则会变成未捕获异常并带走整个进程。
+        outgoing.on('error', error => { if (!settled) { settled = true; reject(error); } });
         outgoing.once('close', () => { request.raw.off('aborted', abort); reply.raw.off('close', abort); });
         outgoing.end(body);
     });
     if ([301, 302, 303, 307, 308].includes(upstream.statusCode) && upstream.headers.location) {
         upstream.resume();
-        return streamMedia(new URL(upstream.headers.location, url).href, headers, request, reply, {base, token, redirects: redirects + 1, method, body});
+        return streamMedia(new URL(upstream.headers.location, url).href, headers, request, reply, {base, token, mint, guard, redirects: redirects + 1, method, body});
     }
     const playlist = request.method !== 'HEAD' && upstream.statusCode === 200 &&
         (/mpegurl/i.test(upstream.headers['content-type'] || '') || parsed.pathname.endsWith('.m3u8'));
@@ -65,7 +78,7 @@ export async function streamMedia(url, headers, request, reply, {base, token, re
             if (size > 2 * 1024 * 1024) { upstream.destroy(); throw new Error('播放列表超过 2MB'); }
             chunks.push(chunk);
         }
-        return reply.code(200).type('application/vnd.apple.mpegurl').send(rewritePlaylist(Buffer.concat(chunks).toString(), url, base, token, headers));
+        return reply.code(200).type('application/vnd.apple.mpegurl').send(rewritePlaylist(Buffer.concat(chunks).toString(), url, base, {token, mint}));
     }
     reply.code(upstream.statusCode || 502).headers(cleanHeaders(upstream.headers));
     return reply.send(upstream);

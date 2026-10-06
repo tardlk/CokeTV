@@ -19,12 +19,13 @@ before(async () => {
     assert.equal(credentials.password,undefined);
     assert.equal((await app.inject({url:'/admin/state',headers:{authorization:'Basic '+Buffer.from(':111111').toString('base64')}})).statusCode,428);
     const setupPassword='integration-password';
-    assert.equal((await app.inject({url:'/admin/access/setup',method:'POST',payload:{password:setupPassword,confirmPassword:setupPassword}})).statusCode,200);
+    const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
+    assert.equal((await app.inject({url:'/admin/access/setup',method:'POST',payload:{password:setupPassword,confirmPassword:setupPassword,setupCode}})).statusCode,200);
     credentials.password=setupPassword;
     authorization = `Basic ${Buffer.from(`:${credentials.password}`).toString('base64')}`;
     const localPython = path.join(ROOT, '.tools/python/bin/python3'), localPhp = path.join(ROOT, '.tools/php/php');
-    app.store.state.settings.pythonPath = process.env.TEST_PYTHON || await fs.access(localPython).then(() => localPython).catch(() => 'python3');
-    app.store.state.settings.phpPath = process.env.TEST_PHP || await fs.access(localPhp).then(() => localPhp).catch(() => 'php');
+    app.store.state.settings.pythonPath = process.env.TEST_PYTHON || await fs.access(localPython, fs.constants.X_OK).then(() => localPython).catch(() => 'python3');
+    app.store.state.settings.phpPath = process.env.TEST_PHP || await fs.access(localPhp, fs.constants.X_OK).then(() => localPhp).catch(() => 'php');
     for (const engine of engines) {
         const fixture = engine === 'dr2' ? 'js' : engine === 'cat' ? 'cat.js' : engine;
         const code = await fs.readFile(path.join(ROOT, 'tests/fixtures', `协议样本.${fixture}`), 'utf8');
@@ -46,7 +47,9 @@ test('后台登录与空闲启动：管理页面/订阅不会启动任何引擎'
     const result = await call('/admin/state');
     assert.equal(result.runtime.started, false);
     assert.equal(app.runner.child, null);
-    const password=JSON.parse(await fs.readFile(path.join(directory,'admin.json'))).password;
+    // M1：admin.json 只保存加盐 KDF，不再有明文 password 字段。
+    assert.equal(JSON.parse(await fs.readFile(path.join(directory,'admin.json'))).password,undefined);
+    const password='integration-password';
     for(const invalid of ['Basic '+Buffer.from(':wrong').toString('base64'),'Basic '+Buffer.from('no-separator').toString('base64')]){
         assert.equal((await app.inject({url:'/admin/state',headers:{authorization:invalid}})).statusCode,401);
     }

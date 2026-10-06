@@ -19,6 +19,7 @@ import {localToken, rewritePlaylist, streamMedia} from './media.js';
 import {syntaxCheck, importBundle, decodeSource, detectSourceEngine} from './sources.js';
 import {sourceTemplate} from './source-templates.js';
 import {createPlaybackSessions, playbackUrl, playbackHeaders, mediaType} from './playback.js';
+import {assertTargetAllowed} from './ssrf.js';
 import {createTvboxImporter} from './tvbox-import.js';
 
 dotenv.config();
@@ -40,7 +41,7 @@ export async function createApp({directory, seed = true} = {}) {
     const auth = await createAuth(store);
     const playback = createPlaybackSessions();
     const tvboxImporter = createTvboxImporter(store);
-    const app = Fastify({logger: false, bodyLimit: 8 * 1024 * 1024, trustProxy: process.env.TRUST_PROXY === '1'});
+    const app = Fastify({logger: false, bodyLimit: 8 * 1024 * 1024, trustProxy: process.env.TRUST_PROXY === '1', routerOptions: {maxParamLength: 4096}});
     await app.register(formbody);
     await app.register(multipart, {limits: {fileSize: 16 * 1024 * 1024, files: 1}});
     app.decorate('store', store); app.decorate('runner', runner);
@@ -48,16 +49,54 @@ export async function createApp({directory, seed = true} = {}) {
         runner.log({level: 'error', message: error.message});
         reply.code(error.statusCode || 500).send({error: error.message, ...(error.importCode ? {code: error.importCode} : {})});
     });
+    // 限流与鉴权失败计数。阈值可用 RATE_LIMIT_PER_MINUTE / ADMIN_AUTH_FAIL_PER_MINUTE 调整。
+    // 注意：TRUST_PROXY=1 时 request.ip 取自 X-Forwarded-For，需确保前置反代可信且会覆写该头，
+    // 否则攻击者可伪造 IP 绕过限流。
+    const rateBuckets = new Map();
+    const rateLimitPerMinute = Number(process.env.RATE_LIMIT_PER_MINUTE) || 1200;
+    const adminFailLimit = Number(process.env.ADMIN_AUTH_FAIL_PER_MINUTE) || 20;
+    const allowRequest = (key, max = rateLimitPerMinute) => {
+        const now = Date.now();
+        const bucket = rateBuckets.get(key);
+        if (!bucket || now - bucket.start >= 60000) { rateBuckets.set(key, {start: now, count: 1}); return true; }
+        bucket.count += 1;
+        return bucket.count <= max;
+    };
+    const adminFailures = new Map();
+    const adminFailureCount = key => {
+        const bucket = adminFailures.get(key);
+        return bucket && Date.now() - bucket.start < 60000 ? bucket.count : 0;
+    };
+    const recordAdminFailure = key => {
+        const now = Date.now();
+        const bucket = adminFailures.get(key);
+        if (!bucket || now - bucket.start >= 60000) adminFailures.set(key, {start: now, count: 1});
+        else bucket.count += 1;
+        if (adminFailures.size > 20000) adminFailures.clear();
+    };
+    // 鉴权必须基于「匹配到的路由模式」，不能用原始请求 URL：Fastify 用解码后的路径
+    // 做路由匹配，而 request.url 保留百分号编码与 absolute-form 形态，二者不一致会
+    // 产生 `/ %61 dmin/state`、`GET http://host/admin/state` 等绕过路径（曾导致未授权 RCE）。
+    // 注意 `/admin`（SPA 外壳，不带斜杠）刻意保持公开：管理页面本身要先加载出登录框。
+    const ADMIN_ROUTES = /^\/admin\//;
     app.addHook('preHandler', async (request, reply) => {
-        if (request.routeOptions.url === '/admin/access/setup') return;
-        if (request.url.startsWith('/admin/')) return auth.guard(request, reply);
+        const route = request.routeOptions?.url || '';
+        if (route === '/admin/access/setup') return;
+        if (!ADMIN_ROUTES.test(route)) return;
+        const ip = request.ip || request.raw?.socket?.remoteAddress || 'local';
+        // /admin/* 一并限流：密码校验（scrypt）再便宜也不该被未鉴权请求无限触发。
+        if (!allowRequest(`admin:${ip}`)) return reply.code(429).send({error: '管理接口请求过于频繁，请稍后再试'});
+        if (adminFailureCount(`adminfail:${ip}`) >= adminFailLimit) return reply.code(429).send({error: '访问密码尝试过于频繁，请稍后再试'});
+        await auth.guard(request, reply);
+        // 只在真正鉴权失败时计数，正常登录不受影响。
+        if (reply.statusCode === 401) recordAdminFailure(`adminfail:${ip}`);
     });
     app.get('/access/status', async () => ({requiresSetup: auth.needsSetup()}));
     app.post('/admin/access/setup', async request => auth.setup(request));
     app.addHook('onClose', async () => runner.close());
     const baseUrl = request => store.state.settings.publicUrl.replace(/\/$/, '') || `${request.protocol}://${request.headers.host}`;
     const contextFor = (request, instance, script, extra) => ({...buildContext(baseUrl(request), instance, script, extra), sourceEnvPath: store.state.instances.some(s => s.id === instance.id) ? store.sourceEnvPath(instance.id) : null, localPort: app.server.address()?.port || Number(process.env.PORT) || 54058});
-    const serveMedia = (request, reply, target, headers, suppliedToken) => {
+    const serveMedia = async (request, reply, target, headers, suppliedToken, mint) => {
         const base = baseUrl(request);
         const parsed = new URL(target);
         const ownPort = app.server.address()?.port || Number(process.env.PORT) || 54058;
@@ -67,17 +106,79 @@ export async function createApp({directory, seed = true} = {}) {
             if (suppliedToken) parsed.searchParams.set('token', suppliedToken);
             parsed.protocol = 'http:'; parsed.host = `127.0.0.1:${ownPort}`;
             headers = {...headers, host: originalHost};
-            if (auth.isAdmin(request)) headers.authorization = request.headers.authorization;
+            if (await auth.isAdmin(request)) headers.authorization = request.headers.authorization;
             if (request.headers['x-drpy-runtime'] === runner.internalKey) headers['x-drpy-runtime'] = runner.internalKey;
         }
-        return streamMedia(parsed.href, headers, request, reply, {base, token: suppliedToken});
+        return streamMedia(parsed.href, headers, request, reply, {base, token: suppliedToken, mint, guard: targetGuard});
     };
-    const authorize = (request, id) => {
-        if (auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey) return null;
-        if (playback.allows(request, id) && store.state.instances.some(item => item.id === playback.get(request.query.token)?.source && item.enabled)) return {token: request.query.token};
+    // 代理出口 SSRF 策略：永久拒绝云元数据；内网/回环可按设置开关；可选白名单。
+    const selfOrigins = () => {
+        const port = app.server.address()?.port || Number(process.env.PORT) || 54058;
+        return [`http://127.0.0.1:${port}`, `http://localhost:${port}`, `http://[::1]:${port}`];
+    };
+    const targetGuard = url => assertTargetAllowed(url, {
+        allowPrivate: store.state.settings.allowPrivateTargets !== false,
+        allowlist: store.state.settings.targetAllowlist || [],
+        selfOrigins: selfOrigins(),
+    });
+    const decode = value => {
+        if (!value) return '';
+        if (/^https?:|^\{|^\[/.test(value)) return value;
+        try { const text = Buffer.from(value, 'base64').toString(); if (/^https?:|^\{|^\[/.test(text)) return text; } catch {}
+        return value;
+    };
+    // 调用方提供的出站请求头白名单：禁止改写 Host/Cookie/Authorization/转发头，
+    // 否则 /mediaProxy 会变成「带自定义请求头的开放代理」。源签名票据里的头不受此限。
+    const BLOCKED_PROXY_HEADERS = new Set(['host', 'cookie', 'authorization', 'proxy-authorization', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-drpy-runtime', 'connection', 'content-length', 'transfer-encoding']);
+    const safeProxyHeaders = value => Object.fromEntries(Object.entries(value || {}).filter(([key, val]) =>
+        /^[\w-]+$/.test(key) && typeof val === 'string' && !/[\r\n]/.test(val) && !BLOCKED_PROXY_HEADERS.has(key.toLowerCase())));
+    // 「源返回」的头发往上游时用 playbackHeaders 的同口径净化：只屏蔽
+    // host/x-drpy-runtime/connection/content-length 与换行，**保留 Cookie/Authorization**——
+    // 站点登录媒体拉流普遍依赖它们。只有调用方传入的头才用上面的 safeProxyHeaders。
+    const sanitizeSourceHeaders = value => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+        return playbackHeaders(value);
+    };
+    // 兼容旧基类 proxyMediaUrl/proxy_media_url 生成的 `/mediaProxy?url=<b64>&form=base64&header=<b64>`：
+    // 那类 URL 自身不带能力票据，浏览器直接请求必然 403。这里解出真实目标与头，交给宿主统一签发票据。
+    const unwrapMediaProxyContent = (value, base) => {
+        try {
+            const parsed = new URL(value, base);
+            if (parsed.origin !== new URL(base).origin || parsed.pathname !== '/mediaProxy') return null;
+            const inner = decode(parsed.searchParams.get('url') || '');
+            if (!/^https?:/.test(inner)) return null;
+            const raw = parsed.searchParams.get('headers') || parsed.searchParams.get('header') || '';
+            let extra = {};
+            if (raw) {
+                try { extra = JSON.parse(parsed.searchParams.get('form') === 'base64' ? Buffer.from(raw, 'base64').toString('utf8') : decode(raw)); } catch { extra = {}; }
+            }
+            return {url: inner, headers: extra};
+        } catch { return null; }
+    };
+    // 源执行 / 源代理入口：管理员、内部运行时或订阅 Token。
+    const authorize = async (request, id) => {
+        if (await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey) return null;
+        const ticket = playback.allows(request, id) ? playback.get(request.query.token) : null;
+        if (ticket) return {token: request.query.token, headers: ticket.headers || {}};
         const sub = authorizedSubscription(store.state, request.query.token || request.body?.token, id);
         if (!sub) throw fail('订阅访问凭证无效或该源不在订阅中', 403);
         return sub;
+    };
+    // 需要凭据但无 URL 绑定的服务入口（图片、/http、webdav/ftp 网关）：不接受播放票。
+    const authorizeService = async request => {
+        if (await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey) return null;
+        const sub = authorizedSubscription(store.state, request.query.token || request.body?.token);
+        if (!sub) throw fail('访问凭证无效', 403);
+        return sub;
+    };
+    // 代理出口：管理员/内部、订阅 Token，或一张恰好绑定到该 URL 的签名代理票。
+    const authorizeProxy = async (request, target) => {
+        if (await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey) return {kind: 'admin'};
+        const ticket = playback.get(request.query.token);
+        if (ticket && ticket.kind === 'proxy' && target && ticket.url === target) return ticket;
+        const sub = authorizedSubscription(store.state, request.query.token || request.body?.token);
+        if (sub) return {kind: 'subscription', token: sub.token};
+        throw fail('媒体访问凭证无效或已过期', 403);
     };
     const sourceFor = request => {
         const engine = Object.keys(ENGINE_DIRS).includes(request.query.do) ? request.query.do : 'js';
@@ -90,13 +191,38 @@ export async function createApp({directory, seed = true} = {}) {
     };
     const run = async (request, query, operation = 'api') => {
         const {script, instance, file} = sourceFor(request);
-        const sub = authorize(request, instance.id);
+        const sub = await authorize(request, instance.id);
         const env = contextFor(request, instance, script, {token: sub?.token, proxyPath: request.params['*'] || ''});
         const result = await runner.run({engine: script.engine, file, instanceId: instance.id}, query, env, operation);
         return {result, sub, instance, script, env};
     };
 
-    app.get('/health', async () => ({ok: true, version: '0.1.0', memory: process.memoryUsage(), runtime: runner.status()}));
+    // 安全响应头与公开接口限流（低危收敛 L1/L2）：/health 只回 {ok, version}，
+    // 详细运行信息移到需鉴权的 /admin/health。
+    app.addHook('onSend', async (request, reply, payload) => {
+        reply.header('X-Content-Type-Options', 'nosniff');
+        reply.header('Referrer-Policy', 'no-referrer');
+        reply.header('X-Frame-Options', 'SAMEORIGIN');
+        return payload;
+    });
+    const URL_PROXY_ROUTES = ['/unified-proxy/proxy', '/file-proxy/proxy', '/m3u8-proxy/playlist', '/m3u8-proxy/ts', '/m3u8-proxy/proxy'];
+    const TICKET_RATE_ROUTES = new Set(['/mediaProxy', '/req/*', ...URL_PROXY_ROUTES]);
+    const PUBLIC_RATE_PATHS = /^\/(?:watch\/|mediaProxy$|req\/|m3u8-proxy\/|unified-proxy\/|file-proxy\/|proxy\/|subscription\/|config$|config\/)/;
+    app.addHook('onRequest', async (request, reply) => {
+        const route = request.routeOptions?.url || '';
+        if (!PUBLIC_RATE_PATHS.test(route)) return;
+        // 只豁免 GET/HEAD 媒体转发中绑定当前目标 URL 的 proxy 票据，保留 HLS 分片/key 的余量。
+        // media 票据可驱动同源 /proxy/ 执行源逻辑（不绑定 URL），必须照常计入公开限流。
+        if (['GET', 'HEAD'].includes(request.method) && TICKET_RATE_ROUTES.has(route)) {
+            const ticket = playback.get(request.query.token);
+            const target = route === '/req/*' ? request.params['*'] : decode(request.query.url);
+            if (ticket?.kind === 'proxy' && target && ticket.url === target) return;
+        }
+        if (rateBuckets.size > 20000) rateBuckets.clear();
+        if (!allowRequest(`public:${request.ip || request.raw?.socket?.remoteAddress || 'local'}`)) reply.code(429).send({error: '请求过于频繁，请稍后再试'});
+    });
+    app.get('/health', async () => ({ok: true, version: '0.1.0'}));
+    app.get('/admin/health', async () => ({ok: true, version: '0.1.0', memory: process.memoryUsage(), runtime: runner.status()}));
     app.get('/admin/state', async request => { await store.refreshEnvironment(); return {...store.state, runtime: runner.status(), baseUrl: baseUrl(request)}; });
     app.get('/watch/sources', async () => store.state.instances.filter(instance => instance.enabled).flatMap(instance => {
         const script = store.state.scripts.find(item => item.id === instance.scriptId);
@@ -171,8 +297,10 @@ export async function createApp({directory, seed = true} = {}) {
     app.post('/admin/watch/:id/play', playHandler);
     app.route({method: ['GET', 'HEAD'], url: '/watch/media/:ticket', handler: async (request, reply) => {
         const session = playback.get(request.params.ticket);
-        if (!session || !store.state.instances.some(item => item.id === session.source && item.enabled)) throw fail('播放链接已过期，请重新选择剧集', 403);
-        return serveMedia(request, reply, session.url, session.headers, request.params.ticket);
+        if (!session || session.kind !== 'media' || !store.state.instances.some(item => item.id === session.source && item.enabled)) throw fail('播放链接已过期，请重新选择剧集', 403);
+        // 只抓票据里签过的那个 URL 与那组请求头，绝不接受请求方传入的目标。
+        return serveMedia(request, reply, session.url, session.headers || {}, request.params.ticket,
+            url => playback.createProxy(url, session.headers || {}));
     }});
     app.get('/admin/logs', async request => runner.logs.filter(entry => !request.query.source || entry.source === request.query.source).slice(-150));
     app.post('/admin/scan', async () => ({added: await store.mutate(() => store.scan())}));
@@ -351,7 +479,7 @@ export async function createApp({directory, seed = true} = {}) {
         if (!Number.isInteger(value.timeout) || value.timeout < 1000 || value.timeout > 300000) throw fail('超时范围为 1–300 秒');
         if (!checkString(value.pythonPath, 1000) || !checkString(value.phpPath, 1000)) throw fail('解释器路径不能为空');
         if (!value.env || Array.isArray(value.env) || typeof value.env !== 'object' || !Array.isArray(value.plugins) || !Array.isArray(value.parses) || !Array.isArray(value.lives)) throw fail('运行配置须为合法 JSON 对象/数组');
-        await store.mutate(state => { state.settings = {publicUrl: value.publicUrl || '', timeout: value.timeout, pythonPath: value.pythonPath, phpPath: value.phpPath, browserPath: value.browserPath || '', env: value.env, plugins: value.plugins, parses: value.parses, lives: value.lives}; });
+        await store.mutate(state => { state.settings = {publicUrl: value.publicUrl || '', timeout: value.timeout, pythonPath: value.pythonPath, phpPath: value.phpPath, browserPath: value.browserPath || '', env: value.env, plugins: value.plugins, parses: value.parses, lives: value.lives, jsonPublic: value.jsonPublic === true, allowPrivateTargets: value.allowPrivateTargets !== false, targetAllowlist: Array.isArray(value.targetAllowlist) ? value.targetAllowlist.filter(item => typeof item === 'string').slice(0, 200) : (state.settings.targetAllowlist || [])}; });
         await store.syncEnvironment(); runner.reset('运行配置已更新'); return {ok: true};
     });
     app.get('/admin/dependencies', async () => {
@@ -396,7 +524,7 @@ export async function createApp({directory, seed = true} = {}) {
 
     const subscriptionHandler = async request => {
         const sub = request.params.id ? store.state.subscriptions.find(s => s.id === request.params.id) : store.state.subscriptions.find(s => s.id === request.query.sub) || store.state.subscriptions[0];
-        if (!sub || !sub.enabled || (!auth.isAdmin(request) && sub.token !== request.query.token)) throw fail('订阅不存在、已停用或凭证无效', 403);
+        if (!sub || !sub.enabled || (!await auth.isAdmin(request) && sub.token !== request.query.token)) throw fail('订阅不存在、已停用或凭证无效', 403);
         return buildSubscription(store.state, sub, baseUrl(request));
     };
     app.get('/subscription/:id', subscriptionHandler);
@@ -421,60 +549,74 @@ export async function createApp({directory, seed = true} = {}) {
         const {result, sub, instance, script} = await run(request, query, 'proxy');
         if (!Array.isArray(result) || result.length < 3) throw new Error('源代理返回格式无效');
         const [status = 200, type = 'application/octet-stream', content = '', headers = {}, bytes] = result;
+        // 源返回的头必须保留 Cookie/Authorization（站点登录媒体拉流依赖），
+        // 只有调用方传入的头才用更严的 safeProxyHeaders。
+        const carried = typeof content === 'string' ? unwrapMediaProxyContent(content, baseUrl(request)) : null;
+        const target = carried?.url || content;
+        const streamHeaders = sanitizeSourceHeaders({...(carried?.headers || {}), ...(headers && typeof headers === 'object' && !Array.isArray(headers) ? headers : {})});
+        const mint = url => playback.createProxy(url, streamHeaders);
         for (const key of Object.keys(headers || {})) if (key.toLowerCase() === 'location') headers[key] = localToken(headers[key], baseUrl(request), sub?.token);
-        if ([2, 3].includes(bytes) && /^https?:/.test(content)) {
-            if (bytes === 3) return serveMedia(request, reply, content, headers, sub?.token);
-            const params = new URLSearchParams({url: content, headers: JSON.stringify(headers)});
-            if (sub) params.set('token', sub.token);
-            return reply.redirect(`/mediaProxy?${params}`);
+        if ([2, 3].includes(bytes) && typeof target === 'string' && /^https?:/.test(target)) {
+            // toBytes=3：宿主直接拉流；toBytes=2：302 到签好票据的 /mediaProxy。
+            // 两条路径携带同一组头，规避播放器 302 丢自定义头。
+            if (bytes === 3) return serveMedia(request, reply, target, streamHeaders, sub?.token, mint);
+            return reply.redirect(`/mediaProxy?${new URLSearchParams({url: target, token: playback.createProxy(target, streamHeaders)})}`);
         }
         let body = bytes === 1 ? Buffer.from(String(content).split('base64,').pop(), 'base64') : content;
-        if (typeof body === 'string' && (body.startsWith('#EXTM3U') || /mpegurl/i.test(type))) body = rewritePlaylist(body, `${baseUrl(request)}${request.url}`, baseUrl(request), sub?.token, {}, {name: script.file.replace(/\.[^.]+$/, ''), id: instance.id});
+        if (typeof body === 'string' && (body.startsWith('#EXTM3U') || /mpegurl/i.test(type))) body = rewritePlaylist(body, `${baseUrl(request)}${request.url}`, baseUrl(request), {token: sub?.token, mint, alias: {name: script.file.replace(/\.[^.]+$/, ''), id: instance.id}});
         return reply.code(Number(status)).headers(headers || {}).type(type).send(body);
     });
     app.route({method: ['GET', 'HEAD'], url: '/mediaProxy', handler: async (request, reply) => {
-        const sub = authorize(request);
-        let headers = {};
-        if (request.query.headers) { try { headers = JSON.parse(request.query.headers); } catch { throw fail('媒体请求头须为 JSON'); } }
-        return serveMedia(request, reply, request.query.url, headers, sub?.token);
+        const target = decode(request.query.url);
+        const info = await authorizeProxy(request, target);
+        let headers = info.headers || {};
+        if (info.kind === 'subscription' && request.query.headers) {
+            try { headers = safeProxyHeaders(JSON.parse(request.query.headers)); } catch { throw fail('媒体请求头须为 JSON'); }
+        }
+        const token = info.kind === 'proxy' ? request.query.token : info.token;
+        return serveMedia(request, reply, target, headers, token, url => playback.createProxy(url, headers));
     }});
-    const decode = value => {
-        if (!value) return '';
-        if (/^https?:|^\{|^\[/.test(value)) return value;
-        try { const text = Buffer.from(value, 'base64').toString(); if (/^https?:|^\{|^\[/.test(text)) return text; } catch {}
-        return value;
-    };
-    for (const route of ['/unified-proxy/proxy', '/file-proxy/proxy', '/m3u8-proxy/playlist', '/m3u8-proxy/ts', '/m3u8-proxy/proxy']) {
+    for (const route of URL_PROXY_ROUTES) {
         app.route({method: ['GET', 'HEAD'], url: route, handler: async (request, reply) => {
-            const sub = authorize(request);
-            let headers = {};
-            try { headers = JSON.parse(decode(request.query.headers) || '{}'); } catch { throw fail('请求头格式不正确'); }
-            return serveMedia(request, reply, decode(request.query.url), headers, sub?.token);
+            const target = decode(request.query.url);
+            const info = await authorizeProxy(request, target);
+            let headers = info.headers || {};
+            if (info.kind !== 'proxy') { try { headers = safeProxyHeaders(JSON.parse(decode(request.query.headers) || '{}')); } catch { throw fail('请求头格式不正确'); } }
+            const token = info.kind === 'proxy' ? request.query.token : info.token;
+            return serveMedia(request, reply, target, headers, token, url => playback.createProxy(url, headers));
         }});
     }
     for (const route of ['/webdav/*', '/ftp/*']) app.route({method: ['GET', 'HEAD', 'POST'], url: route, handler: async (request, reply) => {
-        const sub = authorize(request);
+        const sub = await authorizeService(request);
         const port = await runner.gateway();
         const headers = {...request.headers, host: request.headers.host};
         delete headers['content-length'];
-        return streamMedia(`http://127.0.0.1:${port}${request.url}`, headers, request, reply,
+        // 不接受调用方自带的 config：目标主机与凭据只能取自服务端保存的配置，避免被当作带凭据的开放代理。
+        const forwarded = new URL(request.url, 'http://127.0.0.1');
+        forwarded.searchParams.delete('config');
+        const target = `http://127.0.0.1:${port}${forwarded.pathname}${forwarded.search}`;
+        return streamMedia(target, headers, request, reply,
             {base: baseUrl(request), token: sub?.token, method: request.method, body: request.body ? JSON.stringify(request.body) : undefined});
     }});
     app.post('/http', async (request, reply) => {
-        authorize(request);
+        await authorizeService(request);
         const {default: axios} = await import('axios');
         const {url, method = 'GET', headers = {}, params = {}, data, responseType, maxRedirects} = request.body || {};
         if (!/^https?:/.test(url || '')) throw fail('HTTP 请求地址无效');
+        await targetGuard(url);
         const response = await axios({url, method, headers, params, data, responseType, maxRedirects, timeout: store.state.settings.timeout, validateStatus: () => true});
         return reply.code(response.status).send({status: response.status, headers: response.headers, data: response.data});
     });
     app.get('/req/*', async (request, reply) => {
-        const sub = authorize(request);
-        return streamMedia(request.params['*'], {}, request, reply, {base: baseUrl(request), token: sub?.token});
+        const target = request.params['*'];
+        const info = await authorizeProxy(request, target);
+        const headers = info.headers || {};
+        const token = info.kind === 'proxy' ? request.query.token : info.token;
+        return streamMedia(target, headers, request, reply, {base: baseUrl(request), token, mint: url => playback.createProxy(url, headers), guard: targetGuard});
     });
     const images = new Map();
     app.post('/image/upload', async request => {
-        authorize(request);
+        await authorizeService(request);
         const {imageId, base64Data} = request.body || {};
         if (!checkString(imageId, 100) || !/^data:image\/[^;]+;base64,/.test(base64Data || '') || base64Data.length > 700000) throw fail('图片格式不正确或超过大小限制');
         const comma = base64Data.indexOf(',');
@@ -488,7 +630,7 @@ export async function createApp({directory, seed = true} = {}) {
         return reply.type(image.type).send(image.bytes);
     });
     app.get('/parse/:jx', async request => {
-        const sub = authorize(request);
+        const sub = await authorize(request);
         const name = request.params.jx;
         validFilename('js', `${name}.js`);
         const file = inside(store.runtime, `jx/${name}.js`);
@@ -496,7 +638,25 @@ export async function createApp({directory, seed = true} = {}) {
         return runner.run({engine: 'js', file, instanceId: name}, request.query, env, 'parse');
     });
 
-    await app.register(staticPlugin, {root: path.join(store.runtime, 'json'), prefix: '/json/', decorateReply: false});
+    // H1：data/runtime/json/ 里的参数文件可能含 Cookie/Token，默认不再匿名可读。
+    // 源自身的回环请求带 x-drpy-runtime 头放行；管理员与订阅 Token 亦可读取。
+    // settings.jsonPublic=true 可恢复旧的公开行为（公网部署不建议）。
+    const JSON_TYPES = {json: 'application/json; charset=utf-8', m3u8: 'application/vnd.apple.mpegurl', ts: 'video/mp2t', xml: 'application/xml; charset=utf-8', txt: 'text/plain; charset=utf-8', js: 'text/javascript; charset=utf-8'};
+    app.get('/json/*', async (request, reply) => {
+        if (store.state.settings.jsonPublic !== true) {
+            const allowed = await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey || authorizedSubscription(store.state, request.query.token || request.body?.token);
+            if (!allowed) throw fail('参数文件不可匿名访问', 403);
+        }
+        const relative = request.params['*'];
+        let target;
+        try { target = inside(path.join(store.runtime, 'json'), relative); }
+        catch { throw fail('参数文件路径无效', 403); }
+        let content;
+        try { content = await fs.readFile(target); }
+        catch (error) { if (['ENOENT', 'EISDIR'].includes(error.code)) throw fail('参数文件不存在', 404); throw error; }
+        const extension = (relative.split('.').pop() || '').toLowerCase();
+        return reply.type(JSON_TYPES[extension] || 'application/octet-stream').send(content);
+    });
     await app.register(staticPlugin, {root: path.join(ROOT, 'dist/assets'), prefix: '/assets/', decorateReply: false});
     app.get('/', async (_, reply) => reply.type('text/html').send(await fs.readFile(path.join(ROOT, 'dist/index.html'))));
     app.get('/sources/:id/edit', async (_, reply) => reply.type('text/html').send(await fs.readFile(path.join(ROOT, 'dist/index.html'))));
@@ -518,6 +678,13 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
     await app.listen({port: Number(process.env.PORT) || 54058, host: process.env.HOST || '0.0.0.0'});
     console.log(`CokeTV 已启动：http://127.0.0.1:${app.server.address().port}`);
     console.log(`访问密码配置：${path.join(app.store.directory, 'admin.json')}（或使用 ADMIN_PASSWORD）`);
+    try {
+        const code = (await fs.readFile(path.join(app.store.directory, 'setup-code.txt'), 'utf8')).trim();
+        console.log('============================================================');
+        console.log(`首次部署初始化码：${code}`);
+        console.log('进入 /admin 创建访问密码时必须填写该码；创建成功后文件自动删除。');
+        console.log('============================================================');
+    } catch { /* 已创建密码或使用 ADMIN_PASSWORD，无需引导码 */ }
     const close = async () => { await app.close(); process.exit(); };
     process.on('SIGINT', close); process.on('SIGTERM', close);
 }

@@ -24,9 +24,15 @@ export function redactSourceSecrets(message) {
     if (!scope?.file) return message;
     let values = {};
     try { values = {...readSourceVariables(path.join(path.dirname(scope.file), '../env.json')), ...readSourceVariables(scope.file)}; } catch {}
+    // 按“值”而不是“键名”脱敏：收集所有字符串值，长值优先替换，避免短值先替换破坏长值。
+    // 同时替换 URL 编码与 JSON 转义两种形态，覆盖 alias/uid 等不含敏感关键字的键。
+    const secrets = [...new Set(Object.values(values)
+        .filter(value => typeof value === 'string' && value.length >= 4))]
+        .sort((left, right) => right.length - left.length);
     let text = String(message);
-    for (const [key, value] of Object.entries(values)) {
-        if (/cookie|token|password|secret|api.?key|auth/i.test(key) && typeof value === 'string' && value) text = text.split(value).join('[已隐藏]');
+    for (const secret of secrets) {
+        const forms = new Set([secret, encodeURIComponent(secret), JSON.stringify(secret).slice(1, -1)]);
+        for (const form of forms) if (form) text = text.split(form).join('[已隐藏]');
     }
     return text;
 }

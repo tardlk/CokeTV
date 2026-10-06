@@ -76,10 +76,30 @@ try {
     // 3. Instantiate Spider
     $spider = new Spider();
 
+    // 方法名兼容：映射值可能是候选列表（如 "localProxy|proxy"）。
+    // 必须选「最派生」的实现：BaseSpider 自身声明了 localProxy()（默认返回 404），
+    // 若只按“第一个 method_exists 为真”解析，则只实现 proxy() 的老源会被继承来的
+    // localProxy() 抢先命中，回退分支永远不可达（兼容性回归）。
+    if (strpos($methodName, '|') !== false) {
+        $resolved = null; $inherited = null;
+        foreach (explode('|', $methodName) as $candidate) {
+            if (!method_exists($spider, $candidate)) continue;
+            $declaring = (new ReflectionMethod($spider, $candidate))->getDeclaringClass()->getName();
+            if ($declaring !== 'BaseSpider') { $resolved = $candidate; break; }
+            $inherited ??= $candidate;
+        }
+        $resolved ??= $inherited;
+        if ($resolved === null) throw new Exception("Method '$methodName' not found in Spider class");
+        $methodName = $resolved;
+    }
+
     // AUTO-INIT: Call init() before any other method if it's not init itself
     if ($methodName !== 'init' && method_exists($spider, 'init')) {
         $extend = $env['ext'] ?? '';
+        ob_start();
         $spider->init($extend);
+        $noise = ob_get_clean();
+        if (trim($noise) !== '') fwrite(STDERR, "Output during init: $noise\n");
     }
 
     // 4. Check Method
@@ -90,8 +110,11 @@ try {
         throw new Exception("Method '$methodName' not found in Spider class");
     }
 
-    // 5. Call Method
+    // 5. Call Method（收口任何直接输出，最终只通过 sendResponse 输出一行 JSON）
+    ob_start();
     $result = call_user_func_array([$spider, $methodName], $args);
+    $noise = ob_get_clean();
+    if (trim($noise) !== '') fwrite(STDERR, "Output during call: $noise\n");
 
     // 6. Return Result
     sendResponse($result);

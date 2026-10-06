@@ -26,7 +26,7 @@ const methodMapping = {
     'detail': 'detailContent',
     'search': 'searchContent',
     'play': 'playerContent',
-    'proxy': 'proxy', // Not standard in BaseSpider, but might exist
+    'proxy': 'localProxy|proxy', // 优先 localProxy（BaseSpider 约定），回退 proxy 别名
     'action': 'action' // Not standard
 };
 
@@ -122,7 +122,7 @@ const init = async function (filePath, env = {}, refresh) {
         const moduleName = path.basename(filePath, '.php'); // .php extension
         let moduleExt = env.ext || '';
 
-        let hashMd5 = md5(filePath + '#php#' + moduleExt);
+        let hashMd5 = md5(filePath + '#php#' + moduleExt + '#' + (env.sourceInstanceId || ''));
 
         if (moduleCache.has(hashMd5) && !refresh) {
             const cached = moduleCache.get(hashMd5);

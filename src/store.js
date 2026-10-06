@@ -11,7 +11,7 @@ export const metadata = (code, name) => {
 };
 const defaults = () => ({version: 1, scripts: [], instances: [], subscriptions: [], settings: {
     publicUrl: '', timeout: 30000, pythonPath: process.env.PYTHON_PATH || 'python3', phpPath: process.env.PHP_PATH || 'php', browserPath: process.env.CHROME_PATH || '',
-    env: {}, plugins: [], parses: [], lives: [],
+    env: {}, plugins: [], parses: [], lives: [], jsonPublic: false, allowPrivateTargets: true, targetAllowlist: [],
 }});
 
 export class Store {

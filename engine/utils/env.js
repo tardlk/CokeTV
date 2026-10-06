@@ -1,7 +1,7 @@
 import {log} from './log.js';
 import path from "path";
 import {fileURLToPath} from "url";
-import {existsSync, readFileSync, writeFileSync, unlinkSync} from "fs";
+import {existsSync, readFileSync, writeFileSync, chmodSync, rmSync} from "fs";
 import {LRUCache} from "lru-cache";
 import {fastify} from "../controllers/fastlogger.js";
 import {sourceEnvironment, readSourceVariables, writeSourceVariables} from './source-env.js';
@@ -49,25 +49,22 @@ export const ENV = {
      * @param {Object} envObj 环境变量对象
      */
     _writeEnvFile(envObj) {
-        // 尝试创建锁文件
-        if (existsSync(this._lockPath)) {
+        // flag:'wx' 让锁文件创建成为原子操作，消除 existsSync→write 之间的 TOCTOU。
+        try {
+            writeFileSync(this._lockPath, "LOCK", {encoding: "utf-8", flag: "wx", mode: 0o600});
+        } catch (e) {
             fastify.log.error("[_writeEnvFile] Another process is currently writing to the env file.");
             throw new Error("File is locked. Please retry later.");
         }
 
         try {
-            // 创建锁文件
-            writeFileSync(this._lockPath, "LOCK", "utf-8");
-
-            // 写入环境变量文件
-            writeFileSync(this._envPath, JSON.stringify(envObj, null, 2), "utf-8");
+            // 全局 ENV 与按源 ENV 一样按 0600 落盘（含密钥/凭据）。
+            writeFileSync(this._envPath, JSON.stringify(envObj, null, 2), {encoding: "utf-8", mode: 0o600});
+            chmodSync(this._envPath, 0o600);
         } catch (e) {
             fastify.log.error(`[_writeEnvFile] Failed to write to env file: ${e.message}`);
         } finally {
-            // 移除锁文件
-            if (existsSync(this._lockPath)) {
-                unlinkSync(this._lockPath);
-            }
+            try { rmSync(this._lockPath, {force: true}); } catch {}
         }
     },
 

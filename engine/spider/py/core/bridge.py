@@ -3,7 +3,6 @@
 
 import argparse
 import json
-import pickle
 import socket
 import struct
 import sys
@@ -14,7 +13,9 @@ MAX_MSG_SIZE = 10 * 1024 * 1024
 TIMEOUT = 30
 
 def send_packet(sock, obj: dict):
-    payload = pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+    # 该 CLI 只被死代码 engine/utils/daemonManager.js 引用（clientScript）；
+    # 收发统一改为 JSON，彻底去掉 pickle 反序列化面。
+    payload = json.dumps(obj, ensure_ascii=False).encode("utf-8")
     if len(payload) > MAX_MSG_SIZE:
         raise ValueError("payload too large")
     sock.sendall(struct.pack(">I", len(payload)))
@@ -35,7 +36,11 @@ def recv_packet(sock) -> dict:
     if length <= 0 or length > MAX_MSG_SIZE:
         raise ValueError("invalid length")
     payload = recv_exact(sock, length)
-    return pickle.loads(payload)
+    # 只接受 JSON：不再用 pickle.loads 反序列化对端数据。
+    try:
+        return json.loads(payload.decode("utf-8"))
+    except Exception as exc:
+        raise ValueError(f"invalid JSON packet: {exc}") from exc
 
 def main():
     p = argparse.ArgumentParser(description="T4 CLI bridge")

@@ -698,7 +698,7 @@ class BaseSpider(metaclass=ABCMeta):  # 元类 默认的元类 type
         public_key = "-----BEGIN RSA PRIVATE KEY-----\n" + public_key + "\n-----END RSA PRIVATE KEY-----"
         pub_key = RSA.importKey(public_key)
         cipher = PKCS1_cipher.new(pub_key)
-        text = text.encode("utf-8)")
+        text = text.encode("utf-8")
         length = len(text)
         if length < default_length:
             rsa_text = base64.b64encode(cipher.encrypt(text))  # 加密并转为b64编码

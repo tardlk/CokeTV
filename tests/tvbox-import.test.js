@@ -30,11 +30,12 @@ before(async () => {
     });
     await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve)); base = 'http://127.0.0.1:' + upstream.address().port;
     app = await createApp({directory, seed: false});
-    await app.inject({url: '/admin/access/setup', method: 'POST', payload: {password: 'tvbox-password', confirmPassword: 'tvbox-password'}});
+    const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
+    await app.inject({url: '/admin/access/setup', method: 'POST', payload: {password: 'tvbox-password', confirmPassword: 'tvbox-password', setupCode}});
     authorization = 'Basic ' + Buffer.from(':tvbox-password').toString('base64');
     const localPython = path.join(ROOT, '.tools/python/bin/python3'), localPhp = path.join(ROOT, '.tools/php/php');
-    app.store.state.settings.pythonPath = process.env.TEST_PYTHON || await fs.access(localPython).then(() => localPython).catch(() => 'python3');
-    app.store.state.settings.phpPath = process.env.TEST_PHP || await fs.access(localPhp).then(() => localPhp).catch(() => 'php');
+    app.store.state.settings.pythonPath = process.env.TEST_PYTHON || await fs.access(localPython, fs.constants.X_OK).then(() => localPython).catch(() => 'python3');
+    app.store.state.settings.phpPath = process.env.TEST_PHP || await fs.access(localPhp, fs.constants.X_OK).then(() => localPhp).catch(() => 'php');
     for (const type of ['js', 'py', 'php']) payloads.set('/config/source.' + type, await fs.readFile(path.join(ROOT, 'tests/fixtures/协议样本.' + type), 'utf8'));
     payloads.set('/config/marked.js', '// lang: \'ds\'\nvar rule={title:\'标记源\',host:\'https://fixture.invalid\'};');
     payloads.set('/config/lib.js', 'export const suffix = "依赖成功";');

@@ -11,9 +11,9 @@
 if (!headers_sent()) {
     header('Content-Type: application/json; charset=utf-8');
 }
-// 屏蔽一般警告，避免污染 JSON 输出
+// 屏蔽一般警告/提示，避免污染 stdout 的 JSON 输出（错误经 _bridge.php 的错误处理器走 stderr）。
 error_reporting(E_ALL);
-ini_set('display_errors', '1');
+ini_set('display_errors', '0');
 
 require_once __DIR__ . '/HtmlParser.php';
 
@@ -284,9 +284,11 @@ abstract class BaseSpider {
         $defaultOptions = [
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => false,
+            // 默认开启 TLS 校验；源若确需关闭（自签证书等），在 $options 里显式覆盖并发由用户知情。
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
             CURLOPT_TIMEOUT => 15,
             CURLOPT_ENCODING => '', // 支持 GZIP 自动解压
             CURLOPT_HTTPHEADER => $mergedHeaders,
@@ -312,7 +314,12 @@ abstract class BaseSpider {
 
         curl_setopt_array($ch, $defaultOptions);
         $result = curl_exec($ch);
-        
+
+        if ($result === false) {
+            // 记录到 stderr，不改变返回语义（保持老源的兼容行为）。
+            fwrite(STDERR, sprintf("[BaseSpider] curl failed (%d): %s | url: %s\n", curl_errno($ch), curl_error($ch), $url));
+        }
+
         if (is_resource($ch)) {
             curl_close($ch);
         }
@@ -323,6 +330,17 @@ abstract class BaseSpider {
     protected function fetchJson($url, $options = []) {
         $resp = $this->fetch($url, $options);
         return json_decode($resp, true) ?: [];
+    }
+
+    /**
+     * 代理方法名兼容：老源实现 localProxy()，部分源实现 proxy()。
+     * 桥接会优先找 localProxy，找不到再回退到本别名。
+     */
+    public function proxy($params = []) {
+        if (method_exists($this, 'localProxy')) {
+            return $this->localProxy($params);
+        }
+        throw new Exception("Method 'localProxy' not found in Spider class");
     }
 
     /**

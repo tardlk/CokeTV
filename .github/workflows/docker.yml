@@ -67,6 +67,8 @@ jobs:
         env:
           IMAGE_NAME: ${{ steps.image.outputs.name }}
         run: |
+          # 镜像必须声明非 root 运行用户，防止回退到 root。
+          test -n "$(docker image inspect "$IMAGE_NAME:sha-${GITHUB_SHA:0:7}" --format '{{.Config.User}}')"
           docker run -d --name coketv-smoke "$IMAGE_NAME:sha-${GITHUB_SHA:0:7}"
           for attempt in $(seq 1 60); do
             if docker exec coketv-smoke node -e "fetch('http://127.0.0.1:54058/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then break; fi

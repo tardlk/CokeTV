@@ -17,3 +17,5 @@
 源执行接口、代理返回语义和原模块名路径需要保持兼容。框架测试使用 node:test，依赖外部站点的结果不能代替固定样本的协议测试。
 
 修改完成运行 `npm test`、`npm run check` 和 `npm run build`。源文件的诊断沿用原规则协议；当前机器未安装原 drpy-node-coder CLI，不能声称执行过该 CLI。
+
+用户确认（2026-10-06，安全修复）：源脚本与宿主**同权限**执行（JS 可 `require`，py/php 可访文件系统与网络），这属于**已知信任边界**，已在 README「安全边界」显著声明；不要在文档里暗示存在并不存在的沙箱。管理路由鉴权**必须基于匹配到的路由**（`request.routeOptions.url`），不得基于 `request.url` 字符串前缀——后者会被百分号编码/absolute-form 绕过。公开接口仍不得返回源参数、ENV、脚本或订阅 Token。

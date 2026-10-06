@@ -16,6 +16,12 @@ import '../libs_drpy/jinja.js'
 // 获取当前模块的目录路径
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// 用 path.relative 判定边界：`startsWith` 会把同前缀兄弟目录（如 ../dataX）误判为在 _data_path 内。
+function insideData(resolvedPath) {
+    const relative = path.relative(_data_path, resolvedPath);
+    return relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative));
+}
+
 function resolvePath(dir, relativePath) {
     let p = path.join(dir, relativePath);
     if (existsSync(p)) return p;
@@ -71,7 +77,7 @@ export const pathLib = {
         const resolvedPath = path.resolve(_data_path, _file_path); // 将路径解析为绝对路径
 
         // 安全检查：确保访问路径在允许的数据目录内
-        if (!resolvedPath.startsWith(_data_path)) {
+        if (!insideData(resolvedPath)) {
             log(`[pathLib.readFile] no access for read ${_file_path}`)
             return '';
         }
@@ -97,7 +103,7 @@ export const pathLib = {
         const resolvedPath = path.resolve(_data_path, _file_path); // 将路径解析为绝对路径
 
         // 安全检查：确保访问路径在允许的数据目录内
-        if (!resolvedPath.startsWith(_data_path)) {
+        if (!insideData(resolvedPath)) {
             log(`[pathLib.writeFile] no access for read ${_file_path}`)
             return '';
         }

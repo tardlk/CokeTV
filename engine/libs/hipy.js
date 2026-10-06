@@ -8,6 +8,7 @@ import {LRUCache} from 'lru-cache';
 import {md5} from "../libs_drpy/crypto-util.js";
 import {fastify} from "../controllers/fastlogger.js";
 import {netCallPythonMethod} from '../spider/py/core/bridge.js';
+import {ungzip} from '../libs_drpy/drpyCustom.js';
 
 
 // 缓存已初始化的模块和文件 hash 值（LRU 有界，淘汰=下次重新 init，与 refresh 路径等价）
@@ -75,7 +76,7 @@ const init = async function (filePath, env = {}, refresh) {
                 moduleExt = urljoin(env.jsonUrl, moduleExt.slice(8));
             }
         }
-        let hashMd5 = md5(filePath + '#pAq#' + moduleExt);
+        let hashMd5 = md5(filePath + '#pAq#' + moduleExt + '#' + (env.sourceInstanceId || ''));
         if (moduleCache.has(hashMd5) && !refresh) {
             const cached = moduleCache.get(hashMd5);
             // 除hash外还必须保证proxyUrl实时相等，避免本地代理url的尴尬情况

@@ -36,8 +36,11 @@ const report = () => process.send?.({kind: 'stats', memory: process.memoryUsage(
 setInterval(report, 10000).unref();
 for (const level of ['log', 'warn', 'error']) console[level] = (...args) => process.send?.({kind: 'log', level: level === 'log' ? 'info' : level, source: currentSource, message: redactSourceSecrets(util.format(...args)).slice(0, 8192)});
 
+let pythonFailures = 0;
 async function startPython() {
-    if (pythonReady) return pythonReady;
+    // 守护进程可能已退出（源调 os._exit、段错误、被 kill）：命中缓存前先确认进程仍在。
+    if (pythonReady && python && python.exitCode === null && !python.killed) return pythonReady;
+    if (pythonReady || python) { python = null; pythonReady = null; }
     pythonReady = (async () => {
         python = spawn(process.env.PYTHON_PATH || 'python3', [path.join(root, 'spider/py/core/t4_daemon.py')], {
             cwd: path.join(root, 'spider/py'), env: process.env, stdio: ['ignore', 'pipe', 'pipe'],
@@ -55,18 +58,26 @@ async function startPython() {
                 socket.once('error', () => resolve(false));
                 socket.setTimeout(250, () => { socket.destroy(); resolve(false); });
             });
-            if (ready) return;
+            if (ready) { pythonFailures = 0; return; }
             await new Promise(resolve => setTimeout(resolve, 80));
         }
         throw new Error('Python 守护进程启动超时，请检查解释器和源依赖');
-    })().catch(error => { python?.kill(); pythonReady = null; throw error; });
+    })().catch(async error => {
+        python?.kill(); python = null; pythonReady = null;
+        // 退避重启：连续失败时逐步拉长等待，避免瞬时崩溃造成紧密重启循环。
+        pythonFailures = Math.min(pythonFailures + 1, 5);
+        await new Promise(resolve => setTimeout(resolve, 200 * pythonFailures));
+        throw error;
+    });
     return pythonReady;
 }
 
 async function getEngine(name) {
     const key = name === 'dr2' ? 'js' : name;
-    if (engines.has(key)) return engines.get(key);
+    // 先确保 Python 守护进程存活再命中引擎缓存：守护进程死了要能自动重启，
+    // 否则之后所有 Python 源会持续连接失败直到 worker 被超时回收。
     if (key === 'py') await startPython();
+    if (engines.has(key)) return engines.get(key);
     if (key === 'cat') {
         await importRuntime('libs_drpy/drpyInject.js');
         const loader = await importRuntime('libs_drpy/moduleLoader.js');

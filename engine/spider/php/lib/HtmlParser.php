@@ -171,9 +171,9 @@ class HtmlParser {
         if (!empty($html) && mb_detect_encoding($html, 'UTF-8', true) === false) {
              $html = mb_convert_encoding($html, 'UTF-8', 'GBK, BIG5'); 
         }
-        // Add meta charset to ensure DOMDocument treats it as UTF-8
-        $html = '<meta http-equiv="Content-Type" content="text/html; charset=utf-8">' . $html;
-        
+        // 用 XML 声明告知 libxml 编码：不要把 <meta> 插到 DOCTYPE 之前（会产生多余文本节点）。
+        $html = '<?xml encoding="utf-8" ?>' . $html;
+
         $doc->loadHTML($html);
         libxml_clear_errors();
         return $doc;

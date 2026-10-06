@@ -43,14 +43,15 @@ afterEach(()=>{wrapper?.unmount();document.body.innerHTML='';sessionStorage.clea
 describe('shadcn 控制台绑定',()=>{
     it('首次进入创建密码，输入不一致不提交，成功后进入并保存新凭据',async()=>{
         setupRequired=true;await start();
-        expect(wrapper.text()).toContain('首次进入管理后台，请创建访问密码');
+        expect(wrapper.text()).toContain('首次进入管理后台');
         expect(requests.some(item=>item.url==='/admin/state')).toBe(false);
+        await wrapper.find('#setup-code').setValue('setup-code-123');
         await wrapper.find('#new-password').setValue('new-password');await wrapper.find('#confirm-password').setValue('different');
         await wrapper.find('form').trigger('submit');await flushPromises();
         expect(wrapper.text()).toContain('两次输入的密码不一致');
         expect(requests.some(item=>item.url==='/admin/access/setup')).toBe(false);
         await wrapper.find('#confirm-password').setValue('new-password');await wrapper.find('form').trigger('submit');await flushPromises();
-        expect(requests.find(item=>item.url==='/admin/access/setup').payload).toEqual({password:'new-password',confirmPassword:'new-password'});
+        expect(requests.find(item=>item.url==='/admin/access/setup').payload).toEqual({password:'new-password',confirmPassword:'new-password',setupCode:'setup-code-123'});
         expect(atob(sessionStorage.getItem('coketv-access'))).toBe(':new-password');
         expect(wrapper.find('.source-table').exists()).toBe(true);
         await wrapper.find('[aria-label="退出"]').trigger('click');await flushPromises();
@@ -242,5 +243,18 @@ describe('shadcn 控制台绑定',()=>{
         document.querySelector('[aria-label="添加源A"]').click();await flushPromises();
         const cancel=[...document.querySelectorAll('[role="dialog"] button')].find(button=>button.textContent.trim()==='取消');cancel.click();await flushPromises();
         expect(requests.some(request=>request.url==='/admin/subscriptions'&&request.method==='POST')).toBe(false);
+    });
+    it('设置页可编辑代理与参数安全开关，并随保存提交',async()=>{
+        await start();await button('设置').trigger('click');await flushPromises();
+        expect(document.querySelector('#allow-private-targets')).not.toBeNull();
+        expect(document.querySelector('#json-public')).not.toBeNull();
+        document.querySelector('#allow-private-targets').click();await flushPromises();
+        document.querySelector('#json-public').click();await flushPromises();
+        await wrapper.find('#target-allowlist').setValue('192.168.1.10\n10.0.0.0/8');
+        await button('保存设置').trigger('click');await flushPromises();
+        const payload=requests.find(request=>request.url==='/admin/settings'&&request.method==='PUT').payload;
+        expect(payload.jsonPublic).toBe(true);
+        expect(payload.allowPrivateTargets).toBe(false);
+        expect(payload.targetAllowlist).toEqual(['192.168.1.10','10.0.0.0/8']);
     });
 });

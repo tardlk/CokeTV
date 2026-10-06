@@ -21,7 +21,7 @@ python3 -m venv .venv
 PYTHON_PATH="$PWD/.venv/bin/python3" PHP_PATH=php npm start
 ```
 
-打开 [http://127.0.0.1:54058](http://127.0.0.1:54058) 直接进入观影首页，浏览、搜索和播放无需密码。进入“管理后台”（`/admin`）才需要访问密码；全新部署首次进入管理后台时创建密码，没有默认密码、用户或账号系统。管理密码保存到 `data/admin.json`，重启不会再次要求创建，也可以通过 `ADMIN_PASSWORD` 预设。
+打开 [http://127.0.0.1:54058](http://127.0.0.1:54058) 直接进入观影首页，浏览、搜索和播放无需密码。进入“管理后台”（`/admin`）才需要访问密码；全新部署首次进入管理后台时创建密码，**需要填写启动日志里打印的「初始化码」**（同时写入 `data/setup-code.txt`，创建成功后自动删除），没有默认密码、用户或账号系统。管理密码只保存加盐 KDF 结果到 `data/admin.json`（不会落盘明文），重启不会再次要求创建，也可以通过 `ADMIN_PASSWORD` 预设并跳过引导码。
 
 已安装运行环境并构建前端后，可以用 `./start.sh` 启动。本机开发工具若放在 `.tools/`，启动脚本会自动识别；这些工具不随仓库分发。
 
@@ -44,7 +44,13 @@ docker run -d --name coketv --platform linux/amd64 \
   --restart unless-stopped ghcr.io/tardlk/coketv:latest
 ```
 
-首次使用空数据目录时，源、解析、直播和环境变量均为空；进入 /admin 创建管理密码，再导入 TVBox 链接或自己的脚本。镜像保留 Node.js 22、Python、PHP、ffmpeg 及兼容辅助库。挂载的 data 持久化用户数据，更新镜像不会清空已有源。
+首次使用空数据目录时，源、解析、直播和环境变量均为空；查看容器日志中的「初始化码」，进入 /admin 用它创建管理密码（或直接设置 `ADMIN_PASSWORD` 跳过），再导入 TVBox 链接或自己的脚本。镜像保留 Node.js 22、Python、PHP、ffmpeg 及兼容辅助库。挂载的 data 持久化用户数据，更新镜像不会清空已有源。
+
+镜像以**非 root 用户 `node`** 运行，`data/` 的属主为 `node`。若挂载的是旧版本（root 属主）遗留的数据目录，需先修正属主，否则容器无法写入：
+
+```sh
+docker run --rm -v "$(pwd)/data:/app/data" alpine chown -R 1000:1000 /app/data
+```
 
 从源码构建 x86 镜像（可选浏览器）：
 
@@ -68,6 +74,16 @@ docker buildx build --platform linux/amd64 --load \
 网页观影入口为 `/`（兼容 `/watch`），播放页面为 `/watch/play?source=<实例ID>&vod=<影片ID>`，直接访问和刷新都无需密码。播放器按需加载 ArtPlayer、HLS.js 与 mpegts.js，支持浏览器可解码的普通视频、HLS、FLV/TS。源要求解析时使用设置中的解析服务；没有解析配置、外部插件或站点凭据时会显示具体原因。TVBox 可以播放的编码不一定受浏览器支持。
 
 TVBox 在另一台设备上时，在设置中填写可达的服务对外地址，例如 `http://192.168.1.10:54058`。停用源不会出现在订阅中；删除实例会移除订阅引用，原脚本仍保留。
+
+## 安全边界（务必阅读）
+
+当前仍有已复现的票据保密、代理出口策略和旧数据升级缺口，见 [SECURITY.md](SECURITY.md) 与 [接手文档第 7.3 节](docs/AI_HANDOFF.md#73-全面接手复核2026-10-06新增发现尚未修复)。测试通过不代表这些问题已修复。
+
+- 源脚本在服务器上以**与 CokeTV 相同的权限**执行：JS 源可直接调用 Node 的 `require`，Python/PHP 源可访问文件系统与网络。
+  **导入任何第三方源（尤其是来路不明的 TVBox 订阅链接）= 允许其在你的服务器上执行任意代码。**
+- 因此：不要在公网无鉴权暴露本服务；不要导入不可信的源；生产部署请参考 `compose.yaml` 的非 root/能力裁剪示例。
+- 管理后台（`/admin`）的访问密码是唯一的管理凭据，请使用独立强口令，并保护好 `data/` 备份（其中含管理凭据与源 ENV）。
+- 源的 `data/runtime/json/` 参数文件默认不再匿名可读：外部匿名请求被拒绝，源自身的回环请求带内部凭据放行。
 
 ## 兼容范围
 
@@ -95,16 +111,16 @@ data/runtime/config/source-env/    按源实例保存的环境变量
 data/revisions/                    脚本历史版本
 ```
 
-首次启动准备引擎辅助库和空源目录，不添加站点源；后续启动刷新内核代码，保留用户源与配置。备份整个 `data/` 可完整恢复。管理配置导出包含源环境变量，不包含脚本和插件二进制。
+首次启动准备引擎辅助库和空源目录，不添加站点源；后续启动刷新 libs/utils/controllers，保留用户源与配置。当前已有的 `runtime/spider` 不自动更新框架桥接，升级兼容缺口见接手文档 R1，不要通过删除整个运行目录处理。备份整个 `data/` 可完整恢复——**其中含管理凭据的加盐哈希、源 ENV 与源参数，请妥善保管**。管理配置导出包含源环境变量，不包含脚本和插件二进制。
 
 详见 [配置与源包](docs/CONFIGURATION.md) 和 [开发说明](docs/DEVELOPMENT.md)。
 
 ## 开发
 
 ```sh
-npm test
 npm run check
 npm run build
+TEST_PYTHON=python3 TEST_PHP=php npm test
 ```
 
 测试覆盖源协议、环境隔离、订阅、代理、执行进程回收与 UI 操作。多语言测试使用真实 Python/PHP；可通过 `TEST_PYTHON`、`TEST_PHP` 指定路径。

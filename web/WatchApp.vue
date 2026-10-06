@@ -159,8 +159,13 @@ function removeHistory(item) {
     saveWatchStorage(`coketv-watch-${libraryTab.value === 'history' ? 'history' : 'favorites'}`, list.value);
 }
 function popstate() { route.value = readRoute(); keyword.value = route.value.search; }
-watch(() => [route.value.path, route.value.source, route.value.vod, route.value.category, route.value.search, route.value.pg], loadData);
-watch(() => [route.value.line, route.value.episode], () => { if (detail.value && isPlay.value) resolvePlay(true); });
+// 用原始值拼键做比较：数组 getter 每次返回新数组，Vue 按 Object.is 比较，
+// 会让「整体替换 route」总是触发 loadData，从而在切集/换线路时重载详情、
+// 卸载播放器并丢失自动播放。拆成两条互不干扰的路径后，只有真正换片才重新加载。
+watch(() => [route.value.path, route.value.source, route.value.vod, route.value.category, route.value.search, route.value.pg].join('|'), loadData);
+watch(() => [route.value.line, route.value.episode].join('|'), () => {
+    if (detail.value && isPlay.value) resolvePlay(true);
+});
 onMounted(() => { window.addEventListener('popstate', popstate); loadData(); });
 onBeforeUnmount(() => { ++dataVersion; ++playVersion; window.removeEventListener('popstate', popstate); });
 </script>

@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 
 const base = 'http://127.0.0.1:54058';
 const authorization = 'Basic ' + Buffer.from(':container-smoke-only').toString('base64');
+// 镜像必须以非 root 运行：源脚本与宿主同权限，root 会把影响面放大到整机。
+assert.notEqual(process.getuid?.(), 0, '镜像必须以非 root 用户运行（Dockerfile USER 非空）');
 const call = async (url, body, admin = false) => {
     const response = await fetch(base + url, {method: body === undefined ? 'GET' : 'POST',
         headers: {...(admin ? {Authorization: authorization} : {}), ...(body ? {'Content-Type': 'application/json'} : {})},

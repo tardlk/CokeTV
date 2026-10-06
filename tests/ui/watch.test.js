@@ -6,6 +6,8 @@ import {registerUI} from '../../web/register-ui.js';
 import {playlists} from '../../web/watch-model.js';
 
 let wrapper, api, pending;
+// 轻量替身：真实 WebPlayer 会拉起 ArtPlayer/HLS.js，这里只暴露 media prop 供断言。
+const PlayerStub = defineComponent({name: 'WebPlayer', props: ['media', 'resume', 'previous', 'next'], template: '<div class="player-stub" />'});
 const sources = [{id: 'a', name: '测试源', enabled: true, searchable: true, filterable: true, script: {engine: 'js'}}, {id: 'disabled', name: '停用源', enabled: false, script: {engine: 'py'}}];
 const detail = {vod_id: 'one', vod_name: '样本电影', vod_content: '<p>影片简介</p>', vod_play_from: '主线$$$备用', vod_play_url: '第1集$https://fixture.invalid/1.m3u8#第2集$https://fixture.invalid/2.mp4$$$正片$https://fixture.invalid/backup.mp4'};
 beforeEach(() => {
@@ -21,7 +23,7 @@ beforeEach(() => {
 afterEach(() => { wrapper?.unmount(); document.body.innerHTML = ''; localStorage.clear(); history.replaceState({}, '', '/'); });
 async function start(path) {
     if (path) history.replaceState({}, '', path);
-    wrapper = mount(WatchApp, {props: {sources, api}, attachTo: document.body, global: {plugins: [{install: registerUI}], stubs: {WebPlayer: defineComponent({props: ['media', 'resume'], template: '<div class="player-stub" />'})}}});
+    wrapper = mount(WatchApp, {props: {sources, api}, attachTo: document.body, global: {plugins: [{install: registerUI}], stubs: {WebPlayer: PlayerStub}}});
     await flushPromises(); return wrapper;
 }
 function button(text) { return wrapper.findAll('button').find(item => item.text().trim() === text); }
@@ -115,5 +117,20 @@ describe('网页观影流程', () => {
         expect(wrapper.find('.player-stub').exists()).toBe(true);
         const historyItem = JSON.parse(localStorage.getItem('coketv-watch-history'))[0];
         expect(historyItem.episode).toBe(1);
+    });
+    it('选集/切线路只解析播放、不重载详情、不重建播放器且保持自动播放', async () => {
+        await start('/watch/play?source=a&vod=one');
+        expect(api.mock.calls.filter(([url]) => url.includes('ac=detail'))).toHaveLength(1);
+        const player = wrapper.findComponent(PlayerStub);
+        expect(player.props('media').autoplay).toBe(false);
+        const element = wrapper.find('.player-stub').element;
+        api.mockClear();
+        await button('第2集').trigger('click'); await flushPromises();
+        expect(api.mock.calls.filter(([url]) => url.includes('ac=detail'))).toHaveLength(0);
+        expect(api.mock.calls.filter(([url]) => url.endsWith('/play'))).toHaveLength(1);
+        const after = wrapper.findComponent(PlayerStub);
+        expect(after.props('media').autoplay).toBe(true);
+        // 同一个 DOM 节点 ⇒ 播放器实例未被卸载重建，进度与设置得以保留。
+        expect(wrapper.find('.player-stub').element).toBe(element);
     });
 });

@@ -51,10 +51,11 @@ PORT = int(os.environ.get("DRPY_PY_PORT", "57570"))
 # BRIDGE_PACKET_MAX / BRIDGE_TIMEOUT 与 Node 侧 spider/py/core/bridge.js 同名变量对应
 # （daemonManager 以 {...process.env} 启动本进程，环境变量可直接透传）；
 # 默认值=历史硬编码，不配置则行为不变
-MAX_MSG_SIZE = int(os.environ.get("BRIDGE_PACKET_MAX", 60 * 1024 * 1024))  # 60MB
+MAX_MSG_SIZE = int(os.environ.get("BRIDGE_PACKET_MAX", 32 * 1024 * 1024))  # 32MB，与 Node 侧 bridge.js 对齐
 MAX_CACHED_INSTANCES = 100  # 最大缓存实例数
-INIT_TIMEOUT = 100  # init 超时（秒）
 REQUEST_TIMEOUT = int(os.environ.get("BRIDGE_TIMEOUT", 30 * 1000)) / 1000  # 单次请求 socket 超时（秒）
+# INIT_TIMEOUT 必须 ≤ REQUEST_TIMEOUT：否则 init 超时分支不可达，且线程会被白占。
+INIT_TIMEOUT = max(5, int(REQUEST_TIMEOUT))  # init 超时（秒）
 IDLE_EXPIRE = 30 * 60  # 实例空闲过期（秒）
 CLEAN_INTERVAL = 5 * 60  # 清理间隔（秒）
 MAX_CONCURRENT_INITS = 8  # 并发初始化上限（可按需调大/调小）
@@ -133,10 +134,12 @@ def recv_packet(rfile) -> dict:
     if length <= 0 or length > MAX_MSG_SIZE:
         raise ValueError("invalid length")
     payload = recv_exact(rfile, length)
+    # 只接受 JSON：pickle 反序列化在无鉴权的回环端口上等于本机任意代码执行。
+    # Node 侧 bridge.js 只发送 JSON，移除 pickle 兼容分支不影响正常链路。
     try:
         return json.loads(payload.decode("utf-8"))
-    except Exception:
-        return pickle.loads(payload)
+    except Exception as exc:
+        raise ValueError(f"invalid JSON packet: {exc}") from exc
 
 
 # =========================
@@ -680,9 +683,13 @@ class SpiderManager:
             if isinstance(a, (dict, list, int, float, bool, type(None))):
                 parsed_args.append(a)
             elif isinstance(a, str):
-                try:
-                    parsed_args.append(json.loads(a))
-                except Exception:
+                # 只对看起来像 JSON 的参数做解析，避免数字型 tid/wd 被转成 int 造成跨引擎行为不一致。
+                if a[:1] in ("{", "["):
+                    try:
+                        parsed_args.append(json.loads(a))
+                    except Exception:
+                        parsed_args.append(a)
+                else:
                     parsed_args.append(a)
             else:
                 parsed_args.append(a)
@@ -778,12 +785,20 @@ class ThreadedTCPServer(ThreadingMixIn, TCPServer):
 
 def run():
     def _stop(*_):
+        # 信号处理器只做最小工作：shutdown() 必须从「非主线程」调用，
+        # 否则会与同线程上的 serve_forever() 互相等待而死锁。
         logger.info("Stopping server ...")
-        _manager.stop()
-        # 让 serve_forever() 退出
-        srv.shutdown()
-        logger.info("The service has successfully exited")
-        sys.exit(0)  # 保证退出码是 0
+        threading.Thread(target=_shutdown, daemon=True).start()
+
+    def _shutdown():
+        try:
+            _manager.stop()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("manager stop failed: %s", exc)
+        try:
+            srv.shutdown()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("server shutdown failed: %s", exc)
 
     if os.name == "posix":
         signal.signal(signal.SIGTERM, _stop)

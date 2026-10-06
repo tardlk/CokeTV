@@ -31,15 +31,22 @@ test('订阅按实例顺序输出，排除停用源，Token 限定站点范围',
     assert.equal(authorizedSubscription(state, 'bad'), undefined);
 });
 test('HLS 改写覆盖相对分片、主列表和 AES key URI', () => {
-    const result = rewritePlaylist('#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="key.bin"\nseg.ts\n../high/index.m3u8', 'https://cdn.test/low/list.m3u8', 'http://localhost:54058', 'abc', {Referer: 'https://site.test'});
+    const result = rewritePlaylist('#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="key.bin"\nseg.ts\n../high/index.m3u8', 'https://cdn.test/low/list.m3u8', 'http://localhost:54058', {token: 'abc'});
     const uris = [...result.matchAll(/(?:URI="|\n)(http[^"\n]+)/g)].map(match => new URL(match[1]));
     assert.equal(uris.length, 3);
     assert.equal(uris[0].searchParams.get('url'), 'https://cdn.test/low/key.bin');
     assert.equal(uris[1].searchParams.get('url'), 'https://cdn.test/low/seg.ts');
     assert.equal(uris[2].searchParams.get('url'), 'https://cdn.test/high/index.m3u8');
     assert.ok(uris.every(uri => uri.searchParams.get('token') === 'abc'));
-    const alias = rewritePlaylist('#EXTM3U\nhttp://localhost:54058/proxy/legacy/?segment=1', 'http://localhost:54058/proxy/id/', 'http://localhost:54058', 'abc', {}, {name: 'legacy', id: 'instance'});
+    const alias = rewritePlaylist('#EXTM3U\nhttp://localhost:54058/proxy/legacy/?segment=1', 'http://localhost:54058/proxy/id/', 'http://localhost:54058', {token: 'abc', alias: {name: 'legacy', id: 'instance'}});
     assert.ok(alias.includes('/proxy/instance/?segment=1&token=abc'));
+});
+test('HLS 改写用 mint 为每个分片签发独立票据', () => {
+    const minted = [];
+    const result = rewritePlaylist('#EXTM3U\nseg.ts\n../high/index.m3u8', 'https://cdn.test/low/list.m3u8', 'http://localhost:54058', {mint: url => { minted.push(url); return `ticket:${url}`; }});
+    const uris = [...result.matchAll(/\n(http[^"\n]+)/g)].map(match => new URL(match[1]));
+    assert.deepEqual(minted, ['https://cdn.test/low/seg.ts', 'https://cdn.test/high/index.m3u8']);
+    assert.ok(uris.every((uri, index) => uri.searchParams.get('token') === `ticket:${minted[index]}`));
 });
 test('管理数据串行提交、失败回滚、重启不覆盖用户状态', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'drpy-store-'));

@@ -10,6 +10,7 @@ const RKEY = typeof (key) !== 'undefined' && key ? key : 'drpyS_' + (rule.title 
  * @returns {string|DocumentFragment|*}
  */
 async function request(url, obj = {}, ocr_flag = false) {
+    let _selfLoopback = false;
     // 自请求回环优化：如果请求指向自己服务（公网域名），自动替换为 localhost 回环访问
     // 目的：解决 NAT/路由器不支持发夹转换时，服务器自己请求自己的公网域名失败的问题
     // 注：不改变原始 url 字符串的语义（只在本函数内替换），确保脚本 urljoin 等拼接仍然返回公网URL
@@ -19,6 +20,7 @@ async function request(url, obj = {}, ocr_flag = false) {
         const _origUrl = url;
         url = _SELF_LOOPBACK + url.slice(_SELF_REQ_HOST.length);
         log(`[request] 自请求回环优化: ${_origUrl} -> ${url}`);
+        _selfLoopback = true;
     }
     if (typeof (obj) === 'undefined' || !obj || (typeof obj === 'object' && obj !== null && Object.keys(obj).length === 0)) {
         let fetch_params = {};
@@ -87,6 +89,11 @@ async function request(url, obj = {}, ocr_flag = false) {
     //     delete obj.body
     // }
 
+    // 回环自请求带上内部凭据：收紧 /json/ 鉴权后，源的参数文件读取仍可放行。
+    // 该头的值来自 process.env.DRPY_INTERNAL_KEY，源本就能读到，不引入新的信任假设。
+    if (_selfLoopback && typeof process !== 'undefined' && process && process.env && process.env.DRPY_INTERNAL_KEY) {
+        obj.headers['x-drpy-runtime'] = process.env.DRPY_INTERNAL_KEY;
+    }
     log(`[request] headers: ${JSON.stringify(obj.headers)}`);
     log('[request] url:' + url + `  |method:${obj.method || 'GET'}|timeout:${obj.timeout}  |body:${obj.body || ''}`);
     let res = await req(url, obj);

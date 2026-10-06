@@ -12,7 +12,9 @@ const api = async (url, body, headers = {}) => {
 await checkShell();
 assert.equal(process.arch, 'x64');
 const health = await api('/health');
-assert.equal(health.body.runtime.started, false);
+assert.equal(health.body.ok, true);
+// /health 只暴露 {ok, version}；运行细节在需鉴权的 /admin/health。
+assert.equal(health.body.runtime, undefined);
 assert.deepEqual((await api('/watch/sources')).body, []);
 assert.equal((await api('/access/status')).body.requiresSetup, true);
 assert.equal((await api('/admin/state')).response.status, 428);
@@ -21,8 +23,13 @@ assert.deepEqual(initial.scripts, []); assert.deepEqual(initial.instances, []);
 assert.deepEqual(initial.subscriptions[0].instances, []);
 assert.deepEqual(initial.settings.parses, []); assert.deepEqual(initial.settings.lives, []); assert.deepEqual(initial.settings.env, {});
 assert.deepEqual(JSON.parse(await fs.readFile(data + '/admin.json', 'utf8')), {requiresSetup: true});
+// H2：首装必须携带引导码，无码应被拒绝。
+assert.equal((await api('/admin/access/setup', {password: 'container-smoke-only', confirmPassword: 'container-smoke-only'})).response.status, 403);
+const setupCode = (await fs.readFile(data + '/setup-code.txt', 'utf8')).trim();
+assert.ok(setupCode.length >= 8);
 const password = 'container-smoke-only';
-assert.equal((await api('/admin/access/setup', {password, confirmPassword: password})).response.status, 200);
+assert.equal((await api('/admin/access/setup', {password, confirmPassword: password, setupCode})).response.status, 200);
+assert.equal((await api('/access/status')).body.requiresSetup, false);
 const headers = {Authorization: 'Basic ' + Buffer.from(':' + password).toString('base64')};
 for (const type of ['js', 'py', 'php']) {
     const created = await api('/admin/scripts/create', {type, name: 'smoke-' + type}, headers);
