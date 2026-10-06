@@ -80,7 +80,8 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 - 2026-10-05 首次发布：功能提交 `3b17276`，源码 [Verify 37252776598](https://github.com/tardlk/CokeTV/actions/runs/37252776598) 与 [Docker amd64 37252776569](https://github.com/tardlk/CokeTV/actions/runs/37252776569) 均成功。
 - 历史镜像 `:sha-3b17276`，当时同 digest 发布为 `:latest`：`sha256:8e733b3cc506be4682015e9df004ba9b3705f31c058d9da263e28dbfa049461c`（匿名读取 manifest/config 确认 `linux/amd64`）。独立拉取验收：[Verify published image 37253476492](https://github.com/tardlk/CokeTV/actions/runs/37253476492)。这个 digest 只代表旧发布，不能据此断言当前 latest 的版本。
-- **2026-10-06 接手前的历史状态**：本地 `main` 领先 `origin/main` 9 个提交，两轮安全修复未 push、未进入已发布镜像。用户在本次会话收尾明确要求整理并推送 GitHub，代码修复已提交为 `a0882c2`；此记录提交时正在准备推送。推送会触发 Verify 与 Docker amd64，源码推送不等于镜像发布成功，须另核对 Actions 和新 digest。
+- **2026-10-06 源码同步已完成**：用户明确授权推送。GitHub `main` 的代码快照为 `984ccf0ff2ed2d0f63c96f2f5b7b2098cba023d3`，Git tree 与本地整理后的 `da3ce44` 完全相同（`eed21e5c7d44212cec56f80ee0b2ba08cc3f708c`）；包括此前 9 个未推送提交、本轮限流修复和接手审查记录。原始本地 11 个提交保留在 `handoff-local-20261006`，本地 main 已跟随远端。收尾文档补记使用 `[skip ci]`，不重复发布相同代码。
+- **本次 CI / 镜像状态**：收尾核对时 [Verify 37429832617](https://github.com/tardlk/CokeTV/actions/runs/37429832617) 已成功；[Docker amd64 37429832738](https://github.com/tardlk/CokeTV/actions/runs/37429832738) 仍在运行，目标标签 `:sha-984ccf0` 与 `:latest`。尚未确认本次镜像发布成功或新 digest，不能将旧 digest 写作新镜像结果；新对话先核对这个 run，成功后再读取 manifest/config 并更新本节。
 - 发布链路：Verify 工作流跑语法/空壳/测试/构建；Docker amd64 工作流在 main/tag/manual 上做源码验证 → 原生 amd64 构建 → 临时空容器验收 → GHCR 发布，使用仓库 `GITHUB_TOKEN` 的 packages 权限，不提交发布密钥。`latest` 对应 main，`sha-*` 固定提交，`v*` 发布版本。
 - `compose.yaml` 用 GHCR 镜像并挂载 `./data:/app/data`，容器以非 root `node` 运行；挂载旧版本（root 属主）数据目录需先 `chown -R 1000:1000 data`（README 有命令）。
 - `.github/workflows/image-verify.yml` + `scripts/image-verify.mjs` 可手动验证已发布镜像（五引擎、重启持久化、非 root 断言）；只在临时容器创建样本，不能用于正式数据目录。
@@ -112,7 +113,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 | M8（中） | Python 守护进程用无鉴权 `pickle` 协议 | `t4_daemon.py` 只收 JSON；lite 与 CLI 桥一并去 pickle（见第二轮） |
 | M9（中） | PHP `display_errors` 污染 JSON、`proxy`/`localProxy` 命名漂移、py/php 读不到每源 ENV | `display_errors=0` + `ob_start` 收口；方法名映射改候选（见第二轮 P0-1）；ENV 仍仅 JS 引擎支持，已从文档口径收窄 |
 | M10（中） | Python 守护进程死了不重启；SIGTERM 死锁；超时/包上限不一致 | 命中缓存前校验存活 + 退避重启；SIGTERM 从独立线程 `shutdown`；包上限统一 32MB；`INIT_TIMEOUT ≤ REQUEST_TIMEOUT`；action 超时与 `BRIDGE_TIMEOUT` 对齐 |
-| L1–L11（低） | 无速率限制/安全头、`/health` 泄露内部信息、19 个引擎死代码文件、版权头保留率低、上游许可标注矛盾、文档计数漂移、CI action 未钉 SHA、测试顺序耦合、`fServer` 无 WebSocket、桥接零星缺陷 | 已修：安全响应头、公开接口限流、`/health` 精简、`check.mjs` 覆盖 `.cjs`、`X_OK` 判定、`spider.py` 编码名拼写、`SECURITY.md`/`THIRD_PARTY.md`。未修见第 7 节 |
+| L1–L11（低） | 无速率限制/安全头、`/health` 泄露内部信息、19 个引擎死代码文件、版权头保留率低、上游许可标注矛盾、文档计数漂移、CI action 未钉 SHA、测试顺序耦合、`fServer` 无 WebSocket、桥接零星缺陷 | 已修：安全响应头、公开接口限流、`/health` 精简、`check-bridges.mjs` 覆盖 engine 中的 `.cjs`、`X_OK` 判定、`spider.py` 编码名拼写、`SECURITY.md`/`THIRD_PARTY.md`。未修见第 7 节 |
 
 ### 第二轮：修复第一轮引入/遗漏的问题
 
@@ -124,7 +125,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 ## 7. 当前状态与下一步待办
 
-接手时 `main` 领先 `origin/main` 9 个提交的描述是历史快照。本轮限流和正式文档修复已提交为 `a0882c2`；用户已授权会话收尾推送，推送/镜像结果见第 5 节与第 7.4 节。**第 7.1 节第 3、4 项及 R1–R10 仍未修复**，不得把整理提交或 CI 全绿当作这些问题已闭环。
+接手时 `main` 领先 `origin/main` 9 个提交的描述是历史快照。本轮限流修复的本地提交是 `a0882c2`，其内容现已同步到 GitHub 代码快照 `984ccf0`；本地 main 已跟随远端，原本地提交保留在交接分支。源码同步/镜像结果见第 5 节与第 7.4 节。**第 7.1 节第 3、4 项及 R1–R10 仍未修复**，不得把整理提交或 CI 全绿当作这些问题已闭环。
 
 ### 7.1 建议尽快修（影响已加上的防护或文档正确性）
 
@@ -188,10 +189,10 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 ### 7.4 会话收尾与新对话入口（2026-10-06）
 
 - **用户最新要求**：整理仓库与文档、推送 GitHub，然后换对话；已明确授权推送，且已说明 main 推送会触发 Docker 工作流发布 latest。本轮没有扩大范围去修 R1–R10。
-- **本轮实际改动**：`a0882c2` 收紧票据限流豁免，新增 `tests/rate-limit.test.js` / `tests/documentation.test.js`；README、配置、开发、安全策略同步真实边界和验证口径。本文件集中登记审查发现，未另建接手报告；`verify` 文档新增显式密码的临时用法，R10 的 CLI 实现仍待修。
+- **本轮实际改动**：本地提交 `a0882c2`（已包含于 GitHub `984ccf0`）收紧票据限流豁免，新增 `tests/rate-limit.test.js` / `tests/documentation.test.js`；README、配置、开发、安全策略同步真实边界和验证口径。本文件集中登记审查发现，未另建接手报告；`verify` 文档新增显式密码的临时用法，R10 的 CLI 实现仍待修。
 - **收尾门禁**：再次运行 `npm run check && npm run build && TEST_PYTHON=python3 TEST_PHP=php npm test`，退出 0，118 宿主/辅助语法文件、143 桥接语法文件、空壳检查、生产构建通过；124 项 = 75 后端 + 49 UI，0 跳过。仅保留构建 chunk 大小提示。未做本机 Docker 或新增外部站点播放验证。
 - **当前测试服务**：本机 `http://127.0.0.1:54058` 保持运行，首页、后台、健康接口实际返回 200；使用独立临时 DATA_DIR，未启动或改写仓库正式用户 data。测试数据保留，不要为清理仓库而删掉。仓库外 `../coketv-audit/preview-session.json` 记录 PID 与测试数据位置，不含密码或初始化码；换对话后先确认进程是否仍在，避免重复启动或覆盖测试数据。该记录与全部探测脚本都不提交。
-- **提交/推送状态**：代码提交已完成，接手文档提交及首次推送正在进行；结束前需核对远端 SHA 和工作区，再把 Actions/镜像结果写回第 5 节。若仅更新发布记录，提交可标记 `[skip ci]`，避免重复发布相同代码；这不用于跳过代码变更的验证。
+- **提交/推送状态**：源码和接手文档已同步到 GitHub，本地 main 已与远端一致；原本地提交保留在 `handoff-local-20261006`。本机 Git HTTPS 没有登录凭据、也没有现成 SSH 身份，本次使用已登录且有仓库写权限的 GitHub 连接追加快照提交，未强推或覆盖原远端历史；以 Git tree 相等核对全部文件内容和权限。下一轮推送需使用该连接或先配置正常 Git 登录，不能因为认证失败强制改写远端。CI/镜像状态见第 5 节；本次收尾纯文档补记标记 `[skip ci]`，这不用于跳过代码变更的验证。
 - **新对话按顺序读**：AGENTS → 本文件 → 需要改代码时读正式开发/配置/安全文档。先读取第 7.1 节保留项及第 7.3 节 R1–R10，再结合第 8 节的本机探测脚本继续；建议优先 R1、R2/R7，保持五引擎和原源协议，先建立能失败的回归再修。
 
 ## 8. 验证证据与探测脚本
