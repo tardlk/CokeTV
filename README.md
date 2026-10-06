@@ -60,7 +60,7 @@ docker buildx build --platform linux/amd64 --load \
   --build-arg INSTALL_BROWSER=1 -t coketv:browser .
 ```
 
-浏览器版在设置中填写 /usr/bin/chromium。镜像发布前会验证全新空数据启动、管理鉴权与 JS/Python/PHP 实际执行。构建状态见 [GitHub Actions](https://github.com/tardlk/CokeTV/actions)。
+浏览器版在设置中填写 /usr/bin/chromium。本地待发布工作流已扩展发布前门禁：原生 amd64 验证空数据、五引擎实际媒体、旧框架升级、私密配置与同卷重启；验收后只发布同一镜像。PR 和手动默认 dry-run 只构建/验收，不写 GHCR。本轮原生容器门禁尚未执行，不能据此声称新镜像已验收或发布。构建状态见 [GitHub Actions](https://github.com/tardlk/CokeTV/actions)。
 
 ## 使用流程
 

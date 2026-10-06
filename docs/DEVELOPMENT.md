@@ -89,6 +89,19 @@ HTTP 服务启动时不初始化源引擎。执行子进程按需启动，可超
 
 `scripts/check-shell.mjs` 检查发行树没有可注册站点、解析脚本或 JSON 站点资源；`tests/shell.test.js` 使用默认启动路径验证零源和空默认配置。必要的 JS/CatVod 辅助模块、HIPY core/base、PHP bridge/lib 和 WASM 保留，不能因“空壳”删除兼容内核。
 
-`.github/workflows/docker.yml` 在 main、v* 标签或手动运行时执行源码测试，然后在原生 x86 GitHub runner 构建 linux/amd64 镜像。先加载本地镜像，用 `scripts/container-smoke.mjs` 验证零源/首次密码/真实 JS、Python、PHP 调用，再发布 latest、sha-* 或版本标签到 GHCR。测试使用临时容器和临时数据，不能拿正式数据作构建输入。
+`.github/workflows/docker.yml` 的候选任务使用原生 `ubuntu-24.04` amd64 runner，先执行源码门禁，再构建一次镜像并运行 `scripts/container-matrix.mjs`。PR 与手动默认 `dry_run=true` 没有 packages 写权限或 GHCR 登录；main/v* push、或显式关闭 dry-run 的 main/v* 手动运行，才允许在候选任务成功后进入发布任务。
 
-本机无 Docker 引擎；2026-10-05 GitHub原生x86容器验收与发布已通过，见 [Docker amd64](https://github.com/tardlk/CokeTV/actions/runs/37252776569)。对应功能提交 `3b17276`，镜像 `ghcr.io/tardlk/coketv:sha-3b17276`，同digest也发布为latest，匿名拉取元数据已验证。失败时修复后重试，不在检查失败时发布。接手摘要见 `docs/AI_HANDOFF.md`。
+容器矩阵使用独立临时卷与 compose 同等的 `cap_drop=ALL` / `no-new-privileges` 约束，检查非 root、零源、首装、正式 verify CLI、五引擎实际 GET/HEAD/Range/HLS 分片/key、同卷重启/旧票据失效，以及注入的升级/票据/出口/0600/异常/CLI 回归。另建卷验证损坏 state/ENV 拒绝启动且保留内容、旧 root 属主失败后按 README 修正恢复。冻结旧桥接、固定源与测试脚本通过 `docker cp` 注入临时写层，最终镜像只带 `check-shell.mjs` 和正式 `verify.mjs`，不能 commit 测试容器为发行镜像。测试数与解释器版本以容器报告和 TAP 为准，失败或跳过都阻止候选通过。
+
+验收成功后 `docker save` 保存原镜像，记录 tar SHA256、image ID、源码 SHA 与 artifact digest。发布任务只下载该 artifact，校验 tar/image ID/OCI revision/platform 后登录并推送，不重新构建。候选失败、PR、dry-run 与工作分支不能发布；`tests/release-gates.test.js` 覆盖这些门禁。artifact 交接沿用 [GitHub 官方说明](https://docs.github.com/en/actions/tutorials/store-and-share-data)，额外 tar 校验不接受只告警的 digest 不一致。
+
+原生 Linux amd64 机器可以手动执行：
+
+```sh
+docker buildx build --platform linux/amd64 --load -t coketv:candidate .
+CONTAINER_REPORT_DIR=/tmp/coketv-container-report node scripts/container-matrix.mjs coketv:candidate
+```
+
+不要在正式 data 上验收。报告记录平台、UID、Node/Python/PHP、源码 SHA、镜像 ID、清单与零跳过 TAP；启动初始化码从日志产物中隐藏。`.github/workflows/image-verify.yml` 匿名拉取给定固定 SHA/digest 后复用完整矩阵，产物保存到工作流。旧 `latest` 可供手动选择，但不能用它证明本次源码已发布。
+
+本机没有 Docker CLI。本轮只执行了源码测试、actionlint（禁用独立 shellcheck/pyflakes）和本机临时服务上的 image-verify 脚本实跑，尚未运行新候选的原生容器矩阵、PR/dry-run CI 或发布后镜像验收；当前证据见 `docs/AI_HANDOFF.md` 第 7.10 节。历史镜像结果仍只代表当时版本。

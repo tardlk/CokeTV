@@ -50,7 +50,7 @@
 | `web/SourceImport.vue` / `web/WebPlayer.vue` | 导入窗口和播放器 |
 | `scripts/check-shell.mjs` | 发行树零预置源断言（spider 逐文件白名单 + 全 engine 内容判定） |
 | `scripts/check-bridges.mjs` | `engine/spider/**` 的 ast.parse / php -l / node --check |
-| `scripts/container-smoke.mjs` | x86 空容器与 JS/Python/PHP 真实执行验收 |
+| `scripts/container-smoke.mjs` / `container-matrix.mjs` | 空容器检查与原生 amd64 完整矩阵（本轮待执行） |
 
 `engine/spider/` 只保留辅助模块、HIPY core/base、PHP 桥接/lib 和 WASM。`engine/json/`、`engine/jx/`、`engine/data/` 为空，config 是空默认值。第一次准备空运行目录；升级保留已有 data，不添加原站点。
 
@@ -65,8 +65,8 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 当前实测门禁（2026-10-06，macOS arm64 / Node 22 / Python 3.12.14 / PHP 8.4.23）：
 
-- `npm run check`：`120 文件语法` + `143 桥接文件语法` + 空壳通过（spider 37 个文件全部已登记；engine 共 156 个文件无站点规则/清单）
-- `npm test`：**159 测试 = 110 后端 + 49 UI**，全绿；全部使用临时数据目录
+- `npm run check`：`122 文件语法` + `143 桥接文件语法` + 空壳通过（spider 37 个文件全部已登记；engine 共 156 个文件无站点规则/清单）
+- `npm test`：**169 测试 = 120 后端 + 49 UI**，全绿；全部使用临时数据目录
 - `npm audit`：4 项 = 1 runtime `node-forge`（上游无修复版本）+ 3 dev-only（vitest/tinypool/@vitest/mocker），见 `SECURITY.md`
 - `npm run build`：通过
 
@@ -128,11 +128,11 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 ## 7. 当前状态与下一步待办
 
-接手时 `main` 领先 `origin/main` 9 个提交的描述是历史快照。本轮限流修复的本地提交是 `a0882c2`，其内容现已同步到 GitHub 代码快照 `984ccf0`；本地 main 已跟随远端，原本地提交保留在交接分支。源码同步/镜像结果见第 5 节与第 7.4 节。**R1–R10 已在本地接手修复**，见第 7.5–7.8 节；第 7.1 节第 3、4 项仍保留，容器旧数据/媒体验收与发布未执行。第 5 节远端镜像尚不包含本次本地修复。
+接手时 `main` 领先 `origin/main` 9 个提交的描述是历史快照。本轮限流修复的本地提交是 `a0882c2`，其内容现已同步到 GitHub 代码快照 `984ccf0`；本地 main 已跟随远端，原本地提交保留在交接分支。源码同步/镜像结果见第 5 节与第 7.4 节。**R1–R10 已在本地接手修复**，见第 7.5–7.8 节；第 7.1 节第 3 项媒体头兼容也已本地修复（第 7.10 节），第 4 项管理员锁出行为保持原产品约定；原生容器验收与发布未执行。当前工作分支与本地检查点见第 7.10 节，第 5 节镜像只是历史产物，不包含本次本地修复。
 
 ### 7.1 建议尽快修（影响已加上的防护或文档正确性）
 
-本次接手逐条核对：接手时四项原待办均存在；现已完成第 1、2 项，第 3、4 项保留。编号保持不变，便于对照原接手要求。
+本次接手逐条核对：接手时四项原待办均存在；现已完成第 1、2、3 项（第 3 项本地验证见 7.10），第 4 项维持现状并单独作产品决策。编号保持不变，便于对照原接手要求。
 
 1. **限流豁免范围过大（中，已修）**：修复前 `probe15` 在 `RATE_LIMIT_PER_MINUTE=5` 下复现 `/watch/sources` 4×200 后 429；带匿名媒体票据的 `/proxy/<id>/` 12×200、0×429，后续又驱动 30 次引擎执行。原因是任何有效票据都豁免，而媒体票据在 `/proxy/:module/*` 只绑定源、不绑定 URL。
    - 当前仅 GET/HEAD 媒体转发路由（`/mediaProxy`、`/req/*`、`/m3u8-proxy/{playlist,ts,proxy}`、`/unified-proxy/proxy`、`/file-proxy/proxy`）中，票据有效且 `kind === 'proxy'`、目标 URL 与票据一致时豁免。`/proxy/:module/*` 及其他公开接口照常计入原 IP 桶，默认 1200/min；不变更媒体票据的源代理兼容权限。
@@ -140,7 +140,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
    - 修复后同一 `probe15`：带媒体票据的 `/proxy/` 12×429、0×200，后续引擎执行数为 0。
    - `tests/rate-limit.test.js` 修复前实际失败（期望 429，实际 200），修复后通过：预算内源代理返回正常；预算耗尽后拒绝且不执行引擎；编码/absolute-form 不能绕过；HLS 分片/key 高频 GET、HEAD、Range 与 base64 目标保持可用；票据换目标/挪到其他路由不豁免；源代理 `toBytes=2` 302 补签仍可匿名跟随。
 2. **`docs/DEVELOPMENT.md` 计数陈旧（低，已修）**：接手时仍写 `114 项测试（66 后端、48 UI）、117 个文件语法检查`。已删除固定计数，指向 `npm test` / `npm run check` 实际输出及本文件第 4 节的验证记录。`tests/documentation.test.js` 在原文上实际失败，修订后通过，防止“当前验证”重新维护固定测试/语法文件计数。
-3. **`/mediaProxy` 与 `/proxy` 的头处理不一致（提示）**：`/proxy` 已能解包旧基类 `header`+`form=base64` 并补签票据，而直接请求 `/mediaProxy?url=…&header=<b64>` 仍只认 `headers`（复数 JSON），且只有订阅 Token 路径读调用方头，`admin`/内部运行时拿到的头恒为 `{}`。若源在服务端自行拼 `mediaProxyUrl` 就会丢头。建议把 `unwrapMediaProxyContent` 的解包逻辑复用到 `/mediaProxy`。本次在临时目录和固定 HTTP 上游复核：订阅 Token + `headers` JSON 的 Referer 可透传；订阅 Token + `header` base64、管理员 + `headers` JSON、内部运行时 + `headers` JSON 均丢失 Referer（四条请求均为 200）。本次未修改此行为。
+3. **`/mediaProxy` 与 `/proxy` 的头处理不一致（本地已修）**：以下保留原复核证据；当前实现与新增失败/通过回归见第 7.10 节。审查时 `/proxy` 已能解包旧基类 `header`+`form=base64` 并补签票据，而直接请求 `/mediaProxy?url=…&header=<b64>` 仍只认 `headers`（复数 JSON），且只有订阅 Token 路径读调用方头，`admin`/内部运行时拿到的头恒为 `{}`。若源在服务端自行拼 `mediaProxyUrl` 就会丢头。建议把 `unwrapMediaProxyContent` 的解包逻辑复用到 `/mediaProxy`。本次在临时目录和固定 HTTP 上游复核：订阅 Token + `headers` JSON 的 Referer 可透传；订阅 Token + `header` base64、管理员 + `headers` JSON、内部运行时 + `headers` JSON 均丢失 Referer（四条请求均为 200）。该审查阶段未修改此行为；后续本地修复已完成。
 4. **管理员锁出边界（提示）**：失败预算按 IP 20/min，耗尽后**同一 IP 即使给正确密码也 429**（已测试、已文档化）。`TRUST_PROXY=1` 且前置代理不覆写 `X-Forwarded-For` 时，可被伪造 IP 用来把管理员锁在 `/admin` 外（每 60 秒窗口需重新打满 20 次）。可选改进：只对失败计数、成功凭据始终放行。本次核对守卫仍在校验密码前检查失败预算；完整测试中的 `P0-3` 用例再次确认预算耗尽后正确密码也 429。本次未修改此行为。
 
 本次限流修复阶段的实际验证（2026-10-06，收尾推送前的历史记录）：
@@ -187,7 +187,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - 本轮重新执行 `npm run check && npm run build && TEST_PYTHON=python3 TEST_PHP=php npm test`，退出 0：118 个宿主/辅助文件语法、143 个桥接文件语法、空壳检查、生产构建通过；75 后端 + 49 UI = 124 项全部通过，0 跳过，五引擎固定样本通过。构建仍有大于 500 kB 的 chunk 提示。这批独立探测尚未成为仓库内回归，不增加测试计数，也没有删除、放宽或跳过既有断言。
 - 本轮未做 Docker、真实站点播放、浏览器端真实音视频播放或原 drpy-node-coder CLI。未 commit、push、发布、重建镜像或修改远端；实际执行的是本仓库的 verify CLI，二者不能混称。
 
-当前 R1–R10 已在本地修复。下一步处理第 7.1 节第 3 项媒体请求头协议一致性；第 4 项管理员锁出行为属于可选改进。发布前另做容器旧数据升级、真实媒体转发与重启持久化验收，再执行发布门禁。后续仍先补能失败的回归再修，保留五引擎和源协议。
+当前 R1–R10 已在本地修复。后续第 7.1 节第 3 项媒体请求头一致性已在本地完成，见第 7.10 节；第 4 项管理员锁出行为维持原约定。发布前另做容器旧数据升级、真实媒体转发与重启持久化验收，再执行发布门禁。后续仍先补能失败的回归再修，保留五引擎和源协议。
 
 ### 7.4 上次会话收尾与新对话入口（2026-10-06，历史记录）
 
@@ -240,9 +240,9 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **完整门禁**：新增共七条回归，最终 `npm run check`、`npm run build`、指定真实 Python/PHP 的 `npm test` 全部退出 0；120 宿主/辅助语法、143 桥接语法、spider 37/engine 156 空壳检查；110 后端 + 49 UI = 159 项全部通过，0 跳过。五引擎及前三组回归保留；构建仍有大于 500 kB chunk 提示。测试环境仍为 Node 22.23.3、Python 3.12.14、PHP 8.4.23。
 - **当前状态与范围**：R1–R10 全部在本地修复；没有修改用户 data，未 commit、push、发布或重建镜像；未做 Docker/真实站点/浏览器音视频/原 drpy-node-coder CLI，也未新跑 npm audit。第 7.1 节第 3、4 项和第 7.2 节长期工作保留；容器旧数据升级、真实媒体转发与重启持久化仍须验收，不能把本机源码全绿视为镜像验收完成。
 
-### 7.9 后续执行计划（2026-10-06，计划待执行）
+### 7.9 后续执行计划（2026-10-06，阶段 0/1 已执行，容器与发布待执行）
 
-本计划基于当前工作区与工作流静态核对；不表示下面工作已经完成。基线为 R1–R10 本地修复、159 项测试通过，尚未 commit/push/发布。本机实际检查没有 Docker CLI，因此容器验收使用 GitHub 原生 linux/amd64 runner，不能以本机源码测试替代。顺序为保存基线 → 请求头兼容 → 候选镜像与发布前门禁 → 容器矩阵 → 审查提交与发布 → 发布后复验。
+以下保留制定时的计划；实际执行状态见第 7.10 节，不能把配置准备当作容器验收完成。制定时基线为 R1–R10 本地修复、159 项测试通过，尚未 commit/push/发布。本机实际检查没有 Docker CLI，因此容器验收使用 GitHub 原生 linux/amd64 runner，不能以本机源码测试替代。顺序为保存基线 → 请求头兼容 → 候选镜像与发布前门禁 → 容器矩阵 → 审查提交与发布 → 发布后复验。
 
 **阶段 0：保存和审查基线**
 
@@ -298,6 +298,19 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 - 管理员锁出行为单独讨论：维持当前文档化预算，或成功凭据绕过鉴权失败预算；后者须评估高并发 KDF 成本、IP/NAT/反代假头与总请求限流的关系，再配回归。本轮发布计划不自动改变这一行为。
 - 每源进程隔离、供应链 SHA/hash 固定、fServer WebSocket、依赖专项升级与更广泛站点验收进入下一轮。源同权限执行和零预置源/五引擎约定持续有效。
+
+### 7.10 本轮执行结果与发布准备（2026-10-06）
+
+- **范围与授权**：接手现有工作区，先检查 git status，再读 AGENTS/本文件；未重新克隆、覆盖或清理已有改动。本次允许本地工作和发布准备，未推送 main/工作分支、创建 PR、触发远端工作流或发布。历史交接授权未当作本次发布指令。管理员锁出预算与行为未改；五引擎、原源协议、零预置源和源同权限信任边界保留。
+- **阶段 0 已执行**：在 `work/media-release-gates-20261006` 保存全部既有 R1–R10 修复为本地检查点 `73b4aa3`；媒体修复为本地提交 `ab7148e`。审查待提交文件、差异及 gitignore/dockerignore，没有已跟踪的 data/工具/虚拟环境/私密 HANDOFF；正式用户 data 未改。重新跑接手基线门禁，159 项全过、0 跳过。只读 `git ls-remote origin refs/heads/main` 为 `75748f1601f8993b59feefd0cb295990edf12639`，未执行 fetch/reset 或远端写入。
+- **阶段 1 先失败后通过**：`tests/proxy-headers.test.js` 新增六条固定 HTTP 上游回归，现有实现实际 4 通过/6 失败/0 跳过；随后用隔离的原 server 快照再确认同样的协议失败。修复后媒体/播放/安全/限流专项 37/37 通过。最后对照 Python 基类增加真实 `proxy_media_url` 的 base64 加号回归，修复前专项实际 1 失败（400），修复后媒体专项 11/11 通过、0 跳过；未删除或放宽原断言。
+- **媒体实现**：`src/media-params.js` 统一明文/base64 URL、JSON/base64 UTF-8 headers/旧 header、额外一层 URL 编码；headers 按字段存在优先，不受 form 控制，不回退到另一字段掩盖错误。查询参数中的非法 JSON/base64、数组/标量、非字符串值、非法 HTTP 头名/值明确 400；不重复解码签名 URL。合法 HTTP token 头名保留。宿主兼容旧 Python 未转义的 base64 加号；`engine/spider/py/base/spider.py` 的新生成地址正确 URL 编码，经启动框架刷新进入运行副本。
+- **媒体权限/兼容实测**：订阅 GET/HEAD 继续受限；管理员/内部显式 Cookie/Authorization、Referer/UA 可达实际上游，入站 Basic/内部密钥不自动外传。匿名能力票据只用已绑定头，调用方畸形/覆盖参数不改能力；更换目标拒绝。源直接返回本服务旧 `/mediaProxy` URL 时，实际跟随 `/play` 最终地址，GET/HEAD/Range、HLS 主/子列表、分片/key 与 toBytes=2/3 均成功，源凭据保密。匿名、票据范围/篡改、SSRF、限流、长媒体回归仍通过。
+- **阶段 2/3 仅完成准备**：Dockerfile 纳入正式 `scripts/verify.mjs`，移除预置 smoke 脚本；固定源/冻结桥接/测试脚本只通过 docker cp 注入一次性容器。新增 `container-matrix.mjs`，强制原生 Linux x64 与 linux/amd64/non-root/UID 1000；配置空数据/首装、五引擎实际媒体/正式 CLI、同卷重启、独立临时目录的升级与安全回归、损坏 state/ENV 保留、旧 root 属主修正场景。报告记录源码/验证 SHA、镜像 ID、解释器/UID、清单与 TAP，初始化码脱敏；失败/跳过使验收失败。**尚未构建候选镜像、运行 Docker 或完整原生矩阵，本阶段完成标准未达到。**
+- **发布门禁准备**：候选 job 只读，PR 与手动默认 dry-run 没有 GHCR 登录/写入；发布 job 依赖候选成功且只允许 main/v* 的发布事件。验收后 save 原镜像，通过 artifact 交接；发布前校验 tar SHA256、image ID、源码 SHA、OCI revision 和平台，不重建、不 commit 测试容器。发布后 image-verify 工作流匿名拉取指定镜像并复用完整矩阵。三条门禁回归对旧工作流/Dockerfile 实际全部失败，对新版本全部通过；这是本地配置/条件验证，**没有执行真实 PR/dry-run 故障注入 CI**。
+- **已执行的脚本/配置验证**：本机临时服务上运行新 image-verify，真实 Node/Python/PHP 执行五引擎首页/分类/搜索/详情/代理/正式 CLI，并请求 GET/HEAD/Range/HLS 主子列表/分片/key；在同一临时目录重启服务后快照（脚本/实例/参数/配置/ENV/订阅/凭据/版本历史）、旧票据失效与媒体复验通过。这是 macOS 源码服务验证，不是容器/卷验收。actionlint 1.7.12 检查三个工作流通过（未使用独立 shellcheck/pyflakes），六个多行 run 块的 bash -n 通过；工具位于忽略目录，不进发行。
+- **最终源码门禁**：按用户指定 PATH、TEST_PYTHON、TEST_PHP 执行 `npm run check && npm run build && npm test`，退出 0；122 宿主/辅助语法文件、143 桥接文件、spider 37/engine 156 空壳检查通过；120 后端 + 49 UI = **169 项全部通过、0 跳过**。Node 22.23.3、Python 3.12.14、PHP 8.4.23；保留构建 chunk 大于 500 kB 提示。`npm audit --json` 实际仍 4 项；`npm audit --omit=dev --json` 仅 node-forge high、无修复版本，未改依赖。
+- **下一步明确待执行**：授权安排工作分支/PR 或手动只读候选 CI，在原生 amd64 上完成完整矩阵及发布步骤 skipped/故障阻断证据，修复实际容器失败并复跑；再另行安排 main/tag 推送发布同一验收镜像、记录 digest/标签/OCI revision/CI 链接与匿名发布后复验。本机仍无 Docker CLI，未做外站、浏览器真实音视频或原 drpy-node-coder CLI 验收。不能用历史镜像结果或本地全绿替代这些未执行项。
 
 ## 8. 验证证据与探测脚本
 
