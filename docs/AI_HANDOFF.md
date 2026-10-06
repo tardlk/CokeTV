@@ -319,7 +319,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - 源码 [Verify 37455466575](https://github.com/tardlk/CokeTV/actions/runs/37455466575) 已由工作分支 push 自动启动；本条记录时状态为 completed / failure。此次没有原生 Docker 结果，不能据此将第 7.9 阶段 2/3 标为完成。
 - 本补记仅修改交接文档，使用 `[skip ci]` 避免重复运行同一源码。接下来使用本地 `github/media-release-gates-20261006` 跟踪远端工作分支继续开发；原 `work/media-release-gates-20261006` 保留原本地检查点历史。源码/容器门禁和 main 发布仍按第 7.9 节执行。
 
-- **工作分支 CI 后续修正**：首轮 Verify 的 check/build 成功，后端 119/120 通过、0 跳过；失败仅为 `private-data.test.js` 把 CI 的 `TEST_PHP=php` 命令名当私密路径，误命中源文件 `.php` 后缀。先在本机用 PATH 命令形式实际复现同一失败，再通过真实解释器 `PHP_BINARY` 取得绝对路径并用于原样保密断言与桥接执行；没有删除/放宽断言、改变宿主错误或跳过测试。命令形式专项 6/6 通过，指定本机解释器的完整 check/build/test 再次退出 0：120 后端 + 49 UI = 169 全过、0 跳过。此修正已准备同步工作分支并触发新源码 CI；原生容器矩阵仍未执行。本机修正检查点保留在 `local-ci-php-checkpoint-20261006`，跟踪分支在远端 tree 核对一致后对齐，文件内容保持不变。
+- **工作分支 CI 后续修正**：首轮 Verify 的 check/build 成功，后端 119/120 通过、0 跳过；失败仅为 `private-data.test.js` 把 CI 的 `TEST_PHP=php` 命令名当私密路径，误命中源文件 `.php` 后缀。先在本机用 PATH 命令形式实际复现同一失败，再通过真实解释器 `PHP_BINARY` 取得绝对路径并用于原样保密断言与桥接执行；没有删除/放宽断言、改变宿主错误或跳过测试。命令形式专项 6/6 通过，指定本机解释器的完整 check/build/test 再次退出 0：120 后端 + 49 UI = 169 全过、0 跳过。此修正已同步为远端源码提交 `2e108e91f37e41fca5cf1d017027609411e7a040`，新的 [Verify 37455860875](https://github.com/tardlk/CokeTV/actions/runs/37455860875) 已 success：源码检查、构建和 120 后端 + 49 UI = 169 项测试全过、0 跳过；这是 GitHub Linux 源码验证，原生容器矩阵仍未执行。本机修正检查点保留在 `local-ci-php-checkpoint-20261006`，跟踪分支在远端 tree 核对一致后对齐，文件内容保持不变。
 
 ## 8. 验证证据与探测脚本
 
