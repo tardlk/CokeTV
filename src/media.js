@@ -1,5 +1,6 @@
 import http from 'http';
 import https from 'https';
+import {pinnedLookup} from './outbound.js';
 
 const HOP_HEADERS = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
 const cleanHeaders = headers => Object.fromEntries(Object.entries(headers || {}).filter(([key]) => !HOP_HEADERS.has(key.toLowerCase())));
@@ -43,14 +44,16 @@ export async function streamMedia(url, headers, request, reply, {base, token, mi
     try { parsed = new URL(url); } catch { throw Object.assign(new Error('媒体地址无效'), {statusCode: 400}); }
     if (!['http:', 'https:'].includes(parsed.protocol)) throw Object.assign(new Error('只支持 HTTP/HTTPS 媒体地址'), {statusCode: 400});
     // 入口与每次重定向后都复核目标地址（SSRF/云元数据）。
-    if (guard) await guard(parsed.href);
+    const addresses = guard ? await guard(parsed.href) : null;
     if (redirects > 5) throw new Error('媒体重定向次数过多');
     const outgoingHeaders = {...cleanHeaders(headers), ...(request.headers.range ? {Range: request.headers.range} : {}), 'Accept-Encoding': 'identity'};
     if (body) { outgoingHeaders['Content-Length'] = Buffer.byteLength(body); outgoingHeaders['Content-Type'] ||= 'application/json'; }
     const transport = parsed.protocol === 'https:' ? https : http;
     const upstream = await new Promise((resolve, reject) => {
         let settled = false;
-        const outgoing = transport.request(parsed, {method: method || (request.method === 'HEAD' ? 'HEAD' : 'GET'), headers: outgoingHeaders}, response => { settled = true; resolve(response); });
+        const outgoing = transport.request(parsed, {method: method || (request.method === 'HEAD' ? 'HEAD' : 'GET'), headers: outgoingHeaders,
+            // Fresh sockets cannot reuse a global Agent's previous DNS/policy.
+            agent: false, ...(addresses ? {lookup: pinnedLookup(addresses)} : {})}, response => { settled = true; resolve(response); });
         const abort = () => {
             // 不向 destroy 传 Error：已 settle 的流再抛 error 会成为未捕获异常。
             if (!settled) { settled = true; reject(new Error('客户端已断开')); }

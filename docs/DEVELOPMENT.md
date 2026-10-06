@@ -33,6 +33,11 @@ TEST_PYTHON="$PWD/.venv/bin/python3" TEST_PHP=php npm test
 - JS、CatVod、HIPY、PHP、DR2 的首页、分类、搜索、详情、播放与代理协议。
 - 实例参数、源级 ENV 隔离、配置持久化、备份与订阅范围。
 - 二进制代理、Range/206、HLS 分片与 key 改写。
+- 旧 PHP/Python 运行副本升级、五引擎升级后执行，以及用户脚本、辅助文件、ENV、订阅、配置与历史保留；JSON 入站可用且旧 pickle 入站被拒绝。
+- 随机媒体/分片票据保密、过期与容量回收、URL/源/路由范围，以及长签名地址的实际媒体跟随、Range 和 HEAD。
+- IPv4/IPv6/映射地址和元数据判定、受控两次 DNS 答案、每跳连接地址绑定、Host/TLS SNI 与真实证书校验，以及 `/http` 的重定向出口和方法/请求体/头/响应兼容。
+- PHP 普通/初始化/解释器失败的安全错误、脱敏诊断与参数编码/嵌套 ENV/JSON 标量边界，以及私密临时文件权限、设置/导入/重启和引擎 ENV 写入的 0600 保持。
+- PHP 多层继承/trait 的最近声明与同层候选顺序，以及真实 verify CLI 的 v2/旧凭据迁移、stdin、远端服务与终端不回显/取消恢复。
 - 源导入、压缩源编辑、语法检查、版本恢复与同名创建保护。
 - 同步死循环回收，后续调用与管理服务可继续运行。
 - UI 创建后跳转、重命名、语言筛选、订阅排序、配置表单与退出保护。
@@ -55,14 +60,20 @@ TVBox 链接导入位于 `src/tvbox-import.js`；生成的采集脚本调用 `en
 ## 源诊断
 
 ```sh
-ADMIN_PASSWORD='<当前管理密码>' npm run verify -- <源实例ID> [服务地址]
+npm run verify -- <源实例ID> [服务地址]
+# 自动化可由密码管理工具将密码输出到 stdin：
+npm run verify -- <源实例ID> [服务地址] --password-stdin
 ```
 
-源的自动诊断沿用原规则协议。当前脚本仍尝试读取旧格式的明文 password 字段，GUI 创建的 v2 哈希凭据需要显式传入 ADMIN_PASSWORD（已复现，待修 R10）；不要把真实密码写入文档、脚本或提交。本机未安装原 drpy-node-coder CLI，不能声称运行过该工具。
+终端默认提示管理密码且不回显，支持 Unicode、空格、冒号与退格；Ctrl-C/Ctrl-D 取消，退出时恢复终端模式。已通过运行环境注入 `ADMIN_PASSWORD` 时直接使用该值；显式 `--password-stdin` 优先从管道读取至 EOF，只去掉一个末尾 LF/CRLF，保留密码首尾空格。在终端直接使用该选项时仍走隐藏提示，按回车提交。终端/stdin 输入上限为 4096 UTF-8 字节。非交互环境没有凭据或输入为空时明确失败，不发送源请求。`--help` 查看用法。
+
+CLI 不读取本地 admin.json，不依赖 DATA_DIR，也不恢复或保存明文密码；本地 GUI 创建的 v2 哈希和远端服务使用同样的显式凭据方式。旧明文格式在服务端成功登录后照常迁移，迁移后命令仍可使用。首页、分类、详情诊断沿用原源协议；不要把真实密码写入命令行参数、文档、脚本或提交。本次运行的是本仓库的 verify CLI，本机未安装原 drpy-node-coder CLI，不能混称。
 
 ## 执行与前端加载
 
 HTTP 服务启动时不初始化源引擎。执行子进程按需启动，可超时回收；顶层请求串行排队，上限 64。Python 与源辅助服务不额外开放公网端口。
+
+`src/runtime-files.js` 登记 `spider/` 下随启动刷新的框架保留路径，并供空壳发行检查共用；新增桥接、基类或兼容辅助文件必须登记。更新时逐文件原子替换，不递归替换用户源目录。`tests/fixtures/legacy-runtime/` 冻结旧版本桥接，仅在临时目录用于升级回归，不进入镜像。
 
 源编辑工作区与 Monaco 代码编辑器独立按需加载。管理列表打开时不加载代码编辑器。
 
@@ -78,6 +89,19 @@ HTTP 服务启动时不初始化源引擎。执行子进程按需启动，可超
 
 `scripts/check-shell.mjs` 检查发行树没有可注册站点、解析脚本或 JSON 站点资源；`tests/shell.test.js` 使用默认启动路径验证零源和空默认配置。必要的 JS/CatVod 辅助模块、HIPY core/base、PHP bridge/lib 和 WASM 保留，不能因“空壳”删除兼容内核。
 
-`.github/workflows/docker.yml` 在 main、v* 标签或手动运行时执行源码测试，然后在原生 x86 GitHub runner 构建 linux/amd64 镜像。先加载本地镜像，用 `scripts/container-smoke.mjs` 验证零源/首次密码/真实 JS、Python、PHP 调用，再发布 latest、sha-* 或版本标签到 GHCR。测试使用临时容器和临时数据，不能拿正式数据作构建输入。
+`.github/workflows/docker.yml` 的候选任务使用原生 `ubuntu-24.04` amd64 runner，先执行源码门禁，再构建一次镜像并运行 `scripts/container-matrix.mjs`。PR 与手动默认 `dry_run=true` 没有 packages 写权限或 GHCR 登录；main/v* push、或显式关闭 dry-run 的 main/v* 手动运行，才允许在候选任务成功后进入发布任务。
 
-本机无 Docker 引擎；2026-10-05 GitHub原生x86容器验收与发布已通过，见 [Docker amd64](https://github.com/tardlk/CokeTV/actions/runs/37252776569)。对应功能提交 `3b17276`，镜像 `ghcr.io/tardlk/coketv:sha-3b17276`，同digest也发布为latest，匿名拉取元数据已验证。失败时修复后重试，不在检查失败时发布。接手摘要见 `docs/AI_HANDOFF.md`。
+容器矩阵使用独立临时卷与 compose 同等的 `cap_drop=ALL` / `no-new-privileges` 约束，检查非 root、零源、首装、正式 verify CLI、五引擎实际 GET/HEAD/Range/HLS 分片/key、同卷重启/旧票据失效，以及注入的升级/票据/出口/0600/异常/CLI 回归。另建卷验证损坏 state/ENV 拒绝启动且保留内容、旧 root 属主失败后按 README 修正恢复。冻结旧桥接、固定源与测试脚本通过 `docker cp` 注入临时写层，最终镜像只带 `check-shell.mjs` 和正式 `verify.mjs`，不能 commit 测试容器为发行镜像。测试数与解释器版本以容器报告和 TAP 为准，失败或跳过都阻止候选通过。
+
+验收成功后 `docker save` 保存原镜像，记录 tar SHA256、image ID、源码 SHA 与 artifact digest。发布任务只下载该 artifact，校验 tar/image ID/OCI revision/platform 后登录并推送，不重新构建。候选失败、PR、dry-run 与工作分支不能发布；`tests/release-gates.test.js` 覆盖这些门禁。artifact 交接沿用 [GitHub 官方说明](https://docs.github.com/en/actions/tutorials/store-and-share-data)，额外 tar 校验不接受只告警的 digest 不一致。
+
+原生 Linux amd64 机器可以手动执行：
+
+```sh
+docker buildx build --platform linux/amd64 --load -t coketv:candidate .
+CONTAINER_REPORT_DIR=/tmp/coketv-container-report node scripts/container-matrix.mjs coketv:candidate
+```
+
+不要在正式 data 上验收。报告记录平台、UID、Node/Python/PHP、源码 SHA、镜像 ID、清单与零跳过 TAP；启动初始化码从日志产物中隐藏。`.github/workflows/image-verify.yml` 匿名拉取给定固定 SHA/digest 后复用完整矩阵，产物保存到工作流。旧 `latest` 可供手动选择，但不能用它证明本次源码已发布。
+
+本机没有 Docker CLI。本轮 GitHub [PR #1 原生 amd64 候选验收](https://github.com/tardlk/CokeTV/actions/runs/37456713645) 已成功：源码门禁、构建和完整矩阵通过，publish job skipped，容器 TAP 全过且零跳过。已核对报告、ZIP digest 和镜像标识，实际结果见 `docs/AI_HANDOFF.md` 第 7.12 节；未合并 main、发布镜像或完成发布后拉取复验。历史镜像仍只代表当时版本。

@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import {randomBytes, createHash} from 'crypto';
 import {ROOT, ENGINE_DIRS, EXTENSIONS, inside, validFilename} from './paths.js';
+import {SPIDER_FRAMEWORK_FILES} from './runtime-files.js';
 
 export const token = () => randomBytes(24).toString('base64url');
 const stableId = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
@@ -32,6 +33,11 @@ export class Store {
             try { await fs.access(target); }
             catch { await fs.cp(path.join(ROOT, 'engine', name), target, {recursive: true}); }
         }
+        // 已有 spider 目录也必须升级桥接/基类/辅助库；只覆盖发行清单中的
+        // 框架保留路径，不能递归覆盖用户源、用户辅助文件或配置目录。
+        for (const relative of SPIDER_FRAMEWORK_FILES) {
+            await this.atomic(inside(this.runtime, relative), await fs.readFile(path.join(ROOT, 'engine', relative)));
+        }
         for (const dir of Object.values(ENGINE_DIRS)) await fs.mkdir(path.join(this.runtime, 'spider', dir), {recursive: true});
         await fs.writeFile(path.join(this.runtime, 'package.json'), '{"type":"module"}\n');
         // DATA_DIR 可挂载到任意位置；引擎依赖始终使用发行包的安装结果。
@@ -53,13 +59,13 @@ export class Store {
         await this.syncEnvironment();
         return this;
     }
-    async atomic(file, content) {
+    async atomic(file, content, {mode} = {}) {
         await fs.mkdir(path.dirname(file), {recursive: true});
         const temporary = `${file}.${randomBytes(6).toString('hex')}.tmp`;
-        try { await fs.writeFile(temporary, content); await fs.rename(temporary, file); }
+        try { await fs.writeFile(temporary, content, {flag: 'wx', ...(mode === undefined ? {} : {mode})}); await fs.rename(temporary, file); }
         finally { await fs.rm(temporary, {force: true}); }
     }
-    async persist() { await this.atomic(this.stateFile, JSON.stringify(this.state, null, 2)); }
+    async persist() { await this.atomic(this.stateFile, JSON.stringify(this.state, null, 2), {mode: 0o600}); }
     async mutate(fn, {rollback} = {}) {
         const job = this.tail.then(async () => {
             const before = structuredClone(this.state);
@@ -70,8 +76,8 @@ export class Store {
         return job;
     }
     async syncEnvironment() {
-        await this.atomic(path.join(this.runtime, 'config/env.json'), JSON.stringify(this.state.settings.env, null, 2));
-        await this.atomic(path.join(this.runtime, '.plugins.js'), `export default ${JSON.stringify(this.state.settings.plugins)};\n`);
+        await this.atomic(path.join(this.runtime, 'config/env.json'), JSON.stringify(this.state.settings.env, null, 2), {mode: 0o600});
+        await this.atomic(path.join(this.runtime, '.plugins.js'), `export default ${JSON.stringify(this.state.settings.plugins)};\n`, {mode: 0o600});
     }
     async refreshEnvironment() {
         let value;

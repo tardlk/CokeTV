@@ -86,6 +86,57 @@ test('网页媒体短期凭证保留请求头和 Range，不携带访问密码',
     assert.equal((await app.inject({url: result.url, method: 'HEAD'})).headers['content-type'], 'video/mp4');
     assert.equal((await app.inject('/watch/media/invalid')).statusCode, 403);
 });
+test('R2 匿名播放和 HLS 票据不泄露 ENV 凭据，实际媒体/分片/key 仍带源返回的头', async () => {
+    const cookie = 'private-cookie-fixture', bearer = 'Bearer private-auth-fixture';
+    const code = `var rule={title:'私密媒体样本',host:'https://fixture.invalid',play_parse:true,lazy:async function(flag,id){return {parse:0,url:id,header:{Referer:'https://fixture.invalid/',Cookie:ENV.get('private_cookie'),Authorization:ENV.get('private_auth')}}}};`;
+    const script = await app.store.saveScript('js', '私密媒体样本.js', code);
+    const envFile = app.store.sourceEnvPath(script.id);
+    await fs.mkdir(path.dirname(envFile), {recursive: true});
+    await fs.writeFile(envFile, JSON.stringify({private_cookie: cookie, private_auth: bearer}));
+    const response = await app.inject({method: 'POST', url: `/watch/sources/${script.id}/play`, payload: {play: `${upstreamUrl}/playlist.m3u8`}});
+    assert.equal(response.statusCode, 200, response.body);
+    const assertPrivate = value => {
+        for (const secret of [cookie, bearer]) assert.ok(!value.includes(secret));
+        const token = value.startsWith('/watch/media/') ? value.split('/').at(-1) : new URL(value).searchParams.get('token');
+        for (const fragment of token.split('.')) {
+            const decoded = Buffer.from(fragment, 'base64url').toString();
+            for (const secret of [cookie, bearer]) assert.ok(!decoded.includes(secret), '匿名票据可解码出凭据');
+        }
+        assert.ok(token.length <= 64);
+    };
+    assert.ok(!response.body.includes(cookie) && !response.body.includes(bearer));
+    assertPrivate(response.json().url);
+    const media = await app.inject(response.json().url);
+    assert.equal(media.statusCode, 200, media.body);
+    assert.equal(received.at(-1).headers.cookie, cookie);
+    assert.equal(received.at(-1).headers.authorization, bearer);
+    assert.ok(!media.body.includes(cookie) && !media.body.includes(bearer));
+    const urls = [media.body.match(/URI="([^"]+)"/)[1], media.body.split('\n').find(line => line.startsWith('http'))];
+    for (const url of urls) {
+        assertPrivate(url);
+        const parsed = new URL(url);
+        assert.equal((await app.inject(parsed.pathname + parsed.search)).statusCode, 200);
+        assert.equal(received.at(-1).headers.cookie, cookie);
+        assert.equal(received.at(-1).headers.authorization, bearer);
+        parsed.searchParams.set('url', `${upstreamUrl}/other`);
+        assert.equal((await app.inject(parsed.pathname + parsed.search)).statusCode, 403);
+    }
+});
+test('R7 长签名 URL 和长请求头实际转发成功，Range/HEAD 保留完整上游数据', async () => {
+    const target = `${upstreamUrl}/video.mp4?signature=${'s'.repeat(4000)}`;
+    const longHeader = 'h'.repeat(5000);
+    const script = await app.store.saveScript('js', '长媒体样本.js', `var rule={title:'长媒体样本',host:'https://fixture.invalid',play_parse:true,lazy:async function(flag,id){return {parse:0,url:id,header:{Referer:'https://fixture.invalid/','X-Fixture':${JSON.stringify(longHeader)}}}}};`);
+    const response = await app.inject({method: 'POST', url: `/watch/sources/${script.id}/play`, payload: {play: target}});
+    assert.equal(response.statusCode, 200, response.body);
+    const result = response.json();
+    const media = await app.inject({url: result.url, headers: {range: 'bytes=2-5'}});
+    assert.equal(media.statusCode, 206, media.body);
+    assert.equal(media.body, '2345');
+    assert.equal(received.at(-1).url, new URL(target).pathname + new URL(target).search);
+    assert.equal(received.at(-1).headers['x-fixture'], longHeader);
+    assert.equal((await app.inject({url: result.url, method: 'HEAD'})).statusCode, 200);
+    assert.equal(received.at(-1).headers['x-fixture'], longHeader);
+});
 test('HLS 的分片和密钥继承媒体凭证与源请求头', async () => {
     const result = await play(`${upstreamUrl}/playlist.m3u8`);
     assert.equal(result.type, 'm3u8');

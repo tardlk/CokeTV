@@ -11,6 +11,7 @@ const api = async (url, body, headers = {}) => {
 };
 await checkShell();
 assert.equal(process.arch, 'x64');
+assert.notEqual(process.getuid?.(), 0);
 const health = await api('/health');
 assert.equal(health.body.ok, true);
 // /health 只暴露 {ok, version}；运行细节在需鉴权的 /admin/health。

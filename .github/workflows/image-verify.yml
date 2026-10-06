@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       image:
-        description: Published image to pull and verify
+        description: Published fixed SHA tag or digest to pull and verify
         required: true
         default: ghcr.io/tardlk/coketv:latest
 
@@ -14,42 +14,28 @@ permissions:
 jobs:
   verify-image:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Pull published x86 image anonymously
         env:
           IMAGE: ${{ inputs.image }}
         run: |
           docker pull --platform linux/amd64 "$IMAGE"
-          docker image inspect "$IMAGE" --format '{{json .RepoDigests}}'
-          test "$(docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
-      - name: Start clean container
+          docker image inspect "$IMAGE" --format '{{json .RepoDigests}}' >> "$GITHUB_STEP_SUMMARY"
+      - name: Full published-image matrix
         env:
           IMAGE: ${{ inputs.image }}
-        run: |
-          docker run -d --name coketv-pull-check "$IMAGE"
-          for attempt in $(seq 1 60); do
-            if docker exec coketv-pull-check node -e "fetch('http://127.0.0.1:54058/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then break; fi
-            sleep 2
-          done
-          docker exec coketv-pull-check node scripts/container-smoke.mjs
-      - name: Verify all five engines and proxy contracts
-        run: |
-          docker cp tests/fixtures coketv-pull-check:/tmp/fixtures
-          docker cp scripts/image-verify.mjs coketv-pull-check:/tmp/image-verify.mjs
-          docker exec coketv-pull-check node /tmp/image-verify.mjs
-      - name: Restart and verify persisted data
-        run: |
-          docker restart coketv-pull-check
-          for attempt in $(seq 1 60); do
-            if docker exec coketv-pull-check node -e "fetch('http://127.0.0.1:54058/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then break; fi
-            sleep 2
-          done
-          docker exec coketv-pull-check node /tmp/image-verify.mjs --persistence
-      - name: Container logs
+          CONTAINER_REPORT_DIR: ${{ runner.temp }}/container-report
+        run: node scripts/container-matrix.mjs "$IMAGE"
+      - name: Preserve verification evidence
         if: always()
-        run: docker logs coketv-pull-check || true
-      - name: Remove disposable container and volumes
-        if: always()
-        run: docker rm -fv coketv-pull-check || true
+        uses: actions/upload-artifact@v4
+        with:
+          name: published-image-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/container-report/
+          if-no-files-found: warn
+          retention-days: 7

@@ -154,9 +154,9 @@ class BaseSpider(metaclass=ABCMeta):  # 元类 默认的元类 type
         base = base or getattr(self, '_media_proxy_base', '')
         if not base:
             return url
-        qs = f"?url={self.base64Encode(url)}&form=base64&stream=1"
+        qs = f"?url={quote(self.base64Encode(url), safe='')}&form=base64&stream=1"
         if headers:
-            qs += f"&header={self.base64Encode(json.dumps(headers, ensure_ascii=False))}"
+            qs += f"&header={quote(self.base64Encode(json.dumps(headers, ensure_ascii=False)), safe='')}"
         return f"{base}{qs}"
 
     def rewrite_m3u8_to_proxy(self, m3u8_text, m3u8_url, headers=None, base=''):

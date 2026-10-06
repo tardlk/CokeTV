@@ -4,20 +4,31 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  pull_request:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and verify only (never write to GHCR)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: docker-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  publish:
+  candidate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    outputs:
+      image_id: ${{ steps.artifact.outputs.image_id }}
+      tar_sha256: ${{ steps.artifact.outputs.tar_sha256 }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,6 +50,85 @@ jobs:
         env:
           TEST_PYTHON: python
           TEST_PHP: php
+      - uses: docker/setup-buildx-action@v3
+      - name: Build candidate once on native amd64
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: coketv-candidate:verified
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Full pre-publish container matrix
+        env:
+          CONTAINER_REPORT_DIR: ${{ runner.temp }}/container-report
+        run: node scripts/container-matrix.mjs coketv-candidate:verified
+      - name: Save the verified immutable image
+        id: artifact
+        run: |
+          mkdir -p candidate-artifact
+          docker save coketv-candidate:verified -o candidate-artifact/image.tar
+          image_id=$(docker image inspect coketv-candidate:verified --format '{{.Id}}')
+          tar_sha256=$(sha256sum candidate-artifact/image.tar | cut -d ' ' -f 1)
+          echo "image_id=$image_id" >> "$GITHUB_OUTPUT"
+          echo "tar_sha256=$tar_sha256" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$image_id" > candidate-artifact/image-id.txt
+          printf '%s\n' "$GITHUB_SHA" > candidate-artifact/source-sha.txt
+          printf '%s  image.tar\n' "$tar_sha256" > candidate-artifact/image.tar.sha256
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: candidate-${{ github.sha }}
+          path: candidate-artifact/
+          if-no-files-found: error
+          retention-days: 3
+      - name: Container evidence (also on failure)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/container-report/
+          if-no-files-found: warn
+          retention-days: 7
+
+  publish:
+    needs: candidate
+    if: >-
+      needs.candidate.result == 'success' &&
+      ((github.event_name == 'push' &&
+        (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+       (github.event_name == 'workflow_dispatch' && inputs.dry_run == false &&
+        (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: candidate-${{ github.sha }}
+          path: candidate-artifact
+      - name: Validate artifact and loaded image identity before login
+        env:
+          EXPECTED_IMAGE_ID: ${{ needs.candidate.outputs.image_id }}
+          EXPECTED_TAR_SHA256: ${{ needs.candidate.outputs.tar_sha256 }}
+          ARTIFACT_DIGEST: ${{ needs.candidate.outputs.artifact_digest }}
+        run: |
+          test "$(cat candidate-artifact/source-sha.txt)" = "$GITHUB_SHA"
+          test "$(cat candidate-artifact/image-id.txt)" = "$EXPECTED_IMAGE_ID"
+          test "$(sha256sum candidate-artifact/image.tar | cut -d ' ' -f 1)" = "$EXPECTED_TAR_SHA256"
+          (cd candidate-artifact && sha256sum -c image.tar.sha256)
+          docker load -i candidate-artifact/image.tar
+          test "$(docker image inspect coketv-candidate:verified --format '{{.Id}}')" = "$EXPECTED_IMAGE_ID"
+          test "$(docker image inspect coketv-candidate:verified --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+          test "$(docker image inspect coketv-candidate:verified --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$GITHUB_SHA"
+          printf 'Verified source: %s\nImage ID: %s\nImage tar SHA256: %s\nArtifact digest: %s\n' "$GITHUB_SHA" "$EXPECTED_IMAGE_ID" "$EXPECTED_TAR_SHA256" "$ARTIFACT_DIGEST" >> "$GITHUB_STEP_SUMMARY"
       - name: Image name
         id: image
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
@@ -51,46 +141,21 @@ jobs:
             type=sha,prefix=sha-
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-      - uses: docker/setup-buildx-action@v3
-      - name: Build x86-64 image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64
-          load: true
-          push: false
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Empty-container smoke test
-        env:
-          IMAGE_NAME: ${{ steps.image.outputs.name }}
-        run: |
-          # 镜像必须声明非 root 运行用户，防止回退到 root。
-          test -n "$(docker image inspect "$IMAGE_NAME:sha-${GITHUB_SHA:0:7}" --format '{{.Config.User}}')"
-          docker run -d --name coketv-smoke "$IMAGE_NAME:sha-${GITHUB_SHA:0:7}"
-          for attempt in $(seq 1 60); do
-            if docker exec coketv-smoke node -e "fetch('http://127.0.0.1:54058/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then break; fi
-            sleep 2
-          done
-          docker exec coketv-smoke node scripts/container-smoke.mjs
-          docker rm -fv coketv-smoke
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish verified image
+      - name: Push the same verified image (no rebuild)
         env:
           IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+          EXPECTED_IMAGE_ID: ${{ needs.candidate.outputs.image_id }}
         run: |
           while IFS= read -r tag; do
-            [ -z "$tag" ] || docker push "$tag"
+            if [ -n "$tag" ]; then
+              docker tag coketv-candidate:verified "$tag"
+              test "$(docker image inspect "$tag" --format '{{.Id}}')" = "$EXPECTED_IMAGE_ID"
+              docker push "$tag"
+              docker image inspect "$tag" --format '{{json .RepoDigests}}' >> "$GITHUB_STEP_SUMMARY"
+            fi
           done <<< "$IMAGE_TAGS"
-      - name: Build logs on failure
-        if: failure()
-        run: docker logs coketv-smoke || true
-      - name: Clean smoke container
-        if: always()
-        run: docker rm -fv coketv-smoke || true

@@ -1,4 +1,5 @@
-import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
+import {randomBytes} from 'node:crypto';
+import {validateHeaderName, validateHeaderValue} from 'node:http';
 
 const error = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
 export function playbackUrl(value, base) {
@@ -13,9 +14,13 @@ export function playbackHeaders(value) {
         try { value = JSON.parse(value); } catch { throw error('源返回的播放请求头格式不正确'); }
     }
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw error('源返回的播放请求头格式不正确');
-    return Object.fromEntries(Object.entries(value).filter(([key, val]) =>
-        /^[\w-]+$/.test(key) && typeof val === 'string' && !/[\r\n]/.test(val) &&
-        !['host', 'x-drpy-runtime', 'connection', 'content-length'].includes(key.toLowerCase())));
+    return Object.fromEntries(Object.entries(value).filter(([key, val]) => {
+        try {
+            if (typeof val !== 'string') return false;
+            validateHeaderName(key); validateHeaderValue(key, val);
+            return !['host', 'x-drpy-runtime', 'connection', 'content-length'].includes(key.toLowerCase());
+        } catch { return false; }
+    }));
 }
 export function mediaType(url, type = '') {
     if (/m3u8|mpegurl/i.test(type) || /\.m3u8(?:[?#]|$)/i.test(url)) return 'm3u8';
@@ -26,38 +31,53 @@ export function mediaType(url, type = '') {
 // Public viewing uses short-lived, source-scoped media capabilities; these
 // cannot authorize management or subscription access.
 //
-// A capability is a self-describing HMAC token: {kind, source?, url, headers?, exp}.
-// Tokens are stateless, so "this ticket is only valid for exactly this URL" is
-// expressed by the signature itself instead of a server-side allow-list.
-export function createPlaybackSessions({now = Date.now, ttl = 12 * 3600000, key = randomBytes(32)} = {}) {
-    const b64 = buffer => Buffer.from(buffer).toString('base64url');
-    const sign = payload => {
-        const body = b64(JSON.stringify(payload));
-        return `${body}.${createHmac('sha256', key).update(body).digest('base64url')}`;
+// Only a 256-bit random reference leaves the server. URL and upstream credentials
+// stay in a bounded, process-local store; restarting drops all capabilities.
+export function createPlaybackSessions({now = Date.now, ttl = 12 * 3600000, maxEntries = 50000, maxBytes = 64 * 1024 * 1024} = {}) {
+    if (!Number.isFinite(ttl) || ttl <= 0 || !Number.isSafeInteger(maxEntries) || maxEntries < 1 || !Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new TypeError('无效的媒体票据容量或有效期');
+    const sessions = new Map();
+    let bytes = 0;
+    const remove = token => {
+        const entry = sessions.get(token);
+        if (entry) { bytes -= entry.body.length; sessions.delete(token); }
     };
-    const verify = token => {
-        const [body, mac] = String(token || '').split('.');
-        if (!body || !mac) return null;
-        const expected = createHmac('sha256', key).update(body).digest('base64url');
-        const given = Buffer.from(mac);
-        const want = Buffer.from(expected);
-        if (given.length !== want.length || !timingSafeEqual(given, want)) return null;
-        let payload;
-        try { payload = JSON.parse(Buffer.from(body, 'base64url').toString()); } catch { return null; }
-        return payload && typeof payload === 'object' && payload.exp > now() ? payload : null;
+    const create = payload => {
+        const timestamp = now(), exp = timestamp + ttl;
+        const body = Buffer.from(JSON.stringify({...payload, exp}));
+        if (body.length > maxBytes) throw error('媒体票据存储容量不足，请重新选择剧集', 503);
+        // Fixed TTL makes insertion order also expiry order. Remove expired and
+        // then oldest entries under pressure; reads never extend a capability.
+        for (const [token, entry] of sessions) {
+            if (entry.exp > timestamp) break;
+            remove(token);
+        }
+        while (sessions.size >= maxEntries || bytes + body.length > maxBytes) remove(sessions.keys().next().value);
+        let token;
+        do { token = randomBytes(32).toString('base64url'); } while (sessions.has(token));
+        sessions.set(token, {body, exp}); bytes += body.length;
+        return token;
+    };
+    const get = token => {
+        if (typeof token !== 'string') return undefined;
+        const entry = sessions.get(token);
+        if (!entry) return undefined;
+        if (entry.exp <= now()) { remove(token); return undefined; }
+        // Return a copy so input headers and retrieved objects cannot widen an
+        // already issued capability's URL, headers, source or expiry.
+        return JSON.parse(entry.body.toString());
     };
     return {
-        // Media ticket: grants exactly one upstream fetch (url + headers baked in).
-        create(source, url, headers) { return sign({kind: 'media', source, url, headers: headers || {}, exp: now() + ttl}); },
+        // Media ticket: binds upstream URL + headers and the source proxy scope.
+        create(source, url, headers) { return create({kind: 'media', source, url, headers: headers || {}}); },
         // Proxy ticket: authorizes a single proxy request for one absolute URL.
-        createProxy(url, headers) { return sign({kind: 'proxy', url, headers: headers || {}, exp: now() + ttl}); },
-        get(token) { return verify(token) || undefined; },
+        createProxy(url, headers) { return create({kind: 'proxy', url, headers: headers || {}}); },
+        get,
         // Playback tickets may only drive the source's own proxy route; every
         // other proxy route requires a subscription/management credential.
         allows(request, source) {
             if (!['GET', 'HEAD'].includes(request.method)) return false;
             if (request.routeOptions?.url !== '/proxy/:module/*') return false;
-            const payload = verify(request.query.token);
+            const payload = get(request.query.token);
             return !!payload && payload.kind === 'media' && payload.source === source;
         },
     };

@@ -60,7 +60,7 @@ docker buildx build --platform linux/amd64 --load \
   --build-arg INSTALL_BROWSER=1 -t coketv:browser .
 ```
 
-浏览器版在设置中填写 /usr/bin/chromium。镜像发布前会验证全新空数据启动、管理鉴权与 JS/Python/PHP 实际执行。构建状态见 [GitHub Actions](https://github.com/tardlk/CokeTV/actions)。
+浏览器版在设置中填写 /usr/bin/chromium。本地待发布工作流已扩展发布前门禁：原生 amd64 验证空数据、五引擎实际媒体、旧框架升级、私密配置与同卷重启；验收后只发布同一镜像。PR 和手动默认 dry-run 只构建/验收，不写 GHCR。本轮原生候选容器矩阵已在 [PR #1 工作流](https://github.com/tardlk/CokeTV/actions/runs/37456713645) 通过，发布任务 skipped；main 与 GHCR 镜像尚未更新。构建状态见 [GitHub Actions](https://github.com/tardlk/CokeTV/actions)。
 
 ## 使用流程
 
@@ -77,7 +77,7 @@ TVBox 在另一台设备上时，在设置中填写可达的服务对外地址�
 
 ## 安全边界（务必阅读）
 
-当前仍有已复现的票据保密、代理出口策略和旧数据升级缺口，见 [SECURITY.md](SECURITY.md) 与 [接手文档第 7.3 节](docs/AI_HANDOFF.md#73-全面接手复核2026-10-06新增发现尚未修复)。测试通过不代表这些问题已修复。
+接手复核登记的 R1–R10 已在本地修复，包括旧数据框架升级、媒体票据、宿主出口策略、PHP 异常脱敏、私密配置权限、多层继承方法选择和 verify CLI 凭据输入。保留项与验证边界见 [SECURITY.md](SECURITY.md) 和 [接手文档](docs/AI_HANDOFF.md#7-当前状态与下一步待办)。本地测试通过不代表已发布镜像包含这些修改，也不能替代容器和外部站点验收。
 
 - 源脚本在服务器上以**与 CokeTV 相同的权限**执行：JS 源可直接调用 Node 的 `require`，Python/PHP 源可访问文件系统与网络。
   **导入任何第三方源（尤其是来路不明的 TVBox 订阅链接）= 允许其在你的服务器上执行任意代码。**
@@ -111,7 +111,7 @@ data/runtime/config/source-env/    按源实例保存的环境变量
 data/revisions/                    脚本历史版本
 ```
 
-首次启动准备引擎辅助库和空源目录，不添加站点源；后续启动刷新 libs/utils/controllers，保留用户源与配置。当前已有的 `runtime/spider` 不自动更新框架桥接，升级兼容缺口见接手文档 R1，不要通过删除整个运行目录处理。备份整个 `data/` 可完整恢复——**其中含管理凭据的加盐哈希、源 ENV 与源参数，请妥善保管**。管理配置导出包含源环境变量，不包含脚本和插件二进制。
+首次启动准备引擎辅助库和空源目录，不添加站点源；后续启动刷新 libs/libs_drpy/utils/controllers，并按 `src/runtime-files.js` 的框架保留路径清单原子更新 `runtime/spider` 中的桥接、基类和兼容辅助库，包括旧数据目录。清单以外的用户源、辅助文件、ENV、订阅、配置和脚本历史保留，不需要删除运行目录。框架修改应进入 `engine/`，运行副本中的框架保留路径会随启动刷新。备份整个 `data/` 可完整恢复——**其中含管理凭据的加盐哈希、源 ENV 与源参数，请妥善保管**。管理配置导出包含源环境变量，不包含脚本和插件二进制。
 
 详见 [配置与源包](docs/CONFIGURATION.md) 和 [开发说明](docs/DEVELOPMENT.md)。
 

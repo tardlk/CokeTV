@@ -110,6 +110,44 @@ class Spider { public function init($extend = '') { return true; } }
         assert.match(String(bareResult.data.error), /not found in Spider class/);
     } finally { await fs.rm(dir, {recursive: true, force: true}); }
 });
+test('R9 PHP 代理选整条继承链中最近的声明，同层按候选顺序且保留基类默认行为', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-proxy-inheritance-'));
+    try {
+        const base = `require_once ${JSON.stringify(path.join(ROOT, 'engine/spider/php/lib/spider.php'))};`;
+        const cases = [
+            [base + `class ParentSpider extends BaseSpider { public function init($extend='') { return []; } public function localProxy($params=[]) { return [404,'text/plain','parent']; } } class MiddleSpider extends ParentSpider {} class Spider extends MiddleSpider { public function proxy($params=[]) { return [200,'text/plain','child-proxy']; } }`, 'child-proxy'],
+            [`class Ancestor { public function localProxy($params=[]) { return [404,'text/plain','ancestor']; } } class ParentSpider extends Ancestor { public function proxy($params=[]) { return [200,'text/plain','parent-proxy']; } } class Spider extends ParentSpider {}`, 'parent-proxy'],
+            [base + `class ParentSpider extends BaseSpider { public function init($extend='') { return []; } public function proxy($params=[]) { return [404,'text/plain','parent']; } } class Spider extends ParentSpider { public function localProxy($params=[]) { return [200,'text/plain','child-local']; } }`, 'child-local'],
+            [base + `class ParentSpider extends BaseSpider { public function init($extend='') { return []; } public function localProxy($params=[]) { return [200,'text/plain','parent-local']; } public function proxy($params=[]) { return [200,'text/plain','parent-proxy']; } } class MiddleSpider extends ParentSpider {} class Spider extends MiddleSpider {}`, 'parent-local'],
+            [base + `class ParentSpider extends BaseSpider { public function init($extend='') { return []; } } class MiddleSpider extends ParentSpider {} class Spider extends MiddleSpider {}`, 'not found'],
+            [`trait ProxyTrait { public function proxy($params=[]) { return [200,'text/plain','trait-proxy']; } } class ParentSpider { public function localProxy($params=[]) { return [404,'text/plain','parent']; } } class Spider extends ParentSpider { use ProxyTrait; }`, 'trait-proxy'],
+        ];
+        for (const [index, [code, expected]] of cases.entries()) {
+            const file = path.join(dir, `case-${index}.php`); await fs.writeFile(file, '<?php\n' + code);
+            const result = await runPhp(file, 'localProxy|proxy', {}, [{}]);
+            assert.deepEqual(result, [expected === 'not found' ? 404 : 200, 'text/plain', expected], `case ${index}`);
+        }
+        const tie = path.join(dir, 'tie.php');
+        await fs.writeFile(tie, '<?php class Spider { public function localProxy($params=[]) { return [200,"text/plain","local"]; } public function proxy($params=[]) { return [200,"text/plain","proxy"]; } }');
+        assert.equal((await runPhp(tie, 'localProxy|proxy', {}, [{}]))[2], 'local');
+        assert.equal((await runPhp(tie, 'proxy|localProxy', {}, [{}]))[2], 'proxy');
+    } finally { await fs.rm(dir, {recursive: true, force: true}); }
+});
+
+test('R9 宿主 PHP 源代理调用子类 proxy，不被父类 localProxy 默认 404 抢先', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-derived-proxy-'));
+    let app;
+    try {
+        app = await createApp({directory, seed: false});
+        app.store.state.settings.phpPath = PHP;
+        const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
+        assert.equal((await app.inject({method: 'POST', url: '/admin/access/setup', payload: {setupCode, password: 'derived-password', confirmPassword: 'derived-password'}})).statusCode, 200);
+        const script = await app.store.saveScript('php', '继承代理.php', `<?php require_once __DIR__.'/lib/spider.php'; class ParentSpider extends BaseSpider { public function init($extend='') { return []; } public function localProxy($params=[]) { return [404,'text/plain','parent-default']; } } class MiddleSpider extends ParentSpider {} class Spider extends MiddleSpider { public function proxy($params=[]) { return [200,'text/plain','derived-proxy']; } }`);
+        const response = await app.inject({url: `/proxy/${script.id}/`, headers: {authorization: `Basic ${Buffer.from(':derived-password').toString('base64')}`}});
+        assert.equal(response.statusCode, 200, response.body); assert.equal(response.body, 'derived-proxy');
+    } finally { await app?.close(); await fs.rm(directory, {recursive: true, force: true}); }
+});
+
 test('M10 Python 守护进程被杀后下一次调用会自动重启', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-py-restart-'));
     let app;

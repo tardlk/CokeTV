@@ -21,7 +21,7 @@ COPY --from=build /app/dist ./dist
 COPY package.json ./
 COPY src ./src
 COPY engine ./engine
-COPY scripts/check-shell.mjs scripts/container-smoke.mjs ./scripts/
+COPY scripts/check-shell.mjs scripts/verify.mjs ./scripts/
 RUN node scripts/check-shell.mjs
 # 先建好数据目录并交给 node 用户，再声明 VOLUME 并以非 root 运行：
 # 挂载新卷时会继承这里的属主，否则 node 用户无法创建 admin.json/state.json。
