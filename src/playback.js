@@ -1,4 +1,5 @@
 import {randomBytes} from 'node:crypto';
+import {validateHeaderName, validateHeaderValue} from 'node:http';
 
 const error = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
 export function playbackUrl(value, base) {
@@ -13,9 +14,13 @@ export function playbackHeaders(value) {
         try { value = JSON.parse(value); } catch { throw error('源返回的播放请求头格式不正确'); }
     }
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw error('源返回的播放请求头格式不正确');
-    return Object.fromEntries(Object.entries(value).filter(([key, val]) =>
-        /^[\w-]+$/.test(key) && typeof val === 'string' && !/[\r\n]/.test(val) &&
-        !['host', 'x-drpy-runtime', 'connection', 'content-length'].includes(key.toLowerCase())));
+    return Object.fromEntries(Object.entries(value).filter(([key, val]) => {
+        try {
+            if (typeof val !== 'string') return false;
+            validateHeaderName(key); validateHeaderValue(key, val);
+            return !['host', 'x-drpy-runtime', 'connection', 'content-length'].includes(key.toLowerCase());
+        } catch { return false; }
+    }));
 }
 export function mediaType(url, type = '') {
     if (/m3u8|mpegurl/i.test(type) || /\.m3u8(?:[?#]|$)/i.test(url)) return 'm3u8';

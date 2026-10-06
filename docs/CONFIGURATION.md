@@ -93,6 +93,10 @@ ZIP 在所有路径、大小与语法检查完成后写入，拒绝越界路径�
 
 源返回 `parse: 0` 时直接经媒体代理播放，代理保留源返回的请求头、Range、HLS 分片与密钥地址。浏览器媒体请求使用最长有效期 12 小时的**服务端随机能力票据**：票据固定 43 字符（256 位随机数），上游 URL 和 Cookie/Authorization 等请求头保存在服务端，客户端不能从票据解码出这些值。`media` 票据在 `/watch/media/<ticket>` 只抓绑定的 URL 并使用绑定的请求头，同时允许访问所属源的 `/proxy/:module/*`（该入口只绑定源、不绑定 URL，并受公开限流约束）；`proxy` 票据用于 URL 绑定的媒体转发，HLS 分片/密钥在改写时现场签发各自的票据，不能更换绑定的目标地址。两类票据均**不能**用于访问管理接口、源 API 或 TVBox 订阅。票据存储上限为 50000 条、64 MiB 载荷；签发时回收过期票据，容量不足时淘汰最旧票据，读取不续期。过期、淘汰或服务重启后需重新选择剧集；单条载荷超出总容量时返回 503，不截短 URL 或请求头。R2/R7 及宿主出口的 R3/R4/R6 已在本地修复，尚未推送或发布。
 
+媒体转发入口 `/mediaProxy`、`/file-proxy/proxy`、`/unified-proxy/proxy` 和 `/m3u8-proxy/*` 使用一致的解包规则：`url` 支持明文或 base64 HTTP/HTTPS 地址；`headers`（优先）和旧 `header` 支持 JSON 或 base64 UTF-8 JSON 对象，也兼容额外一层 URL 编码及旧 Python 辅助函数未转义的 base64 加号。`form=base64` 不改变字段优先级。字段同时存在时，即使 `headers` 无效也不回退到 `header`。非法 JSON/base64、数组/标量、非字符串值、非法 HTTP 头名或值（含换行、无法作为 HTTP 头值的 Unicode）返回 400；URL 中既有签名百分号编码不重复解码。
+
+订阅 Token 调用继续屏蔽 Cookie、Authorization、Host、内部凭据和转发/连接头；管理员与内部运行时可显式提供 Cookie/Authorization 等媒体业务头，但入站管理 Basic 和内部密钥不会自动传到外站。源返回和能力票据绑定的头保留源凭据；有效的 URL 绑定票据优先使用已绑定头，忽略调用方头参数。源播放结果或 `toBytes=2/3` 返回本服务旧式 `/mediaProxy` URL 时，宿主解出目标与头再签发能力，匿名 GET/HEAD、Range 和 HLS 后续请求保持可用；这不授予匿名用户自行构造代理 URL 的权限。
+
 `/json/` 下的源参数文件默认不匿名可读（可能含 Cookie/Token）：外部匿名请求被拒绝，源自身的回环请求带内部凭据放行，管理员与订阅 Token 也可读取。需要旧的公开行为时把 `jsonPublic` 设为 `true`。
 
 需要解析时，设置页的 `parses` 数组可以配置以下类型：

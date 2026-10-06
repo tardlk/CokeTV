@@ -21,6 +21,7 @@ import {sourceTemplate} from './source-templates.js';
 import {createPlaybackSessions, playbackUrl, playbackHeaders, mediaType} from './playback.js';
 import {assertTargetAllowed} from './ssrf.js';
 import {guardedHttp} from './outbound.js';
+import {decodeMediaTarget, decodeMediaHeaders, unwrapMediaProxy} from './media-params.js';
 import {createTvboxImporter} from './tvbox-import.js';
 
 dotenv.config();
@@ -122,39 +123,16 @@ export async function createApp({directory, seed = true} = {}) {
         allowlist: store.state.settings.targetAllowlist || [],
         selfOrigins: selfOrigins(),
     });
-    const decode = value => {
-        if (!value) return '';
-        if (/^https?:|^\{|^\[/.test(value)) return value;
-        try { const text = Buffer.from(value, 'base64').toString(); if (/^https?:|^\{|^\[/.test(text)) return text; } catch {}
-        return value;
-    };
     // 调用方提供的出站请求头白名单：禁止改写 Host/Cookie/Authorization/转发头，
     // 否则 /mediaProxy 会变成「带自定义请求头的开放代理」。源能力票据绑定的头不受此限。
     const BLOCKED_PROXY_HEADERS = new Set(['host', 'cookie', 'authorization', 'proxy-authorization', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-drpy-runtime', 'connection', 'content-length', 'transfer-encoding']);
-    const safeProxyHeaders = value => Object.fromEntries(Object.entries(value || {}).filter(([key, val]) =>
-        /^[\w-]+$/.test(key) && typeof val === 'string' && !/[\r\n]/.test(val) && !BLOCKED_PROXY_HEADERS.has(key.toLowerCase())));
+    const safeProxyHeaders = value => Object.fromEntries(Object.entries(playbackHeaders(value)).filter(([key]) => !BLOCKED_PROXY_HEADERS.has(key.toLowerCase())));
     // 「源返回」的头发往上游时用 playbackHeaders 的同口径净化：只屏蔽
     // host/x-drpy-runtime/connection/content-length 与换行，**保留 Cookie/Authorization**——
     // 站点登录媒体拉流普遍依赖它们。只有调用方传入的头才用上面的 safeProxyHeaders。
     const sanitizeSourceHeaders = value => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
         return playbackHeaders(value);
-    };
-    // 兼容旧基类 proxyMediaUrl/proxy_media_url 生成的 `/mediaProxy?url=<b64>&form=base64&header=<b64>`：
-    // 那类 URL 自身不带能力票据，浏览器直接请求必然 403。这里解出真实目标与头，交给宿主统一签发票据。
-    const unwrapMediaProxyContent = (value, base) => {
-        try {
-            const parsed = new URL(value, base);
-            if (parsed.origin !== new URL(base).origin || parsed.pathname !== '/mediaProxy') return null;
-            const inner = decode(parsed.searchParams.get('url') || '');
-            if (!/^https?:/.test(inner)) return null;
-            const raw = parsed.searchParams.get('headers') || parsed.searchParams.get('header') || '';
-            let extra = {};
-            if (raw) {
-                try { extra = JSON.parse(parsed.searchParams.get('form') === 'base64' ? Buffer.from(raw, 'base64').toString('utf8') : decode(raw)); } catch { extra = {}; }
-            }
-            return {url: inner, headers: extra};
-        } catch { return null; }
     };
     // 源执行 / 源代理入口：管理员、内部运行时或订阅 Token。
     const authorize = async (request, id) => {
@@ -174,9 +152,9 @@ export async function createApp({directory, seed = true} = {}) {
     };
     // 代理出口：管理员/内部、订阅 Token，或一张恰好绑定到该 URL 的代理能力票。
     const authorizeProxy = async (request, target) => {
-        if (await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey) return {kind: 'admin'};
         const ticket = playback.get(request.query.token);
         if (ticket && ticket.kind === 'proxy' && target && ticket.url === target) return ticket;
+        if (await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey) return {kind: 'admin'};
         const sub = authorizedSubscription(store.state, request.query.token || request.body?.token);
         if (sub) return {kind: 'subscription', token: sub.token};
         throw fail('媒体访问凭证无效或已过期', 403);
@@ -216,7 +194,8 @@ export async function createApp({directory, seed = true} = {}) {
         // media 票据可驱动同源 /proxy/ 执行源逻辑（不绑定 URL），必须照常计入公开限流。
         if (['GET', 'HEAD'].includes(request.method) && TICKET_RATE_ROUTES.has(route)) {
             const ticket = playback.get(request.query.token);
-            const target = route === '/req/*' ? request.params['*'] : decode(request.query.url);
+            let target;
+            try { target = route === '/req/*' ? request.params['*'] : decodeMediaTarget(request.query.url); } catch {}
             if (ticket?.kind === 'proxy' && target && ticket.url === target) return;
         }
         if (rateBuckets.size > 20000) rateBuckets.clear();
@@ -291,7 +270,10 @@ export async function createApp({directory, seed = true} = {}) {
         if (parsed.origin === new URL(baseUrl(request)).origin && segments[1] === 'proxy' && decodeURIComponent(segments[2] || '') === script.file.replace(/\.[^.]+$/, '')) {
             segments[2] = instance.id; parsed.pathname = segments.join('/'); url = parsed.href;
         }
-        const ticket = playback.create(instance.id, url, playbackHeaders(result.header || result.headers));
+        const carried = unwrapMediaProxy(url, baseUrl(request));
+        const headers = playbackHeaders({...carried?.headers, ...playbackHeaders(result.headers ?? result.header)});
+        if (carried) url = carried.url;
+        const ticket = playback.create(instance.id, url, headers);
         return {url: `/watch/media/${ticket}`, type: mediaType(url, result.type), parses: options, parser: parser ?? null};
     };
     app.post('/watch/sources/:id/play', playHandler);
@@ -552,7 +534,7 @@ export async function createApp({directory, seed = true} = {}) {
         const [status = 200, type = 'application/octet-stream', content = '', headers = {}, bytes] = result;
         // 源返回的头必须保留 Cookie/Authorization（站点登录媒体拉流依赖），
         // 只有调用方传入的头才用更严的 safeProxyHeaders。
-        const carried = typeof content === 'string' ? unwrapMediaProxyContent(content, baseUrl(request)) : null;
+        const carried = typeof content === 'string' ? unwrapMediaProxy(content, baseUrl(request)) : null;
         const target = carried?.url || content;
         const streamHeaders = sanitizeSourceHeaders({...(carried?.headers || {}), ...(headers && typeof headers === 'object' && !Array.isArray(headers) ? headers : {})});
         const mint = url => playback.createProxy(url, streamHeaders);
@@ -567,26 +549,18 @@ export async function createApp({directory, seed = true} = {}) {
         if (typeof body === 'string' && (body.startsWith('#EXTM3U') || /mpegurl/i.test(type))) body = rewritePlaylist(body, `${baseUrl(request)}${request.url}`, baseUrl(request), {token: sub?.token, mint, alias: {name: script.file.replace(/\.[^.]+$/, ''), id: instance.id}});
         return reply.code(Number(status)).headers(headers || {}).type(type).send(body);
     });
-    app.route({method: ['GET', 'HEAD'], url: '/mediaProxy', handler: async (request, reply) => {
-        const target = decode(request.query.url);
+    const mediaProxyHandler = async (request, reply) => {
+        const target = decodeMediaTarget(request.query.url);
         const info = await authorizeProxy(request, target);
-        let headers = info.headers || {};
-        if (info.kind === 'subscription' && request.query.headers) {
-            try { headers = safeProxyHeaders(JSON.parse(request.query.headers)); } catch { throw fail('媒体请求头须为 JSON'); }
-        }
+        // Capability-bound headers win even when caller also sends credentials.
+        // Incoming Basic/runtime credentials are never implicitly copied out.
+        const supplied = info.kind === 'proxy' ? info.headers || {} : decodeMediaHeaders(request.query);
+        const headers = info.kind === 'subscription' ? safeProxyHeaders(supplied) : playbackHeaders(supplied);
         const token = info.kind === 'proxy' ? request.query.token : info.token;
         return serveMedia(request, reply, target, headers, token, url => playback.createProxy(url, headers));
-    }});
-    for (const route of URL_PROXY_ROUTES) {
-        app.route({method: ['GET', 'HEAD'], url: route, handler: async (request, reply) => {
-            const target = decode(request.query.url);
-            const info = await authorizeProxy(request, target);
-            let headers = info.headers || {};
-            if (info.kind !== 'proxy') { try { headers = safeProxyHeaders(JSON.parse(decode(request.query.headers) || '{}')); } catch { throw fail('请求头格式不正确'); } }
-            const token = info.kind === 'proxy' ? request.query.token : info.token;
-            return serveMedia(request, reply, target, headers, token, url => playback.createProxy(url, headers));
-        }});
-    }
+    };
+    app.route({method: ['GET', 'HEAD'], url: '/mediaProxy', handler: mediaProxyHandler});
+    for (const route of URL_PROXY_ROUTES) app.route({method: ['GET', 'HEAD'], url: route, handler: mediaProxyHandler});
     for (const route of ['/webdav/*', '/ftp/*']) app.route({method: ['GET', 'HEAD', 'POST'], url: route, handler: async (request, reply) => {
         const sub = await authorizeService(request);
         const port = await runner.gateway();
