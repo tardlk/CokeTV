@@ -60,7 +60,7 @@ docker buildx build --platform linux/amd64 --load \
   --build-arg INSTALL_BROWSER=1 -t coketv:browser .
 ```
 
-浏览器版在设置中填写 /usr/bin/chromium。本地待发布工作流已扩展发布前门禁：原生 amd64 验证空数据、五引擎实际媒体、旧框架升级、私密配置与同卷重启；验收后只发布同一镜像。PR 和手动默认 dry-run 只构建/验收，不写 GHCR。本轮原生候选容器矩阵已在 [PR #1 工作流](https://github.com/tardlk/CokeTV/actions/runs/37456713645) 通过，发布任务 skipped；main 与 GHCR 镜像尚未更新。构建状态见 [GitHub Actions](https://github.com/tardlk/CokeTV/actions)。
+浏览器版在设置中填写 /usr/bin/chromium。发布工作流已扩展发布前门禁：原生 amd64 验证空数据、五引擎实际媒体、旧框架升级、私密配置与同卷重启；验收后只发布同一镜像。PR 和手动默认 dry-run 只构建/验收，不写 GHCR。本轮已合并 main，发布 `sha-c2a1f21` 与同 digest 的 `latest`；[主线发布](https://github.com/tardlk/CokeTV/actions/runs/37458591100) 和[匿名固定 digest 完整复验](https://github.com/tardlk/CokeTV/actions/runs/37459488105) 均通过。构建状态见 [GitHub Actions](https://github.com/tardlk/CokeTV/actions)。
 
 ## 使用流程
 
@@ -77,7 +77,7 @@ TVBox 在另一台设备上时，在设置中填写可达的服务对外地址�
 
 ## 安全边界（务必阅读）
 
-接手复核登记的 R1–R10 已在本地修复，包括旧数据框架升级、媒体票据、宿主出口策略、PHP 异常脱敏、私密配置权限、多层继承方法选择和 verify CLI 凭据输入。保留项与验证边界见 [SECURITY.md](SECURITY.md) 和 [接手文档](docs/AI_HANDOFF.md#7-当前状态与下一步待办)。本地测试通过不代表已发布镜像包含这些修改，也不能替代容器和外部站点验收。
+接手复核登记的 R1–R10 已修复并随 `sha-c2a1f21` 发布，包括旧数据框架升级、媒体票据、宿主出口策略、PHP 异常脱敏、私密配置权限、多层继承方法选择和 verify CLI 凭据输入。保留项与验证边界见 [SECURITY.md](SECURITY.md) 和 [接手文档](docs/AI_HANDOFF.md#7-当前状态与下一步待办)。本地测试通过不代表已发布镜像包含这些修改，也不能替代容器和外部站点验收。
 
 - 源脚本在服务器上以**与 CokeTV 相同的权限**执行：JS 源可直接调用 Node 的 `require`，Python/PHP 源可访问文件系统与网络。
   **导入任何第三方源（尤其是来路不明的 TVBox 订阅链接）= 允许其在你的服务器上执行任意代码。**

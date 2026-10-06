@@ -104,4 +104,4 @@ CONTAINER_REPORT_DIR=/tmp/coketv-container-report node scripts/container-matrix.
 
 不要在正式 data 上验收。报告记录平台、UID、Node/Python/PHP、源码 SHA、镜像 ID、清单与零跳过 TAP；启动初始化码从日志产物中隐藏。`.github/workflows/image-verify.yml` 匿名拉取给定固定 SHA/digest 后复用完整矩阵，产物保存到工作流。旧 `latest` 可供手动选择，但不能用它证明本次源码已发布。
 
-本机没有 Docker CLI。本轮 GitHub [PR #1 原生 amd64 候选验收](https://github.com/tardlk/CokeTV/actions/runs/37456713645) 已成功：源码门禁、构建和完整矩阵通过，publish job skipped，容器 TAP 全过且零跳过。已核对报告、ZIP digest 和镜像标识，实际结果见 `docs/AI_HANDOFF.md` 第 7.12 节；未合并 main、发布镜像或完成发布后拉取复验。历史镜像仍只代表当时版本。
+本机没有 Docker CLI。本轮 GitHub [PR #1 原生 amd64 候选验收](https://github.com/tardlk/CokeTV/actions/runs/37456713645) 已成功：源码门禁、构建和完整矩阵通过，publish job skipped，容器 TAP 全过且零跳过。随后已合并 main；[主线发布](https://github.com/tardlk/CokeTV/actions/runs/37458591100) 和[匿名固定 digest 完整复验](https://github.com/tardlk/CokeTV/actions/runs/37459488105) 均 success，同一镜像身份、ZIP digest 和 TAP 已核对。当前 `sha-c2a1f21` / `latest` 发行证据见 `docs/AI_HANDOFF.md` 第 7.13 节；历史镜像仍只代表当时版本。

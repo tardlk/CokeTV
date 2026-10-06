@@ -80,12 +80,14 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 ## 5. 发布现状
 
+**当前发行（2026-10-06，本轮已完成）**：PR #1 已合并，源码发布提交 `c2a1f21f9be005e1855bd78b00613033791c0dbb`。源码 [Verify 37458591153](https://github.com/tardlk/CokeTV/actions/runs/37458591153)、[主线构建/验收/发布 37458591100](https://github.com/tardlk/CokeTV/actions/runs/37458591100) 与 [匿名固定 digest 发布后复验 37459488105](https://github.com/tardlk/CokeTV/actions/runs/37459488105) 均 success。`ghcr.io/tardlk/coketv:sha-c2a1f21` 与 `:latest` 同 digest：`sha256:c269b482eddaff2668a43773b82fcd98f23c89b90bd48542eb4a2a6b95c8d1a2`。匿名 manifest/config 与容器实跑确认 linux/amd64、User=node/UID 1000、OCI revision 为该源码 SHA；R1–R10 和媒体头修复均已包含。详细身份/产物/测试证据见第 7.13 节。下列首次发布与旧同步记录保留为历史，不表示当前 latest。
+
 - 2026-10-05 首次发布：功能提交 `3b17276`，源码 [Verify 37252776598](https://github.com/tardlk/CokeTV/actions/runs/37252776598) 与 [Docker amd64 37252776569](https://github.com/tardlk/CokeTV/actions/runs/37252776569) 均成功。
 - 历史镜像 `:sha-3b17276`，当时同 digest 发布为 `:latest`：`sha256:8e733b3cc506be4682015e9df004ba9b3705f31c058d9da263e28dbfa049461c`（匿名读取 manifest/config 确认 `linux/amd64`）。独立拉取验收：[Verify published image 37253476492](https://github.com/tardlk/CokeTV/actions/runs/37253476492)。这个 digest 只代表旧发布，不能据此断言当前 latest 的版本。
-- **2026-10-06 源码同步已完成**：用户明确授权推送。GitHub `main` 的代码快照为 `984ccf0ff2ed2d0f63c96f2f5b7b2098cba023d3`，Git tree 与本地整理后的 `da3ce44` 完全相同（`eed21e5c7d44212cec56f80ee0b2ba08cc3f708c`）；包括此前 9 个未推送提交、本轮限流修复和接手审查记录。原始本地 11 个提交保留在 `handoff-local-20261006`，本地 main 已跟随远端。收尾文档补记使用 `[skip ci]`，不重复发布相同代码。
-- **本次 CI / 镜像状态（已核对）**：[Verify 37429832617](https://github.com/tardlk/CokeTV/actions/runs/37429832617) 与 [Docker amd64 37429832738](https://github.com/tardlk/CokeTV/actions/runs/37429832738) 均成功；后者的源码检查、发布前空容器验收、镜像发布三个步骤分别为 success。已发布 `ghcr.io/tardlk/coketv:sha-984ccf0` 与 `:latest`，两者 digest 相同：`sha256:8329ad339a36d81e6bfc7771104f0a9d106a8e08a210c5bbbbad9e8e255488f0`。匿名读取 manifest/config 确认 `linux/amd64`、`User=node`、revision 为 `984ccf0ff2ed2d0f63c96f2f5b7b2098cba023d3`。
-- 本次没有本机 Docker 验收，也没有运行新镜像的发布后五引擎拉取/重启持久化手动工作流；容器 Range/HLS 与旧数据升级覆盖仍有第 7 节所列缺口。发布成功不表示 R1–R10 已修复。
-- 发布链路：Verify 工作流跑语法/空壳/测试/构建；Docker amd64 工作流在 main/tag/manual 上做源码验证 → 原生 amd64 构建 → 临时空容器验收 → GHCR 发布，使用仓库 `GITHUB_TOKEN` 的 packages 权限，不提交发布密钥。`latest` 对应 main，`sha-*` 固定提交，`v*` 发布版本。
+- **2026-10-06 历史源码同步**：用户明确授权推送。GitHub `main` 的代码快照为 `984ccf0ff2ed2d0f63c96f2f5b7b2098cba023d3`，Git tree 与本地整理后的 `da3ce44` 完全相同（`eed21e5c7d44212cec56f80ee0b2ba08cc3f708c`）；包括此前 9 个未推送提交、本轮限流修复和接手审查记录。原始本地 11 个提交保留在 `handoff-local-20261006`，本地 main 已跟随远端。收尾文档补记使用 `[skip ci]`，不重复发布相同代码。
+- **历史 CI / 镜像状态（当时已核对）**：[Verify 37429832617](https://github.com/tardlk/CokeTV/actions/runs/37429832617) 与 [Docker amd64 37429832738](https://github.com/tardlk/CokeTV/actions/runs/37429832738) 均成功；后者的源码检查、发布前空容器验收、镜像发布三个步骤分别为 success。已发布 `ghcr.io/tardlk/coketv:sha-984ccf0` 与 `:latest`，两者 digest 相同：`sha256:8329ad339a36d81e6bfc7771104f0a9d106a8e08a210c5bbbbad9e8e255488f0`。匿名读取 manifest/config 确认 `linux/amd64`、`User=node`、revision 为 `984ccf0ff2ed2d0f63c96f2f5b7b2098cba023d3`。
+- 上述历史 984ccf0 发布没有本机 Docker 或发布后五引擎/重启拉取复验，也未修复 R1–R10。本轮 c2a1f21 已通过完整发布前/后矩阵；本机仍无 Docker，两次容器结果均来自 GitHub 原生 amd64。
+- 发布链路：Verify 工作流跑语法/空壳/测试/构建；Docker amd64 工作流在 main/tag 发布事件上做源码验证 → 原生 amd64 单次构建 → 完整临时容器矩阵 → artifact 保存/身份校验 → GHCR 发布；PR 和默认手动 dry-run 只读验收，使用仓库 `GITHUB_TOKEN` 的 packages 权限，不提交发布密钥。`latest` 对应 main，`sha-*` 固定提交，`v*` 发布版本。
 - `compose.yaml` 用 GHCR 镜像并挂载 `./data:/app/data`，容器以非 root `node` 运行；挂载旧版本（root 属主）数据目录需先 `chown -R 1000:1000 data`（README 有命令）。
 - `.github/workflows/image-verify.yml` + `scripts/image-verify.mjs` 可手动验证已发布镜像（五引擎、重启持久化、非 root 断言）；只在临时容器创建样本，不能用于正式数据目录。
 
@@ -128,7 +130,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 ## 7. 当前状态与下一步待办
 
-接手时 `main` 领先 `origin/main` 9 个提交的描述是历史快照。本轮限流修复的本地提交是 `a0882c2`，其内容现已同步到 GitHub 代码快照 `984ccf0`；本地 main 已跟随远端，原本地提交保留在交接分支。源码同步/镜像结果见第 5 节与第 7.4 节。**R1–R10 已在本地接手修复**，见第 7.5–7.8 节；第 7.1 节第 3 项媒体头兼容也已本地修复（第 7.10 节），第 4 项管理员锁出行为保持原产品约定；原生候选容器验收已通过（第 7.12 节），main 发布仍待安排。当前工作分支与本地检查点见第 7.10 节，第 5 节镜像只是历史产物，不包含本次本地修复。
+接手时 `main` 领先 `origin/main` 9 个提交的描述是历史快照。本轮限流修复的本地提交是 `a0882c2`，其内容现已同步到 GitHub 代码快照 `984ccf0`；本地 main 已跟随远端，原本地提交保留在交接分支。源码同步/镜像结果见第 5 节与第 7.4 节。**R1–R10 已修复并发布**，见第 7.5–7.8 节；第 7.1 节第 3 项媒体头兼容也已本地修复（第 7.10 节），第 4 项管理员锁出行为保持原产品约定；原生候选验收、main 合并、正式镜像发布及匿名发布后完整复验已完成（第 7.12–7.13 节）。当前发行见第 5 节，原检查点/旧分支保留；管理员锁出和第 7.2 节长期工作仍不变。
 
 ### 7.1 建议尽快修（影响已加上的防护或文档正确性）
 
@@ -240,7 +242,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **完整门禁**：新增共七条回归，最终 `npm run check`、`npm run build`、指定真实 Python/PHP 的 `npm test` 全部退出 0；120 宿主/辅助语法、143 桥接语法、spider 37/engine 156 空壳检查；110 后端 + 49 UI = 159 项全部通过，0 跳过。五引擎及前三组回归保留；构建仍有大于 500 kB chunk 提示。测试环境仍为 Node 22.23.3、Python 3.12.14、PHP 8.4.23。
 - **当前状态与范围**：R1–R10 全部在本地修复；没有修改用户 data，未 commit、push、发布或重建镜像；未做 Docker/真实站点/浏览器音视频/原 drpy-node-coder CLI，也未新跑 npm audit。第 7.1 节第 3、4 项和第 7.2 节长期工作保留；容器旧数据升级、真实媒体转发与重启持久化仍须验收，不能把本机源码全绿视为镜像验收完成。
 
-### 7.9 后续执行计划（2026-10-06，阶段 0–3 已执行，main 发布待安排）
+### 7.9 后续执行计划（2026-10-06，阶段 0–4 已执行，记录见 7.10–7.13）
 
 以下保留制定时的计划；实际执行状态见第 7.10 节，不能把配置准备当作容器验收完成。制定时基线为 R1–R10 本地修复、159 项测试通过，尚未 commit/push/发布。本机实际检查没有 Docker CLI，因此容器验收使用 GitHub 原生 linux/amd64 runner，不能以本机源码测试替代。顺序为保存基线 → 请求头兼容 → 候选镜像与发布前门禁 → 容器矩阵 → 审查提交与发布 → 发布后复验。
 
@@ -329,6 +331,16 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **测试与产物核对**：候选任务源码门禁 120 后端 + 49 UI = 169 全过、0 跳过；容器内 17 个回归文件的 TAP 为 **116/116，通过、0 失败、0 跳过**（不含只在源码 CI 检查的文档/工作流四条用例）。`report.json` 的 completed=true、六组检查清单与解释器/UID/镜像 ID 已核对；下载证据 ZIP 并实际校验 SHA256 与 GitHub artifact digest 一致，进一步核对其中 TAP，而非只看工作流 success。
 - **候选产物**：[candidate artifact 11410585112](https://github.com/tardlk/CokeTV/actions/runs/37456713645/artifacts/11410585112)，ZIP SHA256 `b029f14b1009d01c613b26fef200742f2f7a1e3b2d897906ee37193ab41faf8b`，包含原 image.tar、tar 校验文件、image ID 与源码 SHA；[验收证据 artifact 11410385233](https://github.com/tardlk/CokeTV/actions/runs/37456713645/artifacts/11410385233)，ZIP SHA256 `01609e100174061cde4057811b5e10d2d4fccb2e6b828a457cc90f25b0de0731`，包含 report/TAP/脱敏容器日志。候选 artifact 2026-10-09 到期，证据 artifact 2026-10-13 到期；链接不代表长期保存或已发布镜像。测试写层/卷没有 commit 为发行镜像。
 - **本轮收尾与剩余边界**：原生候选首次完整运行即通过，无容器失败需要掩盖或跳过；PR 的只读发布隔离已经实际验证。没有执行额外人工故障注入的失败候选 CI、真实外站/浏览器音视频或 drpy-node-coder CLI。本轮只回填实际验收证据，不改变源协议、管理员锁出或依赖。main/tag 合并与镜像发布仍须另行安排；发布时继续运行门禁并推送该工作流内同一验收 artifact，之后匿名固定 SHA/digest 拉取与完整发布后复验仍待执行。收尾文档提交仅文档，使用 `[skip ci]`，不能把它说成同一 SHA 的重新容器验收。
+
+### 7.13 主线发布与匿名发布后复验（2026-10-06）
+
+- **本次授权与最终审查**：用户明确要求按“最终审查 → 合并 main/自动发布 → 匿名固定 digest 拉取完整复验 → 回填记录”执行。复核 PR 的 42 个改动文件、发行忽略规则、五引擎/源同权限/管理与订阅边界、框架刷新、能力范围、每跳出口、PHP/私密配置/CLI 和 artifact 发布门禁。原生 PR 验收以后仅四份文档变更，没有运行代码变化；工作区干净、data/工具/虚拟环境/私密 HANDOFF 未跟踪。PR 转 ready 后以 expected head `5cd091cff7bad24388c2b75cb13d38d7897919de` 正常 merge，没有强推；[PR #1](https://github.com/tardlk/CokeTV/pull/1) 已 merged，main 发布提交 `c2a1f21f9be005e1855bd78b00613033791c0dbb`，tree `6340e71eaccf01fb496035c99ab21b2ae05807eb`，本机 main 已 fast-forward 同步。原工作分支和本地修复/验收检查点保留。
+- **主线源码与发布前门禁**：[Verify 37458591153](https://github.com/tardlk/CokeTV/actions/runs/37458591153) success；[Docker amd64 37458591100](https://github.com/tardlk/CokeTV/actions/runs/37458591100) 的 candidate 与 publish 均 success。candidate 再次执行源码 check/build/test（169 全过、0 跳过）、原生 Ubuntu 24.04 x64 单次构建与完整容器矩阵，报告 completed=true、116/116 容器回归零失败/零跳过；六组场景同第 7.12 节全部通过。实际 runtime 为 Node 22.23.3 / Python 3.13.5 / PHP 8.4.26，linux/amd64、UID 1000。没有拿 PR 旧镜像绕过本次 main 门禁。
+- **同一验收镜像发布**：candidate image ID `sha256:5f6a5b194bd4a76e9714c154f38e3e4054466572d639a59a03282e66594d46a2`。原镜像 save 后的 tar SHA256 为 `eca7bc7f9afe4238277901d4f2f1a30b367c6a87a190237892946b4e45e451d3`；[candidate artifact 11411132610](https://github.com/tardlk/CokeTV/actions/runs/37458591100/artifacts/11411132610) ZIP digest `sha256:e4bb5dc0864121f905305d4b138925ef4ce4c9767469c1314301419739cfdc9a`。publish 实际下载该 artifact，登录前完成 tar 校验（image.tar: OK）、image ID/源码 SHA/platform/OCI revision 核对，load 同一镜像后再登录/push；没有验收后重建或 commit 测试容器。
+- **发行身份与匿名元数据实测**：已发布 `ghcr.io/tardlk/coketv:sha-c2a1f21` 与 `:latest`，两者 registry digest 都是 `sha256:c269b482eddaff2668a43773b82fcd98f23c89b90bd48542eb4a2a6b95c8d1a2`。未使用 GitHub/registry 登录凭据的匿名 manifest/config 读取，对响应字节计算 SHA256 并比对 Docker-Content-Digest；确认单一 linux/amd64 manifest、User=node、OCI revision `c2a1f21f9be005e1855bd78b00613033791c0dbb`。config digest 等于上述 candidate image ID，不把 config ID、artifact hash 与 registry digest 混为同一个值。
+- **发布后实际复验**：通过已登录 GitHub 页面在 main 触发 `image-verify.yml`，输入固定 `ghcr.io/tardlk/coketv@sha256:c269b482eddaff2668a43773b82fcd98f23c89b90bd48542eb4a2a6b95c8d1a2`；[Verify published image 37459488105](https://github.com/tardlk/CokeTV/actions/runs/37459488105) success。其 docker pull 实际匿名拉取该 digest，随后复用完整原生矩阵：五引擎实际媒体/CLI、空壳/访问边界、旧框架升级/用户保留、同卷 Docker 重启/旧票据失效/媒体复验、私密配置/异常/出口/票据和损坏配置/旧属主恢复均通过；116/116、0 失败/0 跳过。报告的 image ID、source/verification SHA、平台、UID、解释器与发布前完全相同。
+- **证据核对与保存**：[发布前证据 11410967699](https://github.com/tardlk/CokeTV/actions/runs/37458591100/artifacts/11410967699) ZIP digest `sha256:01a4310bbe89850c6df7baae8630433dec483f9b1984ca44fc8baccaa7a86a51`；[发布后证据 11410424356](https://github.com/tardlk/CokeTV/actions/runs/37459488105/artifacts/11410424356) ZIP digest `sha256:75e1ba7852019495626e0e14339552d8c654656300062d0c1ab0f121652c95fc`。两份 ZIP 均实际下载、校验 hash 并读取 report/TAP，116 全过零跳过及镜像身份已核对。candidate 产物 2026-10-09 到期，前后证据 2026-10-13 到期；不得当作永久镜像备份。日志初始化码已脱敏，正式 data 未读写。
+- **收尾与边界**：本轮阶段 0–4 的既定发布/复验流程已完成。收尾再次 npm audit，仍为已登记四项（runtime node-forge high 无修复版本、其余三个 dev-only），不改依赖。管理员锁出、源同权限边界、五引擎与零预置源约定保持；本机仍没有 Docker，未运行外站/浏览器真实音视频或 drpy-node-coder CLI，也未额外执行故障注入 CI。最后仅正式文档补记，使用 `[skip ci]`，不重复发布相同运行代码；新文档 HEAD 可不同于上述 OCI revision，发行追踪以固定源码 SHA/digest 为准。
 
 ## 8. 验证证据与探测脚本
 
