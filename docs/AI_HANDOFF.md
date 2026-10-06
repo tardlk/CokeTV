@@ -10,6 +10,34 @@
 
 ---
 
+## 0. 当前接手入口（先看本节）
+
+本地与 GitHub **只保留 main**。代码修复、PR 合并、镜像发布及发布后复验都已完成；当前没有未合并的功能分支。下文第 6 节、第 7.3–7.12 节保留阶段性历史，里面的“未提交/未发布/待验收”和旧分支名只代表当时状态，不能当成当前待办或新授权。不要重新执行已完成的第 7.9 节发布计划，也不要恢复旧检查点分支或原站点。
+
+| 项目 | 当前结论 / 入口 |
+| --- | --- |
+| 开发基线 | 现有工作区的 main；先 git status，再读 AGENTS 和本节。文档 HEAD 可能领先镜像源码，用 git log 核对当前提交 |
+| 已发行源码 | `c2a1f21f9be005e1855bd78b00613033791c0dbb`；PR #1 已合并，R1–R10 与媒体请求头兼容修复已包含 |
+| 固定镜像 | `ghcr.io/tardlk/coketv:sha-c2a1f21`，已验收 digest：`sha256:c269b482eddaff2668a43773b82fcd98f23c89b90bd48542eb4a2a6b95c8d1a2`；当时 latest 同 digest，后续追踪优先固定 SHA/digest |
+| 已执行门禁 | 源码 169 全过、0 跳过；发布前/发布后各 116 容器回归全过、0 跳过；GitHub 原生 linux/amd64、UID 1000。CI、镜像 ID 与 artifact 校验见 7.13 |
+| 工具与数据边界 | 本机无 Docker CLI；容器证据来自 GitHub，不是本机。正式 data 未用于验收，也没有因分支清理被改写；不宣称运行过 drpy-node-coder CLI |
+| 当前保留行为 | 五引擎、原源协议、发行零预置源、源与宿主同权限。管理员失败预算耗尽后同 IP 正确密码仍 429，本次不改变该产品决策 |
+| 近期未完成事项 | 实际部署与用户源的外站/TVBox/浏览器音视频验收尚未重跑；先备份部署数据，再在明确的部署目标上按固定版本验收。不要自行更新正式 data 或拿它作测试 |
+| 长期事项 | 每源隔离方案、供应链 SHA/hash 固定、依赖专项升级、fServer WebSocket、补充覆盖；详见 7.2。npm audit 四项已登记，不通过无关大升级掩盖风险 |
+
+继续本机源码验证时使用现有工具（不要因为系统 Node/Python 版本不同而跳过用例）：
+
+```sh
+export PATH="$PWD/.tools/node/bin:$PATH"
+export TEST_PYTHON="$PWD/.venv/bin/python3"
+export TEST_PHP="$PWD/.tools/php/php"
+npm run check && npm run build && npm test
+```
+
+本机工具与虚拟环境均忽略，不随发行。普通新环境按第 4 节及 DEVELOPMENT 安装真实解释器/依赖，先 build 再 test。若要继续预览，7.4 中的端口/PID 是旧会话记录，本轮没有重验其存活；先检查仓库外 preview-session.json 和进程，不要删除旧临时数据或重复启动服务。
+
+main 代码推送会触发 latest 发布；新开发应先检查/回归，再安排候选验收及发布。本文中的历史发布授权不自动授权下一次代码发布。纯文档补记可使用 `[skip ci]`，不能用它跳过代码变更的门禁。
+
 ## 1. 发行约定
 
 - 仓库 `https://github.com/tardlk/CokeTV`，默认分支 `main`。镜像 `ghcr.io/tardlk/coketv`，只发布 `linux/amd64`（x86-64）。
@@ -41,6 +69,7 @@
 | `src/runner.js` / `src/worker.js` | 按需引擎子进程、64 项串行队列、超时回收、Python 守护进程存活探测与退避重启 |
 | `src/tvbox-import.js` | 配置读取、分类、相对引用、依赖、预览/提交 |
 | `src/playback.js` / `src/media.js` | 最长 12 小时的服务端随机媒体能力票据、请求头、Range/HLS 代理 |
+| `src/media-params.js` | 媒体 URL 与 JSON/base64 headers/旧 header 的统一解包及输入验证 |
 | `src/runtime-files.js` | spider 框架保留路径清单，启动刷新与空壳检查共用 |
 | `src/ssrf.js` | 按 IP 字节判定元数据、内网与白名单，只返回获准的连接地址 |
 | `src/outbound.js` | 受检 DNS 地址绑定、宿主 HTTP 逐跳复核与兼容语义 |
@@ -50,7 +79,7 @@
 | `web/SourceImport.vue` / `web/WebPlayer.vue` | 导入窗口和播放器 |
 | `scripts/check-shell.mjs` | 发行树零预置源断言（spider 逐文件白名单 + 全 engine 内容判定） |
 | `scripts/check-bridges.mjs` | `engine/spider/**` 的 ast.parse / php -l / node --check |
-| `scripts/container-smoke.mjs` / `container-matrix.mjs` | 空容器检查与原生 amd64 完整矩阵（本轮待执行） |
+| `scripts/container-smoke.mjs` / `container-matrix.mjs` | 空容器检查与原生 amd64 完整矩阵；发布前/后均已通过 |
 
 `engine/spider/` 只保留辅助模块、HIPY core/base、PHP 桥接/lib 和 WASM。`engine/json/`、`engine/jx/`、`engine/data/` 为空，config 是空默认值。第一次准备空运行目录；升级保留已有 data，不添加原站点。
 
@@ -86,7 +115,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - 历史镜像 `:sha-3b17276`，当时同 digest 发布为 `:latest`：`sha256:8e733b3cc506be4682015e9df004ba9b3705f31c058d9da263e28dbfa049461c`（匿名读取 manifest/config 确认 `linux/amd64`）。独立拉取验收：[Verify published image 37253476492](https://github.com/tardlk/CokeTV/actions/runs/37253476492)。这个 digest 只代表旧发布，不能据此断言当前 latest 的版本。
 - **2026-10-06 历史源码同步**：用户明确授权推送。GitHub `main` 的代码快照为 `984ccf0ff2ed2d0f63c96f2f5b7b2098cba023d3`，Git tree 与本地整理后的 `da3ce44` 完全相同（`eed21e5c7d44212cec56f80ee0b2ba08cc3f708c`）；包括此前 9 个未推送提交、本轮限流修复和接手审查记录。原始本地 11 个提交保留在 `handoff-local-20261006`，本地 main 已跟随远端。收尾文档补记使用 `[skip ci]`，不重复发布相同代码。
 - **历史 CI / 镜像状态（当时已核对）**：[Verify 37429832617](https://github.com/tardlk/CokeTV/actions/runs/37429832617) 与 [Docker amd64 37429832738](https://github.com/tardlk/CokeTV/actions/runs/37429832738) 均成功；后者的源码检查、发布前空容器验收、镜像发布三个步骤分别为 success。已发布 `ghcr.io/tardlk/coketv:sha-984ccf0` 与 `:latest`，两者 digest 相同：`sha256:8329ad339a36d81e6bfc7771104f0a9d106a8e08a210c5bbbbad9e8e255488f0`。匿名读取 manifest/config 确认 `linux/amd64`、`User=node`、revision 为 `984ccf0ff2ed2d0f63c96f2f5b7b2098cba023d3`。
-- 上述历史 984ccf0 发布没有本机 Docker 或发布后五引擎/重启拉取复验，也未修复 R1–R10。本轮 c2a1f21 已通过完整发布前/后矩阵；本机仍无 Docker，两次容器结果均来自 GitHub 原生 amd64。
+- 上述历史 984ccf0 发布没有本机 Docker 或发布后五引擎/重启拉取复验，也未修复 R1–R10。本轮 c2a1f21 已通过完整发布前/后矩阵；本机仍无 Docker，发布前/后容器结果均来自 GitHub 原生 amd64。
 - 发布链路：Verify 工作流跑语法/空壳/测试/构建；Docker amd64 工作流在 main/tag 发布事件上做源码验证 → 原生 amd64 单次构建 → 完整临时容器矩阵 → artifact 保存/身份校验 → GHCR 发布；PR 和默认手动 dry-run 只读验收，使用仓库 `GITHUB_TOKEN` 的 packages 权限，不提交发布密钥。`latest` 对应 main，`sha-*` 固定提交，`v*` 发布版本。
 - `compose.yaml` 用 GHCR 镜像并挂载 `./data:/app/data`，容器以非 root `node` 运行；挂载旧版本（root 属主）数据目录需先 `chown -R 1000:1000 data`（README 有命令）。
 - `.github/workflows/image-verify.yml` + `scripts/image-verify.mjs` 可手动验证已发布镜像（五引擎、重启持久化、非 root 断言）；只在临时容器创建样本，不能用于正式数据目录。
@@ -130,9 +159,9 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 ## 7. 当前状态与下一步待办
 
-接手时 `main` 领先 `origin/main` 9 个提交的描述是历史快照。本轮限流修复的本地提交是 `a0882c2`，其内容现已同步到 GitHub 代码快照 `984ccf0`；本地 main 已跟随远端，原本地提交保留在交接分支。源码同步/镜像结果见第 5 节与第 7.4 节。**R1–R10 已修复并发布**，见第 7.5–7.8 节；第 7.1 节第 3 项媒体头兼容也已本地修复（第 7.10 节），第 4 项管理员锁出行为保持原产品约定；原生候选验收、main 合并、正式镜像发布及匿名发布后完整复验已完成（第 7.12–7.13 节）。当前发行见第 5 节，原检查点/旧分支保留；管理员锁出和第 7.2 节长期工作仍不变。
+接手时 `main` 领先 `origin/main` 9 个提交的描述是历史快照。本轮限流修复的本地提交是 `a0882c2`，其内容现已同步到 GitHub 代码快照 `984ccf0`；本地 main 已跟随远端，原本地提交保留在交接分支。源码同步/镜像结果见第 5 节与第 7.4 节。**R1–R10 已修复并发布**，见第 7.5–7.8 节；第 7.1 节第 3 项媒体头兼容也已本地修复（第 7.10 节），第 4 项管理员锁出行为保持原产品约定；原生候选验收、main 合并、正式镜像发布及匿名发布后完整复验已完成（第 7.12–7.13 节）。当前发行见第 5 节，辅助分支与重复检查点引用已清理，只保留 main（7.14）；管理员锁出和第 7.2 节长期工作仍不变。
 
-### 7.1 建议尽快修（影响已加上的防护或文档正确性）
+### 7.1 原待办处置（前三项已完成，第 4 项维持现状）
 
 本次接手逐条核对：接手时四项原待办均存在；现已完成第 1、2、3 项（第 3 项本地验证见 7.10），第 4 项维持现状并单独作产品决策。编号保持不变，便于对照原接手要求。
 
@@ -142,7 +171,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
    - 修复后同一 `probe15`：带媒体票据的 `/proxy/` 12×429、0×200，后续引擎执行数为 0。
    - `tests/rate-limit.test.js` 修复前实际失败（期望 429，实际 200），修复后通过：预算内源代理返回正常；预算耗尽后拒绝且不执行引擎；编码/absolute-form 不能绕过；HLS 分片/key 高频 GET、HEAD、Range 与 base64 目标保持可用；票据换目标/挪到其他路由不豁免；源代理 `toBytes=2` 302 补签仍可匿名跟随。
 2. **`docs/DEVELOPMENT.md` 计数陈旧（低，已修）**：接手时仍写 `114 项测试（66 后端、48 UI）、117 个文件语法检查`。已删除固定计数，指向 `npm test` / `npm run check` 实际输出及本文件第 4 节的验证记录。`tests/documentation.test.js` 在原文上实际失败，修订后通过，防止“当前验证”重新维护固定测试/语法文件计数。
-3. **`/mediaProxy` 与 `/proxy` 的头处理不一致（本地已修）**：以下保留原复核证据；当前实现与新增失败/通过回归见第 7.10 节。审查时 `/proxy` 已能解包旧基类 `header`+`form=base64` 并补签票据，而直接请求 `/mediaProxy?url=…&header=<b64>` 仍只认 `headers`（复数 JSON），且只有订阅 Token 路径读调用方头，`admin`/内部运行时拿到的头恒为 `{}`。若源在服务端自行拼 `mediaProxyUrl` 就会丢头。建议把 `unwrapMediaProxyContent` 的解包逻辑复用到 `/mediaProxy`。本次在临时目录和固定 HTTP 上游复核：订阅 Token + `headers` JSON 的 Referer 可透传；订阅 Token + `header` base64、管理员 + `headers` JSON、内部运行时 + `headers` JSON 均丢失 Referer（四条请求均为 200）。该审查阶段未修改此行为；后续本地修复已完成。
+3. **`/mediaProxy` 与 `/proxy` 的头处理不一致（已发布）**：以下保留原复核证据；当前实现与新增失败/通过回归见第 7.10 节。审查时 `/proxy` 已能解包旧基类 `header`+`form=base64` 并补签票据，而直接请求 `/mediaProxy?url=…&header=<b64>` 仍只认 `headers`（复数 JSON），且只有订阅 Token 路径读调用方头，`admin`/内部运行时拿到的头恒为 `{}`。若源在服务端自行拼 `mediaProxyUrl` 就会丢头。建议把 `unwrapMediaProxyContent` 的解包逻辑复用到 `/mediaProxy`。本次在临时目录和固定 HTTP 上游复核：订阅 Token + `headers` JSON 的 Referer 可透传；订阅 Token + `header` base64、管理员 + `headers` JSON、内部运行时 + `headers` JSON 均丢失 Referer（四条请求均为 200）。该审查阶段未修改此行为；后续本地修复已完成。
 4. **管理员锁出边界（提示）**：失败预算按 IP 20/min，耗尽后**同一 IP 即使给正确密码也 429**（已测试、已文档化）。`TRUST_PROXY=1` 且前置代理不覆写 `X-Forwarded-For` 时，可被伪造 IP 用来把管理员锁在 `/admin` 外（每 60 秒窗口需重新打满 20 次）。可选改进：只对失败计数、成功凭据始终放行。本次核对守卫仍在校验密码前检查失败预算；完整测试中的 `P0-3` 用例再次确认预算耗尽后正确密码也 429。本次未修改此行为。
 
 本次限流修复阶段的实际验证（2026-10-06，收尾推送前的历史记录）：
@@ -152,16 +181,16 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - `npm run check && npm run build && TEST_PYTHON=python3 TEST_PHP=php npm test`：全部通过；118 个宿主/辅助文件语法、143 个桥接文件语法、空壳发行检查、生产构建；124 项测试（75 后端 + 49 UI），无失败或跳过。五种引擎固定样本均通过。构建仍有大于 500 kB 的 chunk 提示。
 - 未做 Docker/容器验收、外部站点播放、原 drpy-node-coder CLI 或新的 `npm audit`；未修改用户 `data/`，未 push、未发布或重建镜像。
 
-### 7.2 长期未做（第一轮审查后列出，需要产品决策或专项排期）
+### 7.2 仍需产品决策或专项排期的事项
 
-- **每源独立进程 + 沙箱最小化**（C3 的根治）：当前 `src/runner.js` 只 fork 一个 worker，所有源共享进程与 `cwd`；源脚本能读到 `DRPY_INTERNAL_KEY` 并用 `x-drpy-runtime` 让 `authorize()` 放行（已实测），也能读 `data/state.json` 与其他源 ENV。按 `AGENTS.md` 这属于**已知信任边界**，但若要支持"导入不可信源"，必须做进程隔离并删掉沙箱里的 `require`/`JSFile`/全量 `process.env`。
+- **每源隔离方案**：当前所有源共用 worker，源可读文件系统、ENV 和内部凭据，这是 AGENTS 已确认的同权限信任边界。每源进程隔离尚未实施；单独进程也不自动提供沙箱。任何权限收紧需要先作产品决策、评估五引擎与动态 require/辅助库兼容，不能直接删掉现有能力后宣称问题已解决。
 - **供应链**：`.github/workflows/*.yml` 的 `uses:` 全部是浮动 tag，未钉 commit SHA；`engine/spider/py/base/requirements.txt` 无版本约束与 hash；基础镜像 `node:22-trixie-slim` 未钉 digest。
-- **发布门强度**：五引擎固定样本、订阅边界、重启持久化在**发布后**的手动 `image-verify.yml` 里跑，建议移入 `docker.yml` 的发布前门。2026-10-06 复核 `scripts/image-verify.mjs`：播放只断言返回媒体地址，未请求该地址，**没有容器 Range/HLS 验收**；目前 Range/HLS 仅由宿主固定上游测试覆盖，需另补容器真实转发。发布前 `container-smoke.mjs` 覆盖新建 JS/Python/PHP 模板执行，不能代替五引擎与旧数据升级矩阵。
-- **引擎死代码**：约 19 个文件在任何模块说明符处零引用（`utils/` 下 `esm-loader.mjs`、`chunk.js`、`sourceVerify.js`、`rule-env.js`、`phpEnv.js`、`with-timeout.js`、`python.js`、`message_sender.js`、`imageManager.js`、`filePolicy.js`、`pathGuard.js`、`daemonManager.js`、`api_helper.js`、`api_validate.js`、`changelogParser.js`、`pluginMethodManager.js`、`marked.min.js`、`admin/logReader.js`，加 `libs/xbpq.js`）。注意 `with-timeout.js` 是 CokeTV 自己加的"Promise.race 输家 unhandledRejection"修复，但零调用，而 `libs/php.js` 的注释仍声称在用——**修复没接线**。每次启动这些文件都会被全量拷进 `data/runtime/`（`src/store.js`）。要么清理，要么在 `docs/THIRD_PARTY.md` 说明是"保留上游 API 面"。
+- **原“发布门强度”待办已完成**：五引擎、升级、实际 Range/HLS/分片/key、私密配置与同卷重启已移入发布前完整矩阵，发布后匿名固定 digest 复验也通过（7.12–7.13）。不要再登记成“只返回媒体地址”或“没有容器 Range/HLS 覆盖”。额外人工故障注入 CI 尚未执行；PR publish skipped 与本地条件回归已有证据。
+- **兼容辅助模块整理**：旧审查曾列出约 19 个静态零引用文件，名单与“死代码”判断需重新复核；用户源可以按原模块名动态导入，零静态引用不等于可删除。保留兼容 API 面，必要时在 THIRD_PARTY 说明来源，不凭旧名单裁剪引擎。单独的 utils/with-timeout.js 当前仍无静态接线，PHP 进程回收实际由 execFile timeout/killSignal 完成（已回归）；不要把未接线辅助文件当成已生效机制。
 - **`fServer` 兼容缺口**：`src/worker.js` 注入的 `fServer` 是只回 404 的裸 `http.createServer`，而 `src/server.js` 把 WebSocket upgrade 转发到同一端口；上游 drpy-node 里 `fServer` 是带 websocket 的 Fastify 实例。依赖弹幕 WS 的源不可用。
-- **测试隔离与覆盖**：`tests/integration.test.js` 多用例共享同一 `app/store`，`tests/tvbox-import.test.js` 存在先后用例依赖；本轮未运行随机顺序或逐条隔离矩阵，不把“单跑必失败”作为新实测结论。仍需专项覆盖 `/parse/:jx` 的 parse type=2、`/ftp/*`、`/image/upload`、`/admin/subscriptions/:id/token`、ZIP 恶意包和 `state.json`/`env.json` 损坏拒绝覆盖。旧记录把 `/file-proxy` 与 `bytes===2` 重定向列为零覆盖已经过时：当前 `rate-limit.test.js` / `proxy-headers.test.js` 已覆盖对应固定样本。
+- **测试隔离与覆盖**：`tests/integration.test.js` 多用例共享同一 `app/store`，`tests/tvbox-import.test.js` 存在先后用例依赖；本轮未运行随机顺序或逐条隔离矩阵，不把“单跑必失败”作为新实测结论。仍需专项覆盖 `/parse/:jx` 的 parse type=2、`/ftp/*`、`/image/upload`、`/admin/subscriptions/:id/token`及更完整的 ZIP 恶意包场景。`state.json`/`env.json` 损坏拒绝启动、字节保留已经有发布前/后容器验证；不要重新标为零覆盖。旧记录把 `/file-proxy` 与 `bytes===2` 重定向列为零覆盖已经过时：当前 `rate-limit.test.js` / `proxy-headers.test.js` 已覆盖对应固定样本。
 
-### 7.3 全面接手复核（2026-10-06，新增发现与修复进度）
+### 7.3 全面接手复核（2026-10-06，历史发现；R1–R10 现已发布）
 
 用户要求对照原始仓库判断其他 AI 修改是否正确。本次以 GitHub `tardlk/CokeTV` 的远端 `main`（只读 `git ls-remote` 确认为 `ae89c27570537c8931f0747a3c2185880a6b94e3`）为基线，核对本地 `HEAD=544a618` 之后的工作区及领先远端的 9 个提交。审阅管理/订阅/媒体鉴权、票据与限流、出口策略、Store 升级与私密配置、五种引擎桥接、导入、前端变更、Docker 和三个工作流，以及测试断言与旧版实现。
 
@@ -169,16 +198,16 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 | 编号 / 优先级 | 问题与定位 | 实测证据 / 来源 | 修复与回归要求 |
 | --- | --- | --- | --- |
-| **R1 / P1（本地已修）** | 旧数据升级不会更新框架桥接：`src/store.js:30` 仅在目录不存在时复制 `runtime/spider`，但会刷新 `libs`；新版 PHP 调用 `localProxy\|proxy`，旧桥接不认识候选名，Python 安全更新也未落到运行副本 | `probe17`：全新目录 PHP 代理 200；放入远端旧桥接后重启当前宿主，代理 500，运行副本仍含 `pickle.loads(payload)`；实例状态、用户脚本和每源 ENV 保留。旧复制策略与新版协议组合形成升级回归 | 已按 `src/runtime-files.js` 的框架保留路径逐文件原子更新桥接/基类/辅助库。`tests/runtime-upgrade.test.js` 从 ae89c27 冻结桥接升级，PHP 代理 500→200，Python 接受 JSON 并拒绝无害 pickle 入站，五引擎执行和用户文件/状态保留通过 |
-| **R2 / P1（本地已修）** | 匿名票据泄露上游凭据：`src/playback.js:33–36` 用 base64url 明文 JSON 加 HMAC，载荷包含源返回的 `headers` | `probe16`：匿名 `/play` 返回的票据可直接解码出源从 ENV 取得的 Cookie 和源返回的 Authorization。HMAC 保证完整性，不提供保密性；远端旧版随机票据没有该载荷，属于新增回归 | 已改为 256 位随机、43 字符的服务端能力引用，保留 kind/source/URL/headers/expiry 约束；最长 12 小时、50000 条/64 MiB 载荷容量，淘汰最旧记录。新增回归覆盖匿名播放与 HLS 票据不可解码凭据，实际上游 Cookie/Authorization 透传、范围、篡改、过期、容量回收 |
-| **R3 / P1（本地已修）** | IPv4 映射 IPv6 绕过内网与元数据判定：`src/ssrf.js:19–24,58` 未把规范化的十六进制 IPv4 尾部转换成 IPv4；元数据仅按文本比对 | `probe16`：关闭内网时普通回环媒体 403，`[::ffff:127.0.0.1]` 媒体 200 并取得自建临时上游内容。映射元数据地址通过守卫，而普通元数据地址 403；**未向真实元数据服务发请求**。新增防护不完整 | 已按 IP 字节统一分类，将点分/十六进制映射 IPv6 归为 IPv4。回归覆盖直接地址、展开形式、DNS、白名单、本机 origin 豁免与重定向；内网关闭后的映射回环媒体 200→403，映射元数据永久拒绝，不访问真实元数据服务 |
-| **R4 / P1（本地已修）** | DNS 检查与连接分离：`src/ssrf.js:55,65` 返回解析地址，`src/media.js:46,53` 丢弃结果并让 HTTP 客户端再解析 | `probe16`：受控模拟守卫解析返回公网地址、实际连接解析为回环，关闭内网后仍取得临时上游 200。**这是模拟两次 DNS 答案不同，并非真实外部 DNS rebinding 攻击测试**。新增防护不完整 | 已通过 `pinnedLookup` 将媒体与 `/http` 每跳的新连接绑定到受检地址，IP/CIDR 名单只返回匹配地址。受控两次 DNS 样本的未经检查回环连接数 1→0；实际 Host/TLS SNI、证书验证、IP+Host 虚拟主机、Range/HEAD/HLS 和环境代理对照通过 |
-| **R5 / P1（本地已修）** | PHP 失败向匿名用户泄露源参数：`engine/libs/php.js:62–67,99–101` 原样抛出带完整命令参数的 execFile 错误，`src/server.js:48–50` 原样发送；现有 ENV 脱敏未覆盖 params | `probe18`：普通 PHP 首页抛异常，匿名首页返回 500，响应包含固定样本的私有 params 和 sourceEnvPath。远端已有该错误链，属于旧风险未闭环 | 已解析桥接 stdout 错误信封，不上抛/记录原始 execFile Error。接口固定 `PHP 源执行失败`；管理诊断保留原因/方法，遮蔽原始/JSON/URL 参数、嵌套/短值/数字 ENV 与私密路径。普通异常、初始化、解释器/非 JSON 失败、Warning、lastCheck 与后续正常源通过回归 |
-| **R6 / P2（本地已修）** | `/http` 只检查首跳：`src/server.js:601–607` 之后由 axios 自动跟随重定向，无出口复核 | `probe19`：白名单只含临时上游的域名，直接请求未列入名单的回环 IP 403；域名 302 到同一上游的 IP 后 `/http` 返回 200，而 `/mediaProxy` 同类重定向 403。需管理、内部或订阅凭据，**并非匿名 `/http` 绕过**；实际 POST 携媒体票据仍为 403。新增防护不完整 | 已用 `guardedHttp` 手动逐跳检查/绑定 DNS，默认最多 21 次、允许设置 0–21，0 返回首跳；禁止环境代理重新解析。固定上游回归首跳域名允许、跳转 IP 被拒 200→403，同域 DNS 新元数据答案也在连接前拒绝；方法/请求体/头/参数/响应与原 Axios 语义对照通过 |
-| **R7 / P2（本地已修）** | 长播放地址变成不可访问的媒体票据：`src/playback.js:35,51` 把整个 URL/headers 放入路径，`src/server.js:44` 路由参数最大 4096 | `probe16`：合法固定媒体 URL 仅附 4000 字符签名参数，播放解析 200，票据长度 5640，随后媒体请求 414；短地址对照 200。旧随机短票据不受此影响，属于新增回归 | 已与 R2 一并改为短引用，不截短 URL/头、不提高路由参数限制。新增回归实际跟随带 4000 字符签名参数的媒体 URL，Range 414→206，HEAD 200，完整上游 URL 保留 |
-| **R8 / P2（本地已修）** | 全局 ENV 的 0600 没覆盖宿主保存：`src/store.js:56–59,72–74` 原子写入临时文件未指定权限 | `probe18`：当前机器 umask 下全新全局 ENV 为 0644；先设为 0600，再调用宿主 `syncEnvironment()` 又变回 0644。旧宿主写法仍在，历史 M5 仅覆盖引擎写入路径 | `Store.atomic` 支持创建模式；全局/每源 ENV、state、插件配置和管理凭据保存显式 0600，从临时文件创建起生效。首次、设置/导入、反复替换、重启及引擎全局/每源 ENV.set/delete 回归通过，旧全局 ENV 0644 在宿主同步后为 0600 |
-| **R9 / P2（本地已修）** | PHP 方法选择并非完整的“最派生”：`engine/spider/php/_bridge.php:83–93` 仅排除 BaseSpider，遇到第一个非 BaseSpider 候选就停止 | `probe18`：中间父类声明 localProxy（404），Spider 自己重写 proxy（200）；当前选择父类并返回 404。远端直调 proxy 可命中子类，属于新增兼容回归 | 已比较完整继承链中声明类到 Spider 的距离，最近优先，同层按候选顺序。多层父类/子类、无 BaseSpider、trait、同层倒序、纯继承默认 404 与宿主源代理回归通过；原 404→200，显式单方法调用和既有别名行为保留 |
-| **R10 / P2（本地已修）** | 哈希凭据升级后 CLI 验证失效：`scripts/verify.mjs:8–9` 仍读取 `admin.json.password`，v2 格式没有这个字段 | `probe20`：临时 GUI 设密后，按文档运行实际 verify CLI（无 ADMIN_PASSWORD）退出 1；同一 CLI 显式提供正确密码，首页/分类/详情通过。哈希迁移带来的新增兼容回归 | 已移除客户端读取 admin.json，支持隐藏终端输入、环境 ADMIN_PASSWORD 和优先的 --password-stdin。实际 CLI 在 GUI v2、无本地文件的远端访问、旧凭据迁移后均完成首页/分类/详情；无凭据/空输入先失败不发请求，错误密码被拒，真实终端不回显且取消后恢复模式 |
+| **R1 / P1（已发布）** | 旧数据升级不会更新框架桥接：`src/store.js:30` 仅在目录不存在时复制 `runtime/spider`，但会刷新 `libs`；新版 PHP 调用 `localProxy\|proxy`，旧桥接不认识候选名，Python 安全更新也未落到运行副本 | `probe17`：全新目录 PHP 代理 200；放入远端旧桥接后重启当前宿主，代理 500，运行副本仍含 `pickle.loads(payload)`；实例状态、用户脚本和每源 ENV 保留。旧复制策略与新版协议组合形成升级回归 | 已按 `src/runtime-files.js` 的框架保留路径逐文件原子更新桥接/基类/辅助库。`tests/runtime-upgrade.test.js` 从 ae89c27 冻结桥接升级，PHP 代理 500→200，Python 接受 JSON 并拒绝无害 pickle 入站，五引擎执行和用户文件/状态保留通过 |
+| **R2 / P1（已发布）** | 匿名票据泄露上游凭据：`src/playback.js:33–36` 用 base64url 明文 JSON 加 HMAC，载荷包含源返回的 `headers` | `probe16`：匿名 `/play` 返回的票据可直接解码出源从 ENV 取得的 Cookie 和源返回的 Authorization。HMAC 保证完整性，不提供保密性；远端旧版随机票据没有该载荷，属于新增回归 | 已改为 256 位随机、43 字符的服务端能力引用，保留 kind/source/URL/headers/expiry 约束；最长 12 小时、50000 条/64 MiB 载荷容量，淘汰最旧记录。新增回归覆盖匿名播放与 HLS 票据不可解码凭据，实际上游 Cookie/Authorization 透传、范围、篡改、过期、容量回收 |
+| **R3 / P1（已发布）** | IPv4 映射 IPv6 绕过内网与元数据判定：`src/ssrf.js:19–24,58` 未把规范化的十六进制 IPv4 尾部转换成 IPv4；元数据仅按文本比对 | `probe16`：关闭内网时普通回环媒体 403，`[::ffff:127.0.0.1]` 媒体 200 并取得自建临时上游内容。映射元数据地址通过守卫，而普通元数据地址 403；**未向真实元数据服务发请求**。新增防护不完整 | 已按 IP 字节统一分类，将点分/十六进制映射 IPv6 归为 IPv4。回归覆盖直接地址、展开形式、DNS、白名单、本机 origin 豁免与重定向；内网关闭后的映射回环媒体 200→403，映射元数据永久拒绝，不访问真实元数据服务 |
+| **R4 / P1（已发布）** | DNS 检查与连接分离：`src/ssrf.js:55,65` 返回解析地址，`src/media.js:46,53` 丢弃结果并让 HTTP 客户端再解析 | `probe16`：受控模拟守卫解析返回公网地址、实际连接解析为回环，关闭内网后仍取得临时上游 200。**这是模拟两次 DNS 答案不同，并非真实外部 DNS rebinding 攻击测试**。新增防护不完整 | 已通过 `pinnedLookup` 将媒体与 `/http` 每跳的新连接绑定到受检地址，IP/CIDR 名单只返回匹配地址。受控两次 DNS 样本的未经检查回环连接数 1→0；实际 Host/TLS SNI、证书验证、IP+Host 虚拟主机、Range/HEAD/HLS 和环境代理对照通过 |
+| **R5 / P1（已发布）** | PHP 失败向匿名用户泄露源参数：`engine/libs/php.js:62–67,99–101` 原样抛出带完整命令参数的 execFile 错误，`src/server.js:48–50` 原样发送；现有 ENV 脱敏未覆盖 params | `probe18`：普通 PHP 首页抛异常，匿名首页返回 500，响应包含固定样本的私有 params 和 sourceEnvPath。远端已有该错误链，属于旧风险未闭环 | 已解析桥接 stdout 错误信封，不上抛/记录原始 execFile Error。接口固定 `PHP 源执行失败`；管理诊断保留原因/方法，遮蔽原始/JSON/URL 参数、嵌套/短值/数字 ENV 与私密路径。普通异常、初始化、解释器/非 JSON 失败、Warning、lastCheck 与后续正常源通过回归 |
+| **R6 / P2（已发布）** | `/http` 只检查首跳：`src/server.js:601–607` 之后由 axios 自动跟随重定向，无出口复核 | `probe19`：白名单只含临时上游的域名，直接请求未列入名单的回环 IP 403；域名 302 到同一上游的 IP 后 `/http` 返回 200，而 `/mediaProxy` 同类重定向 403。需管理、内部或订阅凭据，**并非匿名 `/http` 绕过**；实际 POST 携媒体票据仍为 403。新增防护不完整 | 已用 `guardedHttp` 手动逐跳检查/绑定 DNS，默认最多 21 次、允许设置 0–21，0 返回首跳；禁止环境代理重新解析。固定上游回归首跳域名允许、跳转 IP 被拒 200→403，同域 DNS 新元数据答案也在连接前拒绝；方法/请求体/头/参数/响应与原 Axios 语义对照通过 |
+| **R7 / P2（已发布）** | 长播放地址变成不可访问的媒体票据：`src/playback.js:35,51` 把整个 URL/headers 放入路径，`src/server.js:44` 路由参数最大 4096 | `probe16`：合法固定媒体 URL 仅附 4000 字符签名参数，播放解析 200，票据长度 5640，随后媒体请求 414；短地址对照 200。旧随机短票据不受此影响，属于新增回归 | 已与 R2 一并改为短引用，不截短 URL/头、不提高路由参数限制。新增回归实际跟随带 4000 字符签名参数的媒体 URL，Range 414→206，HEAD 200，完整上游 URL 保留 |
+| **R8 / P2（已发布）** | 全局 ENV 的 0600 没覆盖宿主保存：`src/store.js:56–59,72–74` 原子写入临时文件未指定权限 | `probe18`：当前机器 umask 下全新全局 ENV 为 0644；先设为 0600，再调用宿主 `syncEnvironment()` 又变回 0644。旧宿主写法仍在，历史 M5 仅覆盖引擎写入路径 | `Store.atomic` 支持创建模式；全局/每源 ENV、state、插件配置和管理凭据保存显式 0600，从临时文件创建起生效。首次、设置/导入、反复替换、重启及引擎全局/每源 ENV.set/delete 回归通过，旧全局 ENV 0644 在宿主同步后为 0600 |
+| **R9 / P2（已发布）** | PHP 方法选择并非完整的“最派生”：`engine/spider/php/_bridge.php:83–93` 仅排除 BaseSpider，遇到第一个非 BaseSpider 候选就停止 | `probe18`：中间父类声明 localProxy（404），Spider 自己重写 proxy（200）；当前选择父类并返回 404。远端直调 proxy 可命中子类，属于新增兼容回归 | 已比较完整继承链中声明类到 Spider 的距离，最近优先，同层按候选顺序。多层父类/子类、无 BaseSpider、trait、同层倒序、纯继承默认 404 与宿主源代理回归通过；原 404→200，显式单方法调用和既有别名行为保留 |
+| **R10 / P2（已发布）** | 哈希凭据升级后 CLI 验证失效：`scripts/verify.mjs:8–9` 仍读取 `admin.json.password`，v2 格式没有这个字段 | `probe20`：临时 GUI 设密后，按文档运行实际 verify CLI（无 ADMIN_PASSWORD）退出 1；同一 CLI 显式提供正确密码，首页/分类/详情通过。哈希迁移带来的新增兼容回归 | 已移除客户端读取 admin.json，支持隐藏终端输入、环境 ADMIN_PASSWORD 和优先的 --password-stdin。实际 CLI 在 GUI v2、无本地文件的远端访问、旧凭据迁移后均完成首页/分类/详情；无凭据/空输入先失败不发请求，错误密码被拒，真实终端不回显且取消后恢复模式 |
 
 本轮审查阶段的验证事实与边界（收尾提交/推送前的历史记录）：
 
@@ -196,11 +225,11 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **用户最新要求**：整理仓库与文档、推送 GitHub，然后换对话；已明确授权推送，且已说明 main 推送会触发 Docker 工作流发布 latest。本轮没有扩大范围去修 R1–R10。
 - **本轮实际改动**：本地提交 `a0882c2`（已包含于 GitHub `984ccf0`）收紧票据限流豁免，新增 `tests/rate-limit.test.js` / `tests/documentation.test.js`；README、配置、开发、安全策略同步真实边界和验证口径。本文件集中登记审查发现，未另建接手报告；`verify` 文档新增显式密码的临时用法，R10 的 CLI 实现仍待修。
 - **收尾门禁**：再次运行 `npm run check && npm run build && TEST_PYTHON=python3 TEST_PHP=php npm test`，退出 0，118 宿主/辅助语法文件、143 桥接语法文件、空壳检查、生产构建通过；124 项 = 75 后端 + 49 UI，0 跳过。仅保留构建 chunk 大小提示。未做本机 Docker 或新增外部站点播放验证。
-- **当前测试服务**：本机 `http://127.0.0.1:54058` 保持运行，首页、后台、健康接口实际返回 200；使用独立临时 DATA_DIR，未启动或改写仓库正式用户 data。测试数据保留，不要为清理仓库而删掉。仓库外 `../coketv-audit/preview-session.json` 记录 PID 与测试数据位置，不含密码或初始化码；换对话后先确认进程是否仍在，避免重复启动或覆盖测试数据。该记录与全部探测脚本都不提交。
+- **当时的测试服务（历史，存活待核对）**：本机 `http://127.0.0.1:54058` 保持运行，首页、后台、健康接口实际返回 200；使用独立临时 DATA_DIR，未启动或改写仓库正式用户 data。测试数据保留，不要为清理仓库而删掉。仓库外 `../coketv-audit/preview-session.json` 记录 PID 与测试数据位置，不含密码或初始化码；换对话后先确认进程是否仍在，避免重复启动或覆盖测试数据。该记录与全部探测脚本都不提交。
 - **提交/推送状态**：源码和接手文档已同步到 GitHub，本地 main 已与远端一致；原本地提交保留在 `handoff-local-20261006`。本机 Git HTTPS 没有登录凭据、也没有现成 SSH 身份，本次使用已登录且有仓库写权限的 GitHub 连接追加快照提交，未强推或覆盖原远端历史；以 Git tree 相等核对全部文件内容和权限。下一轮推送需使用该连接或先配置正常 Git 登录，不能因为认证失败强制改写远端。CI/镜像发布已成功并回填 digest，详见第 5 节；本次收尾纯文档补记标记 `[skip ci]`，这不用于跳过代码变更的验证。
 - **新对话按顺序读**：AGENTS → 本文件 → 需要改代码时读正式开发/配置/安全文档。先读取第 7.1 节保留项及第 7.3 节 R1–R10，再结合第 8 节的本机探测脚本继续；当时建议优先 R1、R2/R7；本次已完成这组本地修复，当前状态见第 7.5 节。后续仍保持五引擎和原源协议，先建立能失败的回归再修。
 
-### 7.5 第一组本地接手修复（2026-10-06，R1、R2/R7，保留验收记录）
+### 7.5 第一组本地接手修复（历史验收：R1、R2/R7）
 
 - **接手基线**：干净克隆 `main`，HEAD 为 `75748f1`，按 AGENTS → 本文件 → 正式文档的顺序阅读。当前修改仅在本地工作区，未 commit、push、发布或重建镜像；第 5 节远端发布记录仍指向此前代码。
 - **先失败再修复**：新增 7 条回归。修复前专项运行共 15 项，9 通过、6 失败、0 跳过；旧 PHP 桥接代理期望 200 实际 500，旧 Python 桥接接受 pickle，匿名票据可解码凭据，长播放媒体请求期望 206 实际 414，短引用/容量断言也失败。Python 初次尝试系统 3.9 不支持桥接类型注解，随后改用真实 Python 3.12 重跑并确认是协议断言失败。保留既有断言，没有放宽状态码或跳过测试。
@@ -211,7 +240,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **本机环境与完整门禁**：Node 22.23.3、Python 3.12.14、PHP 8.4.23，运行工具/虚拟环境均忽略。`npm run check`、`npm run build`、指定真实解释器的 `npm test` 全部退出 0：119 宿主/辅助语法文件、143 桥接语法文件、spider 37/engine 156 空壳检查；82 后端 + 49 UI = 131 项全部通过、0 跳过。专项修复后 15/15 通过；随后增强长请求头断言，临时还原原票据实现时仍实际复现凭据泄露和 414，再恢复修复并跑完整门禁。构建仍保留大于 500 kB 的 chunk 提示。
 - **边界与下一步**：仅使用临时数据目录、自建 HTTP 上游和固定脚本，未改正式用户 data。未做 Docker、容器旧数据升级/媒体转发、真实站点播放、浏览器音视频或原 drpy-node-coder CLI；本次没有执行独立 `npm audit`（npm ci 输出仍为 4 项）。R3/R4/R5/R6/R8/R9/R10 及第 7.1 节第 3、4 项继续待修，下一组建议 R3/R4/R6。发布前仍需容器旧数据升级与真实媒体转发验收。
 
-### 7.6 第二组本地修复（2026-10-06，R3/R4/R6，保留验收记录）
+### 7.6 第二组本地修复（历史验收：R3/R4/R6）
 
 - **先失败再修复**：新增 `tests/ssrf.test.js` / `tests/outbound.test.js` 共 14 条，原实现上实际运行 1 通过、13 失败、0 跳过。关闭内网后映射回环媒体仍 200；映射元数据守卫未拒绝；媒体与 `/http` 的受控第二次 DNS 回环答案都被连接（上游收到 1 次）；允许域名跳转白名单外 IP 的 `/http` 返回 200。同域重定向的新 DNS 元数据答案与环境代理也有失败对照。所有样本使用临时目录和本地上游；模拟受检公网答案的实际拨号在测试中截断，不访问公网或真实元数据服务。
 - **R3 实现**：`src/ssrf.js` 将合法 IP 转为字节，IPv4 映射 IPv6 统一按 IPv4 判定。IPv6 压缩/展开、十六进制尾部、DNS 回答、IPv4/IPv6 CIDR 与元数据归一判定；元数据检查在内网开关、白名单与本机 origin 豁免之前。空/无效 DNS 回答拒绝，关闭内网时混合答案整体拒绝；IP/CIDR 名单过滤返回地址，不能因某个答案匹配而连接另一个答案。
@@ -221,7 +250,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **完整门禁**：Node 22.23.3、Python 3.12.14、PHP 8.4.23；`npm run check`、`npm run build`、指定真实解释器的 `npm test` 全部退出 0：120 宿主/辅助语法文件、143 桥接文件、spider 37/engine 156 空壳检查；96 后端 + 49 UI = 145 项通过，0 跳过。五引擎、第一组升级/票据、源代理 `toBytes=2/3`、旧媒体头协议与限流回归保留；构建仍有大于 500 kB chunk 提示。
 - **范围与下一步**：没有修改用户 data；未 commit、push、发布、重建镜像或做 Docker/真实站点/浏览器音视频/drpy-node-coder CLI 验收，未新跑 npm audit。源脚本仍同权限执行，宿主出口修复不改变该信任边界。当前 R5/R8/R9/R10 及第 7.1 节第 3、4 项待修；先做 R5/R8，再做 R9/R10，仍先失败回归再修。发布前仍需容器旧数据升级与媒体转发验收。
 
-### 7.7 第三组本地修复（2026-10-06，R5/R8，保留验收记录）
+### 7.7 第三组本地修复（历史验收：R5/R8）
 
 - **先失败再修复**：新增 `tests/private-data.test.js` 六条，修改前实际六条全部失败、0 跳过：普通 PHP 首页匿名响应含 URL 编码的私有 params，诊断泄露原始参数，初始化异常含完整 execFile 命令；全局 ENV 首次/设置保存/引擎写后宿主同步的 mode 为 0644（420），期望 0600（384）。新增 `tests/source-env.test.js` 一条辅助回归，逐步检出 JSON 数字参数、被覆盖的全局值、短/数字 ENV、异常 Unicode 和固定提示被同名参数改写的问题，均先失败再修复。
 - **R5 实现**：`engine/libs/php.js` 在 execFile exit(1) 时解析 stdout 的 `{error, traceback}`；不再日志/上抛包含 cmd/argv 的原始 Error，成功协议结果和超时预算保留。普通调用、初始化、缺失解释器和非 JSON 进程失败统一返回 `PHP 源执行失败`；诊断记录异常原因/方法、经脱敏的 stderr/trace。worker 对该固定错误保持常量，不因参数恰好包含“失败”等词改变公开提示。源模块加载日志只显示文件名。
@@ -232,7 +261,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **完整门禁**：专项 `private-data + source-env` 8/8 通过（7 条新增 + 1 条既有）。Node 22.23.3、Python 3.12.14、PHP 8.4.23；`npm run check`、`npm run build`、指定真实解释器的 `npm test` 全部退出 0：120 宿主/辅助语法、143 桥接语法、spider 37/engine 156 空壳检查；103 后端 + 49 UI = 152 项全部通过，0 跳过。五引擎和前两组升级/票据/出口回归保留，构建仍有大于 500 kB chunk 提示。
 - **范围与下一步**：仅临时数据和固定脚本，未修改用户 data；未 commit、push、发布、重建镜像、做 Docker/外部站点/浏览器音视频/drpy-node-coder CLI 或新 npm audit。下一组仅剩 R9/R10；第 7.1 节第 3、4 项另计。发布前仍需容器旧数据升级与真实媒体/重启持久化验收。
 
-### 7.8 第四组本地修复（2026-10-06，R9/R10）
+### 7.8 第四组本地修复（历史验收：R9/R10）
 
 - **先失败再修复**：`tests/bridge.test.js` 新增两条，`tests/verify-cli.test.js` 新增四条；正式修复前专项 10 项中既有四项通过、新增六项全部失败、0 跳过。PHP 多层继承返回父类 404，宿主代理期望 200 实际 404；GUI v2 的 stdin CLI 退出 1；stdin 未覆盖错误环境凭据；无非交互凭据时旧 CLI 自动使用本地明文（退出 0 并执行源）；旧格式迁移后第二次 CLI 失败。后续新增真实伪终端回归，临时还原原 verify 时没有密码提示、实际失败，再恢复修复；还检出在终端直接使用 --password-stdin 没有隐藏提示会挂起，修复后终端也使用隐藏输入。
 - **R9 实现**：`engine/spider/php/_bridge.php` 遍历 Spider 完整父类链，比较候选方法声明类的继承距离；最近声明优先，相等时保持候选原顺序，删除只排除 BaseSpider 的特例。方法名/参数/自动 init 与返回协议不变，单方法调用保持直接调用。
@@ -242,9 +271,9 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **完整门禁**：新增共七条回归，最终 `npm run check`、`npm run build`、指定真实 Python/PHP 的 `npm test` 全部退出 0；120 宿主/辅助语法、143 桥接语法、spider 37/engine 156 空壳检查；110 后端 + 49 UI = 159 项全部通过，0 跳过。五引擎及前三组回归保留；构建仍有大于 500 kB chunk 提示。测试环境仍为 Node 22.23.3、Python 3.12.14、PHP 8.4.23。
 - **当前状态与范围**：R1–R10 全部在本地修复；没有修改用户 data，未 commit、push、发布或重建镜像；未做 Docker/真实站点/浏览器音视频/原 drpy-node-coder CLI，也未新跑 npm audit。第 7.1 节第 3、4 项和第 7.2 节长期工作保留；容器旧数据升级、真实媒体转发与重启持久化仍须验收，不能把本机源码全绿视为镜像验收完成。
 
-### 7.9 后续执行计划（2026-10-06，阶段 0–4 已执行，记录见 7.10–7.13）
+### 7.9 历史执行计划（阶段 0–4 已完成，证据见 7.10–7.13）
 
-以下保留制定时的计划；实际执行状态见第 7.10 节，不能把配置准备当作容器验收完成。制定时基线为 R1–R10 本地修复、159 项测试通过，尚未 commit/push/发布。本机实际检查没有 Docker CLI，因此容器验收使用 GitHub 原生 linux/amd64 runner，不能以本机源码测试替代。顺序为保存基线 → 请求头兼容 → 候选镜像与发布前门禁 → 容器矩阵 → 审查提交与发布 → 发布后复验。
+以下保留制定时的计划；本计划完整执行后的当前结果见 7.13，原配置准备阶段见 7.10；不要把历史计划作为当前待执行清单。制定时基线为 R1–R10 本地修复、159 项测试通过，尚未 commit/push/发布。本机实际检查没有 Docker CLI，因此容器验收使用 GitHub 原生 linux/amd64 runner，不能以本机源码测试替代。顺序为保存基线 → 请求头兼容 → 候选镜像与发布前门禁 → 容器矩阵 → 审查提交与发布 → 发布后复验。
 
 **阶段 0：保存和审查基线**
 
@@ -301,7 +330,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - 管理员锁出行为单独讨论：维持当前文档化预算，或成功凭据绕过鉴权失败预算；后者须评估高并发 KDF 成本、IP/NAT/反代假头与总请求限流的关系，再配回归。本轮发布计划不自动改变这一行为。
 - 每源进程隔离、供应链 SHA/hash 固定、fServer WebSocket、依赖专项升级与更广泛站点验收进入下一轮。源同权限执行和零预置源/五引擎约定持续有效。
 
-### 7.10 本轮执行结果与发布准备（2026-10-06）
+### 7.10 本地修复与发布准备（历史阶段，后续已完成发布）
 
 - **范围与授权**：接手现有工作区，先检查 git status，再读 AGENTS/本文件；未重新克隆、覆盖或清理已有改动。本次允许本地工作和发布准备，未推送 main/工作分支、创建 PR、触发远端工作流或发布。历史交接授权未当作本次发布指令。管理员锁出预算与行为未改；五引擎、原源协议、零预置源和源同权限信任边界保留。
 - **阶段 0 已执行**：在 `work/media-release-gates-20261006` 保存全部既有 R1–R10 修复为本地检查点 `73b4aa3`；媒体修复为本地提交 `ab7148e`。审查待提交文件、差异及 gitignore/dockerignore，没有已跟踪的 data/工具/虚拟环境/私密 HANDOFF；正式用户 data 未改。重新跑接手基线门禁，159 项全过、0 跳过。只读 `git ls-remote origin refs/heads/main` 为 `75748f1601f8993b59feefd0cb295990edf12639`，未执行 fetch/reset 或远端写入。
@@ -314,7 +343,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **最终源码门禁**：按用户指定 PATH、TEST_PYTHON、TEST_PHP 执行 `npm run check && npm run build && npm test`，退出 0；122 宿主/辅助语法文件、143 桥接文件、spider 37/engine 156 空壳检查通过；120 后端 + 49 UI = **169 项全部通过、0 跳过**。Node 22.23.3、Python 3.12.14、PHP 8.4.23；保留构建 chunk 大于 500 kB 提示。`npm audit --json` 实际仍 4 项；`npm audit --omit=dev --json` 仅 node-forge high、无修复版本，未改依赖。
 - **下一步明确待执行**：授权安排工作分支/PR 或手动只读候选 CI，在原生 amd64 上完成完整矩阵及发布步骤 skipped/故障阻断证据，修复实际容器失败并复跑；再另行安排 main/tag 推送发布同一验收镜像、记录 digest/标签/OCI revision/CI 链接与匿名发布后复验。本机仍无 Docker CLI，未做外站、浏览器真实音视频或原 drpy-node-coder CLI 验收。不能用历史镜像结果或本地全绿替代这些未执行项。
 
-### 7.11 工作分支同步 GitHub（2026-10-06）
+### 7.11 工作分支同步 GitHub（历史阶段，分支现已清理）
 
 - 用户本次明确要求推送 GitHub；仅同步工作分支 `work/media-release-gates-20261006`，未合并/推送 main、创建 PR、手动触发容器工作流或发布镜像。main 仍为 `75748f1601f8993b59feefd0cb295990edf12639`。
 - 本机 Git HTTPS 缺少登录凭据，直接 push 实际失败；改用已连接的 GitHub 账号创建对应树/提交/分支，没有强推。原本地提交保留于本地原工作分支；远端对应为 `73b4aa3 → 99a6172`、`ab7148e → 5a26dd3`、`5c496d5 → c9f2c34`。提交元数据不同，逐组 Git tree 完全相同；最终源码 tree 为 `5f78d1f72ae00e7518cf64676c3c5b523b40ad22`，fetch 后 git diff 也确认没有内容或权限差异。
@@ -323,7 +352,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 - **工作分支 CI 后续修正**：首轮 Verify 的 check/build 成功，后端 119/120 通过、0 跳过；失败仅为 `private-data.test.js` 把 CI 的 `TEST_PHP=php` 命令名当私密路径，误命中源文件 `.php` 后缀。先在本机用 PATH 命令形式实际复现同一失败，再通过真实解释器 `PHP_BINARY` 取得绝对路径并用于原样保密断言与桥接执行；没有删除/放宽断言、改变宿主错误或跳过测试。命令形式专项 6/6 通过，指定本机解释器的完整 check/build/test 再次退出 0：120 后端 + 49 UI = 169 全过、0 跳过。此修正已同步为远端源码提交 `2e108e91f37e41fca5cf1d017027609411e7a040`，新的 [Verify 37455860875](https://github.com/tardlk/CokeTV/actions/runs/37455860875) 已 success：源码检查、构建和 120 后端 + 49 UI = 169 项测试全过、0 跳过；这是 GitHub Linux 源码验证，原生容器矩阵仍未执行。本机修正检查点保留在 `local-ci-php-checkpoint-20261006`，跟踪分支在远端 tree 核对一致后对齐，文件内容保持不变。
 
-### 7.12 原生 amd64 容器验收结果（2026-10-06）
+### 7.12 PR 原生 amd64 候选验收（历史阶段，PR 现已合并）
 
 - **授权与执行**：用户明确要求执行原生 amd64 容器验收。已建立 [PR #1](https://github.com/tardlk/CokeTV/pull/1)，保持 draft；只读候选工作流 [Docker amd64 37456713645](https://github.com/tardlk/CokeTV/actions/runs/37456713645) 在 GitHub 原生 Ubuntu 24.04 x64 runner 实际构建并运行容器，整体 success。candidate 的源码门禁、构建、完整容器矩阵、原镜像保存和 artifact 上传均 success；publish job 确认为 **skipped**，没有 GHCR 登录/推送、main 合并或正式 data 操作。本机仍无 Docker，不能将此描述为本机容器验收。
 - **源码与镜像对应**：PR head 为 `510c5a2611a6ba3109a7160705cb16d06ca63469`；GitHub 实际 checkout/OCI revision 为 PR 合并候选 `5f58431d8058b413488e87a3c27d28db7d2e66e6`。fetch 该 merge ref 后确认两者 Git tree 同为 `3e93cbe0d2a4f0d766a9278afa70c487d291badd`，git diff 为零。镜像 ID 为 `sha256:2cb7005bdc866699f60aee8823ab2fe3a9f3a5de2cc970b5aaa1587ffb84900e`，平台 `linux/amd64`，实际 UID `1000`；Node `v22.23.3`、Python `3.13.5`、PHP `8.4.26`。这是候选 image ID，不是已发布 GHCR digest。
@@ -334,13 +363,31 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 ### 7.13 主线发布与匿名发布后复验（2026-10-06）
 
-- **本次授权与最终审查**：用户明确要求按“最终审查 → 合并 main/自动发布 → 匿名固定 digest 拉取完整复验 → 回填记录”执行。复核 PR 的 42 个改动文件、发行忽略规则、五引擎/源同权限/管理与订阅边界、框架刷新、能力范围、每跳出口、PHP/私密配置/CLI 和 artifact 发布门禁。原生 PR 验收以后仅四份文档变更，没有运行代码变化；工作区干净、data/工具/虚拟环境/私密 HANDOFF 未跟踪。PR 转 ready 后以 expected head `5cd091cff7bad24388c2b75cb13d38d7897919de` 正常 merge，没有强推；[PR #1](https://github.com/tardlk/CokeTV/pull/1) 已 merged，main 发布提交 `c2a1f21f9be005e1855bd78b00613033791c0dbb`，tree `6340e71eaccf01fb496035c99ab21b2ae05807eb`，本机 main 已 fast-forward 同步。原工作分支和本地修复/验收检查点保留。
+- **本次授权与最终审查**：用户明确要求按“最终审查 → 合并 main/自动发布 → 匿名固定 digest 拉取完整复验 → 回填记录”执行。复核 PR 的 42 个改动文件、发行忽略规则、五引擎/源同权限/管理与订阅边界、框架刷新、能力范围、每跳出口、PHP/私密配置/CLI 和 artifact 发布门禁。原生 PR 验收以后仅四份文档变更，没有运行代码变化；工作区干净、data/工具/虚拟环境/私密 HANDOFF 未跟踪。PR 转 ready 后以 expected head `5cd091cff7bad24388c2b75cb13d38d7897919de` 正常 merge，没有强推；[PR #1](https://github.com/tardlk/CokeTV/pull/1) 已 merged，main 发布提交 `c2a1f21f9be005e1855bd78b00613033791c0dbb`，tree `6340e71eaccf01fb496035c99ab21b2ae05807eb`，本机 main 已 fast-forward 同步。当时保留了辅助分支和检查点；现已按 7.14 清理引用，等价内容仍在 main 历史。
 - **主线源码与发布前门禁**：[Verify 37458591153](https://github.com/tardlk/CokeTV/actions/runs/37458591153) success；[Docker amd64 37458591100](https://github.com/tardlk/CokeTV/actions/runs/37458591100) 的 candidate 与 publish 均 success。candidate 再次执行源码 check/build/test（169 全过、0 跳过）、原生 Ubuntu 24.04 x64 单次构建与完整容器矩阵，报告 completed=true、116/116 容器回归零失败/零跳过；六组场景同第 7.12 节全部通过。实际 runtime 为 Node 22.23.3 / Python 3.13.5 / PHP 8.4.26，linux/amd64、UID 1000。没有拿 PR 旧镜像绕过本次 main 门禁。
 - **同一验收镜像发布**：candidate image ID `sha256:5f6a5b194bd4a76e9714c154f38e3e4054466572d639a59a03282e66594d46a2`。原镜像 save 后的 tar SHA256 为 `eca7bc7f9afe4238277901d4f2f1a30b367c6a87a190237892946b4e45e451d3`；[candidate artifact 11411132610](https://github.com/tardlk/CokeTV/actions/runs/37458591100/artifacts/11411132610) ZIP digest `sha256:e4bb5dc0864121f905305d4b138925ef4ce4c9767469c1314301419739cfdc9a`。publish 实际下载该 artifact，登录前完成 tar 校验（image.tar: OK）、image ID/源码 SHA/platform/OCI revision 核对，load 同一镜像后再登录/push；没有验收后重建或 commit 测试容器。
 - **发行身份与匿名元数据实测**：已发布 `ghcr.io/tardlk/coketv:sha-c2a1f21` 与 `:latest`，两者 registry digest 都是 `sha256:c269b482eddaff2668a43773b82fcd98f23c89b90bd48542eb4a2a6b95c8d1a2`。未使用 GitHub/registry 登录凭据的匿名 manifest/config 读取，对响应字节计算 SHA256 并比对 Docker-Content-Digest；确认单一 linux/amd64 manifest、User=node、OCI revision `c2a1f21f9be005e1855bd78b00613033791c0dbb`。config digest 等于上述 candidate image ID，不把 config ID、artifact hash 与 registry digest 混为同一个值。
 - **发布后实际复验**：通过已登录 GitHub 页面在 main 触发 `image-verify.yml`，输入固定 `ghcr.io/tardlk/coketv@sha256:c269b482eddaff2668a43773b82fcd98f23c89b90bd48542eb4a2a6b95c8d1a2`；[Verify published image 37459488105](https://github.com/tardlk/CokeTV/actions/runs/37459488105) success。其 docker pull 实际匿名拉取该 digest，随后复用完整原生矩阵：五引擎实际媒体/CLI、空壳/访问边界、旧框架升级/用户保留、同卷 Docker 重启/旧票据失效/媒体复验、私密配置/异常/出口/票据和损坏配置/旧属主恢复均通过；116/116、0 失败/0 跳过。报告的 image ID、source/verification SHA、平台、UID、解释器与发布前完全相同。
 - **证据核对与保存**：[发布前证据 11410967699](https://github.com/tardlk/CokeTV/actions/runs/37458591100/artifacts/11410967699) ZIP digest `sha256:01a4310bbe89850c6df7baae8630433dec483f9b1984ca44fc8baccaa7a86a51`；[发布后证据 11410424356](https://github.com/tardlk/CokeTV/actions/runs/37459488105/artifacts/11410424356) ZIP digest `sha256:75e1ba7852019495626e0e14339552d8c654656300062d0c1ab0f121652c95fc`。两份 ZIP 均实际下载、校验 hash 并读取 report/TAP，116 全过零跳过及镜像身份已核对。candidate 产物 2026-10-09 到期，前后证据 2026-10-13 到期；不得当作永久镜像备份。日志初始化码已脱敏，正式 data 未读写。
 - **收尾与边界**：本轮阶段 0–4 的既定发布/复验流程已完成。收尾再次 npm audit，仍为已登记四项（runtime node-forge high 无修复版本、其余三个 dev-only），不改依赖。管理员锁出、源同权限边界、五引擎与零预置源约定保持；本机仍没有 Docker，未运行外站/浏览器真实音视频或 drpy-node-coder CLI，也未额外执行故障注入 CI。最后仅正式文档补记，使用 `[skip ci]`，不重复发布相同运行代码；新文档 HEAD 可不同于上述 OCI revision，发行追踪以固定源码 SHA/digest 为准。
+
+### 7.14 分支清理与接手入口整理（2026-10-06）
+
+用户明确要求“删除多余分支，只保留主线，完善接手文档”。开始检查工作区干净、仅一个 main 工作树；PR #1 已 merged，远端工作分支 0 ahead/2 behind。逐个比较辅助分支 Git tree，全部能在 main 历史找到等价提交，没有主线未保存的独有文件内容。
+
+| 已删除的本地分支 | main 历史中的等价提交 |
+| --- | --- |
+| github/media-release-gates-20261006 | c2a1f21（相同 tree） |
+| local-ci-php-checkpoint-20261006 | 2e108e9（相同 tree） |
+| local-native-acceptance-record-20261006 | c2a1f21（相同 tree） |
+| local-release-record-20261006 | 749fc84（相同 tree） |
+| work/media-release-gates-20261006 | c9f2c34（相同 tree） |
+
+GitHub 的 work/media-release-gates-20261006 已通过分支页 Delete branch 删除，页面显示 Deleted/Restore；git ls-remote --heads 再确认仅 main。五个本地辅助分支已删除，fetch --prune 清掉 origin/work 和仅供 PR 验收的 origin/pr-1-acceptance 缓存。最终本地分支只有 main，远端跟踪仅 origin/main 与标准 origin/HEAD 别名；PR、main 的提交/代码历史和已发布镜像不删除，不执行 gc、不清理正式 data、工具或旧临时验收目录。
+
+本次实际执行本机 `npm run check && npm run build && npm test`（使用第 0 节指定的真实工具路径），全部退出 0：122 宿主/辅助语法、143 桥接语法、spider 37/engine 156 空壳检查、120 后端 + 49 UI = 169 全过、0 跳过；保留构建 chunk 提示，没有新跑 Docker 或外部站点验收。
+
+本文新增第 0 节当前接手入口，补齐本机实际工具命令、main 与发行 SHA 的区别、验证证据和下一步；纠正发布门/坏配置覆盖仍待执行的旧说法。旧修复与失败/通过证据保留，但明确标为历史，旧分支名不再作为开发入口。本次仅文档整理，用 `[skip ci]` 同步 main，不触发新的镜像发布；7.13 的源码 SHA/digest 与验收结论保持。
 
 ## 8. 验证证据与探测脚本
 
