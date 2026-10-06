@@ -10,7 +10,11 @@ import {createApp} from '../src/server.js';
 import {Store} from '../src/store.js';
 
 const exec = promisify(execFile);
-const PHP = process.env.TEST_PHP || 'php';
+// Test the private interpreter path actually passed to the bridge, rather than
+// treating the public command name 'php' (also a source suffix) as a secret.
+const {stdout: phpBinary} = await exec(process.env.TEST_PHP || 'php', ['-r', 'echo PHP_BINARY;'], {timeout: 5000});
+const PHP = phpBinary.trim();
+assert.ok(path.isAbsolute(PHP), 'PHP_BINARY 必须返回真实解释器的绝对路径');
 const params = JSON.stringify({cookie: 'private-param-&"cookie-fixture', nested: {token: 'private-nested-param-fixture'}});
 const env = {alias: 'private-env-cookie-fixture', nested: {token: 'private-nested-env-fixture'}};
 const globalEnv = {shared: 'private-global-env-fixture'};
