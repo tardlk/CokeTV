@@ -312,6 +312,13 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **最终源码门禁**：按用户指定 PATH、TEST_PYTHON、TEST_PHP 执行 `npm run check && npm run build && npm test`，退出 0；122 宿主/辅助语法文件、143 桥接文件、spider 37/engine 156 空壳检查通过；120 后端 + 49 UI = **169 项全部通过、0 跳过**。Node 22.23.3、Python 3.12.14、PHP 8.4.23；保留构建 chunk 大于 500 kB 提示。`npm audit --json` 实际仍 4 项；`npm audit --omit=dev --json` 仅 node-forge high、无修复版本，未改依赖。
 - **下一步明确待执行**：授权安排工作分支/PR 或手动只读候选 CI，在原生 amd64 上完成完整矩阵及发布步骤 skipped/故障阻断证据，修复实际容器失败并复跑；再另行安排 main/tag 推送发布同一验收镜像、记录 digest/标签/OCI revision/CI 链接与匿名发布后复验。本机仍无 Docker CLI，未做外站、浏览器真实音视频或原 drpy-node-coder CLI 验收。不能用历史镜像结果或本地全绿替代这些未执行项。
 
+### 7.11 工作分支同步 GitHub（2026-10-06）
+
+- 用户本次明确要求推送 GitHub；仅同步工作分支 `work/media-release-gates-20261006`，未合并/推送 main、创建 PR、手动触发容器工作流或发布镜像。main 仍为 `75748f1601f8993b59feefd0cb295990edf12639`。
+- 本机 Git HTTPS 缺少登录凭据，直接 push 实际失败；改用已连接的 GitHub 账号创建对应树/提交/分支，没有强推。原本地提交保留于本地原工作分支；远端对应为 `73b4aa3 → 99a6172`、`ab7148e → 5a26dd3`、`5c496d5 → c9f2c34`。提交元数据不同，逐组 Git tree 完全相同；最终源码 tree 为 `5f78d1f72ae00e7518cf64676c3c5b523b40ad22`，fetch 后 git diff 也确认没有内容或权限差异。
+- 源码 [Verify 37455466575](https://github.com/tardlk/CokeTV/actions/runs/37455466575) 已由工作分支 push 自动启动；本条记录时状态为 completed / failure。此次没有原生 Docker 结果，不能据此将第 7.9 阶段 2/3 标为完成。
+- 本补记仅修改交接文档，使用 `[skip ci]` 避免重复运行同一源码。接下来使用本地 `github/media-release-gates-20261006` 跟踪远端工作分支继续开发；原 `work/media-release-gates-20261006` 保留原本地检查点历史。源码/容器门禁和 main 发布仍按第 7.9 节执行。
+
 ## 8. 验证证据与探测脚本
 
 两轮修复都用**攻击探测**独立验证过（不是只看代码）：管理鉴权绕过矩阵（编码前缀、`/./` 前缀、absolute-form 原始 socket）、票据挪用、请求头注入、HLS 正向对照、`/json/` 策略、scrypt 事件循环阻塞、`toBytes=2` 头透传、空壳检查绕过尝试。
