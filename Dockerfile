@@ -20,6 +20,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
 COPY src ./src
+COPY LICENSES ./LICENSES
 COPY engine ./engine
 COPY scripts/check-shell.mjs scripts/verify.mjs ./scripts/
 RUN node scripts/check-shell.mjs

@@ -10,6 +10,10 @@
 
 其他运行依赖及版本记录在 `package.json` / `package-lock.json`。用户导入的源可能依赖站点账号、外部插件或各自辅助资源；源执行协议兼容不代表第三方站点始终可用。
 
+### 115 验证模块的协议参考
+
+`src/netdisk/` 的扫码与分享接口流程参考 [SheltonZhu/115driver v1.3.5](https://github.com/SheltonZhu/115driver/tree/v1.3.5) 的 `pkg/driver/qrcode.go`、`share.go`、`download.go` 和 `api.go`；`m115.js` 将其 `pkg/crypto/m115` 的协议编解码适配为 Node 内置 crypto，用于兼容 App 分享接口。MIT License、版权和作者特别声明完整保留在 [LICENSES/115driver.txt](../LICENSES/115driver.txt)。没有内嵌或执行 Go SDK，没有复制 MoonTVPlus/LitePan 的网盘程序，无新增依赖。实际网盘授权和播放仍须按当前平台接口验证。
+
 ## 随附 bundle
 
 `engine/libs_drpy/**` 与 `engine/spider/catLib/**` 是随内核一同分发的第三方 bundle，均随上游 drpy-node 2.0.4 引入，来源为 `https://github.com/hjdhnx/drpy-node`（版权归其作者）：

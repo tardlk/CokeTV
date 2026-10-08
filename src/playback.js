@@ -68,9 +68,9 @@ export function createPlaybackSessions({now = Date.now, ttl = 12 * 3600000, maxE
     };
     return {
         // Media ticket: binds upstream URL + headers and the source proxy scope.
-        create(source, url, headers) { return create({kind: 'media', source, url, headers: headers || {}}); },
+        create(source, url, headers, metadata = {}) { return create({...metadata, kind: 'media', source, url, headers: headers || {}}); },
         // Proxy ticket: authorizes a single proxy request for one absolute URL.
-        createProxy(url, headers) { return create({kind: 'proxy', url, headers: headers || {}}); },
+        createProxy(url, headers, metadata = {}) { return create({...metadata, kind: 'proxy', url, headers: headers || {}}); },
         get,
         // Playback tickets may only drive the source's own proxy route; every
         // other proxy route requires a subscription/management credential.

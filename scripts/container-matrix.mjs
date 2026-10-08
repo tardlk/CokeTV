@@ -64,7 +64,7 @@ try {
 
     // Every regression creates its own temporary data; no test mutates /app/data.
     const regressions = create('regressions'); await wait(regressions); inject(regressions);
-    const files = ['core','access','integration','tvbox-import','cat-subscriptions','cat-client','shell','runtime-upgrade','bridge','private-data','source-env','playback-capabilities','playback','outbound','ssrf','proxy-headers','rate-limit','security','verify-cli'];
+    const files = ['core','access','integration','tvbox-import','cat-subscriptions','cat-client','netdisk-115','netdisk-cipher','netdisk-integration','shell','runtime-upgrade','bridge','private-data','source-env','playback-capabilities','playback','outbound','ssrf','proxy-headers','rate-limit','security','verify-cli'];
     let tap;
     try { tap = inside(regressions,['env','TEST_PYTHON=/opt/python/bin/python3','TEST_PHP=php','node','--test','--test-reporter=tap',...files.map(file=>'tests/'+file+'.test.js')]); }
     catch (error) { await fs.writeFile(path.join(output,'regressions.tap'),error.output || error.message); throw error; }

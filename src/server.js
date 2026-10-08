@@ -24,6 +24,7 @@ import {guardedHttp} from './outbound.js';
 import {decodeMediaTarget, decodeMediaHeaders, unwrapMediaProxy} from './media-params.js';
 import {createTvboxImporter} from './tvbox-import.js';
 import {registerCatSubscriptions} from './cat-subscriptions.js';
+import {NetdiskService} from './netdisk/service.js';
 
 dotenv.config();
 const exec = promisify(execFile);
@@ -38,10 +39,11 @@ function validateEnvironment(values) {
     }
 }
 
-export async function createApp({directory, seed = true} = {}) {
+export async function createApp({directory, seed = true, netdiskRequest} = {}) {
     const store = await new Store(directory).init({seed});
     const runner = new Runner(store);
     const auth = await createAuth(store);
+    const netdisk = await NetdiskService.create(store.directory, netdiskRequest);
     const playback = createPlaybackSessions();
     const tvboxImporter = createTvboxImporter(store);
     let catSubscriptions;
@@ -49,6 +51,7 @@ export async function createApp({directory, seed = true} = {}) {
     await app.register(formbody);
     await app.register(multipart, {limits: {fileSize: 16 * 1024 * 1024, files: 1}});
     app.decorate('store', store); app.decorate('runner', runner);
+    app.decorate('netdisk', netdisk);
     app.setErrorHandler((error, request, reply) => {
         runner.log({level: 'error', message: error.message});
         reply.code(error.statusCode || 500).send({error: error.message, ...(error.importCode ? {code: error.importCode} : {})});
@@ -94,10 +97,15 @@ export async function createApp({directory, seed = true} = {}) {
         await auth.guard(request, reply);
         // 只在真正鉴权失败时计数，正常登录不受影响。
         if (reply.statusCode === 401) recordAdminFailure(`adminfail:${ip}`);
+        if (!reply.sent && route.startsWith('/admin/netdisk/') && request.method === 'POST' && request.headers.origin) {
+            const origins = [`${request.protocol}://${request.headers.host}`, store.state.settings.publicUrl].filter(Boolean).map(value => { try { return new URL(value).origin; } catch { return ''; } });
+            if (!origins.includes(request.headers.origin)) throw fail('不允许跨站修改网盘账号', 403);
+        }
     });
     app.get('/access/status', async () => ({requiresSetup: auth.needsSetup()}));
     app.post('/admin/access/setup', async request => auth.setup(request));
     app.addHook('onClose', async () => runner.close());
+    netdisk.register(app);
     const baseUrl = request => store.state.settings.publicUrl.replace(/\/$/, '') || `${request.protocol}://${request.headers.host}`;
     const contextFor = (request, instance, script, extra) => ({...buildContext(baseUrl(request), instance, script, extra), sourceEnvPath: store.state.instances.some(s => s.id === instance.id) ? store.sourceEnvPath(instance.id) : null, localPort: app.server.address()?.port || Number(process.env.PORT) || 54058});
     const serveMedia = async (request, reply, target, headers, suppliedToken, mint, wrapUrl) => {
@@ -158,7 +166,7 @@ export async function createApp({directory, seed = true} = {}) {
     // 代理出口：管理员/内部、订阅 Token，或一张恰好绑定到该 URL 的代理能力票。
     const authorizeProxy = async (request, target) => {
         const ticket = playback.get(request.query.token);
-        if (ticket && ticket.kind === 'proxy' && target && ticket.url === target) return ticket;
+        if (ticket && ticket.kind === 'proxy' && target && ticket.url === target && netdisk.current(ticket.netdiskRevision) && (!ticket.source || store.state.instances.some(item => item.id === ticket.source && item.enabled))) return ticket;
         if (await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey) return {kind: 'admin'};
         const sub = authorizedSubscription(store.state, request.query.token || request.body?.token);
         if (sub) return {kind: 'subscription', token: sub.token};
@@ -177,7 +185,7 @@ export async function createApp({directory, seed = true} = {}) {
         const {script, instance, file} = sourceFor(request);
         const sub = await authorize(request, instance.id);
         const env = contextFor(request, instance, script, {token: sub?.token, proxyPath: request.params['*'] || ''});
-        const result = await runner.run({engine: script.engine, file, instanceId: instance.id}, query, env, operation);
+        const result = await netdisk.execute({script, instance, file}, query, env, runner, operation);
         return {result, sub, instance, script, env};
     };
 
@@ -187,6 +195,7 @@ export async function createApp({directory, seed = true} = {}) {
         reply.header('X-Content-Type-Options', 'nosniff');
         reply.header('Referrer-Policy', 'no-referrer');
         reply.header('X-Frame-Options', 'SAMEORIGIN');
+        if (request.routeOptions?.url?.startsWith('/admin/netdisk')) reply.header('Cache-Control', 'private, no-store');
         return payload;
     });
     const URL_PROXY_ROUTES = ['/unified-proxy/proxy', '/file-proxy/proxy', '/m3u8-proxy/playlist', '/m3u8-proxy/ts', '/m3u8-proxy/proxy'];
@@ -202,7 +211,7 @@ export async function createApp({directory, seed = true} = {}) {
             const ticket = playback.get(request.query.token);
             let target;
             try { target = route === '/req/*' ? request.params['*'] : decodeMediaTarget(request.query.url); } catch {}
-            if (ticket?.kind === 'proxy' && target && ticket.url === target) return;
+            if (ticket?.kind === 'proxy' && target && ticket.url === target && netdisk.current(ticket.netdiskRevision) && (!ticket.source || store.state.instances.some(item => item.id === ticket.source && item.enabled))) return;
         }
         if (rateBuckets.size > 20000) rateBuckets.clear();
         if (!allowRequest(`public:${request.ip || request.raw?.socket?.remoteAddress || 'local'}`)) reply.code(429).send({error: '请求过于频繁，请稍后再试'});
@@ -232,7 +241,7 @@ export async function createApp({directory, seed = true} = {}) {
             if (!checkString(ids, 10000)) throw fail('影片 ID 无效');
             query = {ac, ids};
         } else if (ac === 'list') query = {ac, t: t || '', pg, ...(ext ? {ext} : {})};
-        return runner.run({engine: script.engine, file, instanceId: instance.id}, query, contextFor(request, instance, script));
+        return netdisk.execute({script, instance, file}, query, contextFor(request, instance, script), runner);
     };
     app.get('/watch/sources/:id', watchHandler);
     app.get('/admin/watch/:id', watchHandler);
@@ -241,7 +250,7 @@ export async function createApp({directory, seed = true} = {}) {
         const {play, flag = '', parser} = request.body || {};
         if (!checkString(play, 50000) || typeof flag !== 'string') throw fail('请选择要播放的剧集');
         const env = contextFor(request, instance, script, {token: subscription?.token});
-        let result = await runner.run({engine: script.engine, file, instanceId: instance.id}, {play, flag}, env);
+        let result = await netdisk.execute({script, instance, file}, {play, flag}, env, runner);
         if (typeof result === 'string') { try { result = JSON.parse(result); } catch { result = {url: result, parse: 0}; } }
         const parses = store.state.settings.parses || [];
         const options = parses.map((item, index) => ({index, name: item.name || `解析 ${index + 1}`}));
@@ -282,16 +291,16 @@ export async function createApp({directory, seed = true} = {}) {
         const carried = unwrapMediaProxy(url, baseUrl(request));
         const headers = playbackHeaders({...carried?.headers, ...playbackHeaders(result.headers ?? result.header)});
         if (carried) url = carried.url;
-        if (native) return {parse: 0, url, headers, type: mediaType(url, result.type)};
-        const ticket = playback.create(instance.id, url, headers);
+        if (native) return {parse: 0, url, headers, type: mediaType(url, result.type) || result.netdiskFileName?.match(/\.(mkv|mp4|m4v|webm|mov|avi)$/i)?.[1]?.toLowerCase() || '', ...(result.netdiskRevision ? {netdiskRevision: result.netdiskRevision} : {})};
+        const ticket = playback.create(instance.id, url, headers, result.netdiskRevision ? {netdiskRevision: result.netdiskRevision} : {});
         return {url: `/watch/media/${ticket}`, type: mediaType(url, result.type), parses: options, parser: parser ?? null};
     };
     app.post('/watch/sources/:id/play', playHandler);
     app.post('/admin/watch/:id/play', playHandler);
     catSubscriptions = registerCatSubscriptions(app, {
         store, baseUrl, serveMedia,
-        execute: (request, {instance, script, file}, query, sub) => runner.run(
-            {engine: script.engine, file, instanceId: instance.id}, query, contextFor(request, instance, script, {token: sub.token})),
+        execute: (request, resolved, query, sub) => netdisk.execute(resolved, query, contextFor(request, resolved.instance, resolved.script, {token: sub.token}), runner),
+        isNetdiskCurrent: revision => netdisk.current(revision),
         play: (request, {instance}, body, subscription) => {
             const nativeRequest = Object.create(request);
             nativeRequest.params = {id: instance.id}; nativeRequest.body = body;
@@ -300,10 +309,10 @@ export async function createApp({directory, seed = true} = {}) {
     });
     app.route({method: ['GET', 'HEAD'], url: '/watch/media/:ticket', handler: async (request, reply) => {
         const session = playback.get(request.params.ticket);
-        if (!session || session.kind !== 'media' || !store.state.instances.some(item => item.id === session.source && item.enabled)) throw fail('播放链接已过期，请重新选择剧集', 403);
+        if (!session || session.kind !== 'media' || !netdisk.current(session.netdiskRevision) || !store.state.instances.some(item => item.id === session.source && item.enabled)) throw fail('播放链接已过期，请重新选择剧集', 403);
         // 只抓服务端票据绑定的 URL 与请求头，绝不接受请求方传入的目标。
         return serveMedia(request, reply, session.url, session.headers || {}, request.params.ticket,
-            url => playback.createProxy(url, session.headers || {}));
+            url => playback.createProxy(url, session.headers || {}, session.netdiskRevision ? {netdiskRevision: session.netdiskRevision, source: session.source} : {}));
     }});
     app.get('/admin/logs', async request => runner.logs.filter(entry => !request.query.source || entry.source === request.query.source).slice(-150));
     app.post('/admin/scan', async () => ({added: await store.mutate(() => store.scan())}));
@@ -545,6 +554,7 @@ export async function createApp({directory, seed = true} = {}) {
             } catch {}
             result.url = localToken(result.url, baseUrl(request), sub?.token);
         }
+        if (netdisk.isReference(query.play)) return {parse: 0, url: result.url, header: result.header || {}};
         return result;
     }});
     app.get('/proxy/:module/*', async (request, reply) => {

@@ -4,7 +4,7 @@ import {createPlaybackSessions, mediaType} from './playback.js';
 
 const program = await fs.readFile(new URL('./cat-client.cjs', import.meta.url));
 const md5 = bytes => createHash('md5').update(bytes).digest('hex');
-const mediaFile = /^stream\.(m3u8|mp4|m4v|webm|mov|flv|ts|mp3|m4a|aac|bin)$/;
+const mediaFile = /^stream\.(m3u8|mp4|m4v|webm|mov|mkv|avi|flv|ts|mp3|m4a|aac|bin)$/;
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
 const text = (value, label, max = 10000) => {
     if (typeof value !== 'string' || !value.trim() || value.length > max) throw fail(`${label}无效`);
@@ -16,7 +16,7 @@ const text = (value, label, max = 10000) => {
 export function catSubscriptionPath(subscription) {
     return `/cat/${encodeURIComponent(subscription.id)}/${encodeURIComponent(subscription.token)}`;
 }
-export function registerCatSubscriptions(app, {store, baseUrl, execute, play, serveMedia}) {
+export function registerCatSubscriptions(app, {store, baseUrl, execute, play, serveMedia, isNetdiskCurrent = () => true}) {
     const sessions = createPlaybackSessions();
     const authorize = request => {
         const sub = store.state.subscriptions.find(item => item.id === request.params.id && item.enabled && item.token === request.params.credential);
@@ -29,9 +29,9 @@ export function registerCatSubscriptions(app, {store, baseUrl, execute, play, se
         return store.resolve(instance.id);
     };
     const scope = (sub, instance) => `${sub.id}:${sub.token}:${instance.id}`;
-    const mediaUrl = (request, sub, instance, url, headers, type) => {
-        const extension = mediaType(url, type) || new URL(url).pathname.match(/\.(mp4|m4v|webm|mov|mp3|m4a|aac|bin)$/i)?.[1]?.toLowerCase() || 'bin';
-        return `${baseUrl(request)}${catSubscriptionPath(sub)}/media/${encodeURIComponent(instance.id)}/${sessions.create(scope(sub, instance), url, headers)}/stream.${extension}`;
+    const mediaUrl = (request, sub, instance, url, headers, type, netdiskRevision) => {
+        const extension = mediaType(url, type) || (/^(mkv|avi|mp4|m4v|webm|mov)$/.test(type || '') ? type : '') || new URL(url).pathname.match(/\.(mp4|m4v|webm|mov|mkv|avi|mp3|m4a|aac|bin)$/i)?.[1]?.toLowerCase() || 'bin';
+        return `${baseUrl(request)}${catSubscriptionPath(sub)}/media/${encodeURIComponent(instance.id)}/${sessions.create(scope(sub, instance), url, headers, netdiskRevision ? {netdiskRevision} : {})}/stream.${extension}`;
     };
     const prefix = '/cat/:id/:credential';
     app.get(prefix + '/:file', async (request, reply) => {
@@ -80,7 +80,7 @@ export function registerCatSubscriptions(app, {store, baseUrl, execute, play, se
             if (body.flag !== undefined && typeof body.flag !== 'string') throw fail('播放线路无效');
             const media = await play(request, resolved, {play: body.id, flag: body.flag || '', parser: body.parser}, sub);
             if (media.parse === 1) return {parse: 1, url: media.url, header: {}};
-            return {parse: 0, url: mediaUrl(request, sub, resolved.instance, media.url, media.headers, media.type), header: {}, type: media.type};
+            return {parse: 0, url: mediaUrl(request, sub, resolved.instance, media.url, media.headers, media.type, media.netdiskRevision), header: {}, type: media.type};
         } else throw fail('方法不存在', 404);
         if (detailIds) {
             // Some compatible engines accept only the first ID. Aggregate here
@@ -100,16 +100,17 @@ export function registerCatSubscriptions(app, {store, baseUrl, execute, play, se
         const sub = authorize(request), {instance} = source(request, sub);
         if (!mediaFile.test(request.params.file)) throw fail('媒体文件不存在', 404);
         const session = sessions.get(request.params.ticket);
-        if (!session || session.source !== scope(sub, instance)) throw fail('播放链接已过期，请重新选择剧集', 403);
+        if (!session || session.source !== scope(sub, instance) || !isNetdiskCurrent(session.netdiskRevision)) throw fail('播放链接已过期，请重新选择剧集', 403);
         reply.header('Cache-Control', 'private, no-store');
         return serveMedia(request, reply, session.url, session.headers, sub.token, undefined,
-            url => mediaUrl(request, sub, instance, url, session.headers));
+            url => mediaUrl(request, sub, instance, url, session.headers, undefined, session.netdiskRevision));
     }});
     return {allowsMedia(request) {
         try {
             const sub = authorize(request), {instance} = source(request, sub);
             if (!mediaFile.test(request.params.file)) return false;
-            return sessions.get(request.params.ticket)?.source === scope(sub, instance);
+            const session = sessions.get(request.params.ticket);
+            return session?.source === scope(sub, instance) && isNetdiskCurrent(session.netdiskRevision);
         } catch { return false; }
     }};
 }
