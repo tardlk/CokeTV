@@ -12,22 +12,20 @@
 
 ## 0. 当前接手入口（先看本节）
 
-**2026-10-08 本轮GitHub同步授权**：用户已明确要求“推送到github”。六项修复、确定冗余清理、静态检查与回归将一起提交到main，后续CI/镜像实际结果见7.31；同步前已确认远端main与本地基线一致。此前“本地未提交”是7.30修复阶段快照，本机运行容器继续保留原版本与数据。
+**2026-10-08 本轮修复已同步并发布**：用户授权“执行修复计划”及“推送到github”。六项修复、确定冗余清理、静态检查和回归已提交并推送main：`9c46614999e20f66d4b4b2cad111751128019e27`。Verify、Docker原生amd64发布和匿名固定digest发布后复验均success；源码162后端/58UI与发布前后156容器回归全部通过，详见7.30–7.31。本机运行容器继续保留原版本与数据，没有因推送自动升级。
 
-**2026-10-08 审查修复（本地未提交）**：用户要求审查冗余及完善项后，明确授权执行修复计划。六项已复现问题与确定冗余已修复，新增静态检查和回归；本轮源码门禁与162后端/58UI全部通过，详见7.30。运行中的Docker、本机账号/源/订阅未替换；下方9dbf42c及7.27仍是此前已发布版本，不能将它们作为本轮修复的发行证据。
+**历史记录说明**：115统一网盘版本9dbf42c的发行证据在7.27；其后的清理与OmniBox研究在7.28–7.29。7.17–7.30中的“未实现/未授权/未提交/未发布”是对应阶段快照，不能覆盖7.31的最终结论；也不能使用旧版CI/digest证明本轮修复已发布。
 
-**2026-10-08 本轮交付与换对话**：用户已明确要求“整理仓库，推送代码到GitHub”，本轮包含115统一网盘模块、后台按钮整理及网盘爬虫开发指南。功能已提交并推送main：`9dbf42c0d12db0a0bdd2095a4c8bb3aa362ef16c`。Verify与Docker原生amd64流程均成功，GHCR已发布；固定digest与匿名发布后复验见7.27，全部成功。下文7.17–7.26保留阶段记录，其中“未实现/未授权/未提交/未发布”仅代表当时状态，不是当前结论。
-
-**沟通与操作**：用户不懂编程，请用简单中文，技术安装、配置、测试与排障由助手负责。接手先 `git status`，读 `AGENTS.md` 和本节，再读7.25–7.27；猫影视背景在7.17–7.20。唯一公开交接为本文，忽略的根 `HANDOFF.md` 和 `.tools/` 可能含敏感信息，不能提交。
+**沟通与操作**：用户不懂编程，请用简单中文，技术安装、配置、测试与排障由助手负责。接手先 `git status`，读 `AGENTS.md` 和本节，再读7.25–7.27及7.30–7.31；猫影视背景在7.17–7.20。唯一公开交接为本文，忽略的根 `HANDOFF.md` 和 `.tools/` 可能含敏感信息，不能提交。
 
 | 项目 | 当前结论 / 入口 |
 | --- | --- |
-| Git与发布 | 继续在main，本轮审查修复未提交/推送/发布，见7.30。此前功能源码9dbf42c已推送，Verify/Docker及146原生容器回归通过；固定digest及发布后复验见7.27 |
+| Git与发布 | main修复源码9c46614已推送；Verify/Docker和匿名发布后完整复验均success。latest/sha-9c46614已发布，固定digest及证据见7.31。后续纯文档HEAD领先镜像revision属于预期 |
 | 115功能 | 后台“网盘管理”统一扫码账号，标准详情中的115分享/URL编码push链接自动展开；网页、TVBox、猫影视共用宿主网盘服务。当前仅115，不预置搜索站点，不转存/上传/删除网盘文件 |
 | 本机Docker | `coketv-local:netdisk-bb046cd4b0a8`，OCI revision为local，基于acbfb1a固定digest的本机派生镜像。54058 healthy；原46源/1订阅/设置/管理密码保留，仅新增私密网盘账号文件。没有因本轮Git推送自动替换本机容器 |
 | 本机回滚 | 完整data/src/dist与容器配置备份已移至私有 `.tools/netdisk-deployment-backup-20261008/`；旧 `coketv-local-before-netdisk-1791440886` 已停用且restart=no。不能同时启动共享原data卷的旧/新容器 |
 | 其他服务 | 54060 `drpy-reference` 为独立2.0.6参考容器；用户已要求停用并删除54061独立115验证环境及54059旧手机测试环境，两个测试目录及相关临时容器/卷已清理，见7.28。不要恢复这些测试服务或重置Docker context、VM或登录自启 |
-| 本机门禁 | 本轮check130语法/187未定义变量/143桥接/37spider与156engine空壳检查；build native loader；162后端+58UI=220全过、0跳过。本轮未做Docker验收；此前本机镜像146回归、五引擎/同卷重启及原生amd64发行证据属于旧版本，见7.25/7.27 |
+| 本机门禁 | 本轮check130语法/187未定义变量/143桥接/37spider与156engine空壳；build native loader；162后端+58UI=220全过。GitHub标准check/build/npm test同样通过，原生amd64发布前后156容器回归及完整矩阵均通过/零跳过，见7.31。本轮没有重新构建或验收本机Docker |
 | 真实115验收 | 用户本人扫码；凭据重启仍有效。私密分享47视频；4K HEVC Main10 MKV开播、切第二集、约21分钟大幅拖动后恢复、重启后重新获取详情/播放通过。拖动有明显缓冲，未做完整影片/声音人工确认或手机网盘解码验收 |
 | 开发文档 | `docs/NETDISK_DEVELOPMENT.md` 有标准详情格式、JS/Python片段和排错。没有OmniBox SDK/Runner或可导入的CokeTV SDK；其他SDK能力仅回答研究，没有授权实现 |
 | OmniBox研究 | 用户授权研究参考项目并尝试从镜像恢复源码，首轮结果见7.29；原文件、可读前端、Go结构/反汇编与恢复包仅在忽略目录，未接入CokeTV |
@@ -48,7 +46,7 @@ npm run test:core
 npm run test:ui -- --configLoader native
 ```
 
-源码门禁不代表镜像发布成功。7.20记录此前猫影视工作流37715845159与匿名发布后复验37716710290成功；它们不是本轮网盘版本的验收。本轮发布结果另见7.27。纯文档补记可用 `[skip ci]`，不能用于跳过代码门禁。
+源码门禁不代表镜像发布成功。7.20猫影视、7.27统一115均为此前版本记录；本轮审查修复的发行身份和验收见7.31。纯文档补记可用 `[skip ci]`，不能用于跳过代码门禁。
 
 ## 1. 发行约定
 
@@ -122,9 +120,11 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 ## 5. 发布现状
 
-**最新发行（2026-10-08）**：猫影视功能 `acbfb1a` 的 [Docker amd64 37715845159](https://github.com/tardlk/CokeTV/actions/runs/37715845159) 已成功；`latest` 与 `sha-acbfb1a` 均为 digest `sha256:9330d3285d1ac11ff276972f3fcc487246c78987e39ca72291ce46eb9384f8ae`。固定 digest 的 [匿名发布后复验 37716710290](https://github.com/tardlk/CokeTV/actions/runs/37716710290) 已成功，发布前/后原生 amd64 均完成 131 项回归及完整容器矩阵。本机 Docker 已按用户授权升级并保留数据，见 7.20。下方 c2a1f21 是此前发行记录。
+**最新已核对发行（2026-10-08）**：审查修复源码 `9c46614999e20f66d4b4b2cad111751128019e27` 的 [Verify 37753160674](https://github.com/tardlk/CokeTV/actions/runs/37753160674)、[Docker amd64 37753161089](https://github.com/tardlk/CokeTV/actions/runs/37753161089) 和[匿名固定digest发布后复验37754052158](https://github.com/tardlk/CokeTV/actions/runs/37754052158) 均success。`latest` 与 `sha-9c46614` 同为 `sha256:b0ddf2027e5e78b732ddacce15e23344ec3037677d0794f8b0633616815275d6`，发布前后156容器回归及完整矩阵通过，见7.31。本机Docker仍保留之前的local网盘镜像，未自动升级。
 
-**当前发行（2026-10-06，本轮已完成）**：PR #1 已合并，源码发布提交 `c2a1f21f9be005e1855bd78b00613033791c0dbb`。源码 [Verify 37458591153](https://github.com/tardlk/CokeTV/actions/runs/37458591153)、[主线构建/验收/发布 37458591100](https://github.com/tardlk/CokeTV/actions/runs/37458591100) 与 [匿名固定 digest 发布后复验 37459488105](https://github.com/tardlk/CokeTV/actions/runs/37459488105) 均 success。`ghcr.io/tardlk/coketv:sha-c2a1f21` 与 `:latest` 同 digest：`sha256:c269b482eddaff2668a43773b82fcd98f23c89b90bd48542eb4a2a6b95c8d1a2`。匿名 manifest/config 与容器实跑确认 linux/amd64、User=node/UID 1000、OCI revision 为该源码 SHA；R1–R10 和媒体头修复均已包含。详细身份/产物/测试证据见第 7.13 节。下列首次发布与旧同步记录保留为历史，不表示当前 latest。
+**此前猫影视发行（2026-10-08）**：猫影视功能 `acbfb1a` 的 [Docker amd64 37715845159](https://github.com/tardlk/CokeTV/actions/runs/37715845159) 已成功；当时`latest` 与 `sha-acbfb1a` 均为 digest `sha256:9330d3285d1ac11ff276972f3fcc487246c78987e39ca72291ce46eb9384f8ae`。固定 digest 的 [匿名发布后复验 37716710290](https://github.com/tardlk/CokeTV/actions/runs/37716710290) 已成功，发布前/后原生 amd64 均完成 131 项回归及完整容器矩阵。本机 Docker 当时已按用户授权升级并保留数据，见 7.20。随后的115统一网盘发行见7.27。
+
+**历史安全修复发行（2026-10-06）**：PR #1 已合并，源码发布提交 `c2a1f21f9be005e1855bd78b00613033791c0dbb`。源码 [Verify 37458591153](https://github.com/tardlk/CokeTV/actions/runs/37458591153)、[主线构建/验收/发布 37458591100](https://github.com/tardlk/CokeTV/actions/runs/37458591100) 与 [匿名固定 digest 发布后复验 37459488105](https://github.com/tardlk/CokeTV/actions/runs/37459488105) 均 success。`ghcr.io/tardlk/coketv:sha-c2a1f21` 与当时`:latest` 同 digest：`sha256:c269b482eddaff2668a43773b82fcd98f23c89b90bd48542eb4a2a6b95c8d1a2`。匿名 manifest/config 与容器实跑确认 linux/amd64、User=node/UID 1000、OCI revision 为该源码 SHA；R1–R10 和媒体头修复均已包含。详细身份/产物/测试证据见第 7.13 节。下列首次发布与旧同步记录保留为历史，不表示当前 latest。
 
 - 2026-10-05 首次发布：功能提交 `3b17276`，源码 [Verify 37252776598](https://github.com/tardlk/CokeTV/actions/runs/37252776598) 与 [Docker amd64 37252776569](https://github.com/tardlk/CokeTV/actions/runs/37252776569) 均成功。
 - 历史镜像 `:sha-3b17276`，当时同 digest 发布为 `:latest`：`sha256:8e733b3cc506be4682015e9df004ba9b3705f31c058d9da263e28dbfa049461c`（匿名读取 manifest/config 确认 `linux/amd64`）。独立拉取验收：[Verify published image 37253476492](https://github.com/tardlk/CokeTV/actions/runs/37253476492)。这个 digest 只代表旧发布，不能据此断言当前 latest 的版本。
@@ -552,7 +552,7 @@ GitHub 的 work/media-release-gates-20261006 已通过分支页 Delete branch �
 - **仓库线索与材料**：镜像SLSA指向 `Lampon/OmniBox` 及上述提交，公开页面/API返回404，只能判断公开不可访问，不能确定删除或永久丢失。研究说明、原文件、前端调用清单、SHA256记录及恢复ZIP在私有忽略目录 `.tools/omnibox-recovery-20261008/`；官方文档HTML副本保留。未将任何模板、SDK或第三方站点带入CokeTV发行树，没有适配新的Runner或更改五引擎。
 - **验证与保留**：应用层/原文件hash与ZIP完整性检查，原Python源码AST解析、原JS运行器/SDK语法检查及前端格式化解析通过；仅研究文件和交接文档有变化，没有运行完整项目门禁、推送或发布。CokeTV主服务、drpy参考及现有账号/源保留，54059/54061旧测试服务未恢复。
 
-### 7.30 冗余审查与六项修复（2026-10-08，本地未提交）
+### 7.30 冗余审查与六项修复（2026-10-08，修复阶段记录；后续已发布见7.31）
 
 - **授权与基线**：接手先确认main/HEAD93e1e36，仅本文有7.28–7.29未提交补记；这些记录完整保留。用户先要求审查，再明确要求“执行修复计划”。范围为六项已复现问题、确定冗余、预防检查及相关文档，不扩展Runner/网盘平台，不删兼容内核。
 - **先复现再修复**：独立临时data/本地HTTP与UI夹具确认深层HLS停用/换账号仍200、脚本保存失败后文件改变、ZIP部分写入、FTP健康500、并发首次网关等待丢失、浏览器返回丢未保存内容。正式后端新增用例最初7失败/1取消，UI新增4失败；原203用例仍全部通过，未修改旧断言或跳过失败。后续补真实history前进/后退、已有历史保留/重试、网关超时及固定FTP协议样本。FTP HEAD越界额外先复现500，再修正为416。
@@ -562,12 +562,16 @@ GitHub 的 work/media-release-gates-20261006 已通过分支页 Delete branch �
 - **编辑保护**：App/WatchApp使用带位置的浏览器历史，SourceWorkspace暴露统一离开确认；popstate先恢复编辑位置，继续编辑保留内容，确认后才跳转，取消不破坏前进/后退历史。代码/ENV/参数分别覆盖，无修改时直接离开；JSdom实际history.back/forward通过，未做原生浏览器人工验收。
 - **精简与检查**：移除5个未用全局注册（70→65）、14个下拉菜单Vue文件及其入口、notices状态、worker内部未调用syntax分支和sources未用导入。保留无静态引用的兼容辅助库和两处CryptoJS入口。新增check-identifiers，以已有TypeScript/Vue检查宿主/scripts/web与两网关的未定义变量；Vue script setup含内联模板，其他依赖注入的engine不套用此规则，不是完整类型检查，无新增依赖。自测确认被注释的日志导入和Vue变量缺失能被检出。container-matrix纳入正式review-regressions，静态检查自测仅在宿主执行。
 - **最终门禁**：使用第0节真实解释器路径运行check（130语法、187变量、143桥接、37spider/156engine空壳）、build native loader、test:core162/162、test:ui native loader58/58，220全过/零跳过。仍有原有大chunk提示；主入口394.71kB/gzip120.93kB，播放器/编辑器继续按需加载，不能把删除的未引用模板算成首屏减量。README/CONFIGURATION/DEVELOPMENT已纠正旧latest SHA、工具栏位置、ZIP冲突/回滚规则及检查说明。
-- **交付边界**：本轮没有修改正式data、重启或替换现有主/参考容器，没有提交、推送、构建或发布镜像，没有新增外部站点/原drpy-node-coder验收。测试和审查日志在忽略目录.tools/review-20261008，不进入发行。依赖已知告警、fServer默认WebSocket缺口及真实网盘搜索/手机/声音验收仍属于专项待办，本轮不声称解决。
+- **修复阶段边界**：本阶段没有修改正式data、重启或替换现有主/参考容器，当时尚未提交、推送、构建或发布镜像；后续已按新授权完成GitHub发行，见7.31。没有新增外部站点/原drpy-node-coder验收。测试和审查日志在忽略目录.tools/review-20261008，不进入发行。依赖已知告警、fServer默认WebSocket缺口及真实网盘搜索/手机/声音验收仍属于专项待办，本轮不声称解决。
 
-### 7.31 审查修复提交与GitHub同步（2026-10-08，进行中）
+### 7.31 审查修复提交、GitHub发行与匿名复验（2026-10-08，全部通过）
 
 - **授权与提交范围**：用户明确要求推送GitHub；本地main基线93e1e36与fetch后的origin/main一致，无需变基或覆盖远端。提交包括7.30六项修复、确定冗余清理、静态检查及测试、正式文档，以及此前未提交的7.28–7.29公开交接补记；不包含data、账号、研究恢复文件、截图、构建输出、本机工具或私密HANDOFF。
-- **验证与发行门**：7.30记录的check/build native/162后端与58UI已全部通过；本次推送使用正式主线Verify/Docker流程，不能用旧9dbf42c的镜像和CI证明本轮修复已发布。实际源码SHA、工作流结果、固定digest和发布后复验将在完成后补记；此处未预先声明远端成功。
+- **源码身份与门禁**：37文件提交 `9c46614999e20f66d4b4b2cad111751128019e27` 已推送origin/main，并用ls-remote确认一致。暂存路径及已知本机私密值交叉扫描通过，未带入忽略数据。此前本机check/build native/162后端+58UI全过；GitHub [Verify37753160674](https://github.com/tardlk/CokeTV/actions/runs/37753160674) 用标准check/build/npm test全部通过（162后端、58UI、0失败/跳过），没有使用skip ci绕过功能代码门禁。
+- **原生容器与发布成功**：[Docker amd6437753161089](https://github.com/tardlk/CokeTV/actions/runs/37753161089) 的candidate/publish均success。下载候选report.completed=true，sourceSha/verificationSha均为9c46614；156/156回归、0失败/跳过，包含新增10项review-regressions。完整矩阵覆盖零源/非root/首装/CLI、五引擎真实GET/HEAD/Range/HLS/key、同卷重启、旧桥接升级、坏state/ENV内容保留、旧卷属主修复。实际Node22.23.3/Python3.13.5/PHP8.4.26/UID1000。
+- **固定镜像身份**：`ghcr.io/tardlk/coketv:sha-9c46614` 与 `latest` 均指向 `sha256:b0ddf2027e5e78b732ddacce15e23344ec3037677d0794f8b0633616815275d6`，image/config ID为 `sha256:4fb84caffb791220fc80d251012094c831eb26788dd189c221c6b3adac7aee73`。匿名读取两个manifest并核对原始bytes hash、config ID、linux/amd64、User=node和OCI revision9c46614，与候选验收镜像一致；发布任务没有重新构建。
+- **匿名发布后完整复验**：[37754052158](https://github.com/tardlk/CokeTV/actions/runs/37754052158) 对上述固定digest匿名拉取并执行完整矩阵，success。下载report.completed=true，sourceSha/verificationSha/imageId/platform/checks/backendTests与候选逐项相同；156/156通过、0失败/跳过。不是只检查health或仅拉取成功。证据保存在忽略目录.tools/review-20261008，公开交接只保留身份与结论。
+- **文档收尾**：本次补记仅更新本文，以纯文档 `[skip ci]` 提交同步main，避免无代码变化重复发布镜像。功能发行SHA始终为9c46614，之后文档HEAD领先镜像revision属于预期；7.30中的未提交/未发布已明确标为修复阶段历史。
 - **本机保留**：推送不自动替换本机容器，不清理或迁移现有账号/源/订阅，不恢复已删除的测试服务。运行数据与私密备份继续只在本机保留。
 
 ## 8. 验证证据与探测脚本
