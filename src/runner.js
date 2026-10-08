@@ -49,6 +49,7 @@ export class Runner extends EventEmitter {
             if (message.kind === 'ws') this.wsPort = message.port;
             if (message.kind === 'gatewayReady' && this.gatewayPending) {
                 const pending = this.gatewayPending; this.gatewayPending = null;
+                clearTimeout(pending.timer);
                 if (message.error) pending.reject(new Error(message.error));
                 else { this.gatewayPort = message.port; pending.resolve(message.port); }
             }
@@ -78,7 +79,7 @@ export class Runner extends EventEmitter {
     reset(reason = '运行配置已更新') {
         const child = this.child;
         this.child = null; this.wsPort = null; this.stats = null; this.gatewayPort = null;
-        if (this.gatewayPending) { this.gatewayPending.reject(new Error(reason)); this.gatewayPending = null; }
+        if (this.gatewayPending) { clearTimeout(this.gatewayPending.timer); this.gatewayPending.reject(new Error(reason)); this.gatewayPending = null; }
         if (this.current) { clearTimeout(this.current.timer); this.current.reject(new Error(reason)); this.current = null; }
         this.killTree(child);
     }
@@ -104,13 +105,25 @@ export class Runner extends EventEmitter {
     }
     close() { this.closed = true; this.reset('服务正在关闭'); }
     async gateway() {
+        if (this.closed) throw new Error('服务正在关闭');
         if (this.gatewayPort) return this.gatewayPort;
         if (this.gatewayPending) return this.gatewayPending.promise;
-        await this.start();
         let resolve, reject;
         const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
-        this.gatewayPending = {promise, resolve, reject};
-        this.child.send({kind: 'gateway'});
+        const pending = {promise, resolve, reject};
+        this.gatewayPending = pending;
+        const failed = error => {
+            if (this.gatewayPending !== pending) return;
+            clearTimeout(pending.timer); this.gatewayPending = null; reject(error);
+        };
+        pending.timer = setTimeout(() => {
+            if (this.gatewayPending === pending) this.reset('网关启动超时');
+        }, 10000);
+        void (async () => {
+            await this.start();
+            if (this.gatewayPending !== pending || this.closed) return;
+            this.child.send({kind: 'gateway'}, error => { if (error) failed(error); });
+        })().catch(failed);
         return promise;
     }
     status() { return {started: !!this.child, pid: this.child?.pid || null, waiting: this.waiting, ...this.stats}; }

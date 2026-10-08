@@ -4,7 +4,7 @@ import os from 'os';
 import {execFile} from 'child_process';
 import {promisify} from 'util';
 import AdmZip from 'adm-zip';
-import {ENGINE_DIRS, EXTENSIONS, inside, validFilename, ROOT} from './paths.js';
+import {ENGINE_DIRS, EXTENSIONS, ROOT} from './paths.js';
 import {pathToFileURL} from 'url';
 const exec = promisify(execFile);
 export const requireImportEngine = () => Object.assign(new Error('无法确定 JS 源的运行格式，请选择对应引擎'), {statusCode: 422, importCode: 'IMPORT_ENGINE_REQUIRED'});
@@ -67,15 +67,7 @@ export async function importBundle(store, engine, bytes) {
         if (!/\.(js|py|php|json|txt|m3u|conf)$/i.test(relative)) throw new Error(`文件类型不支持: ${name}`);
         const sourceEngine = Object.keys(ENGINE_DIRS).find(key => relative.startsWith(`spider/${ENGINE_DIRS[key]}/`));
         if (sourceEngine && code && !path.basename(relative).startsWith('_')) await syntaxCheck(sourceEngine, path.basename(relative), code, store.state.settings);
-        staged.push({relative, code});
+        staged.push({relative, code, engine: sourceEngine && !path.basename(relative).startsWith('_') && relative.endsWith(EXTENSIONS[sourceEngine]) && relative.split('/').length === 3 ? sourceEngine : null});
     }
-    // 全包路径与语法验证后才写入。
-    for (const entry of staged) {
-        const engineName = Object.keys(ENGINE_DIRS).find(key => entry.relative.startsWith(`spider/${ENGINE_DIRS[key]}/`));
-        const name = path.basename(entry.relative);
-        if (engineName && !name.startsWith('_') && name.endsWith(EXTENSIONS[engineName]) && entry.relative.split('/').length === 3) await store.saveScript(engineName, name, entry.code);
-        else await store.atomic(inside(store.runtime, entry.relative), entry.code);
-    }
-    const added = await store.mutate(() => store.scan());
-    return {files: staged.length, added};
+    return store.importBundle(staged);
 }

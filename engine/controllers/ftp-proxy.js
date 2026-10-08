@@ -1,4 +1,6 @@
-/**import {log, logError, logWarn} from '../utils/log.js';
+import {log, logError, logWarn} from '../utils/log.js';
+import {parseRangeHeader} from '../utils/proxy-common.js';
+/**
 
  * FTP 代理控制器模块
  * 提供 FTP 文件的 HTTP 直链访问功能
@@ -163,7 +165,9 @@ export default (fastify, options, done) => {
 
             try {
                 // 获取文件流和信息
-                const streamResult = await client.getFileStream(filePath, streamOptions);
+                const streamResult = request.method === 'HEAD'
+                    ? {fileInfo: await client.getInfo(filePath)}
+                    : await client.getFileStream(filePath, streamOptions);
                 const {stream, headers, isRangeRequest, fileInfo} = streamResult;
 
                 if (!fileInfo || fileInfo.isDirectory) {
@@ -190,7 +194,8 @@ export default (fastify, options, done) => {
                         if (start >= fileInfo.size || end >= fileInfo.size) {
                             reply.status(416);
                             reply.header('Content-Range', `bytes */${fileInfo.size}`);
-                            return;
+                            await releaseClient();
+                            return reply.send();
                         }
 
                         reply.status(206);

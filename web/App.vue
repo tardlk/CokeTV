@@ -5,6 +5,7 @@ import SubscriptionPicker from './SubscriptionPicker.vue';
 import AppNavigation from './AppNavigation.vue';
 import {engineLabels, languageLabels, engineLanguage} from './engine-labels.js';
 import {Toaster, toast} from 'vue-sonner';
+import {initializeNavigation, pushRoute, replaceRoute, routePosition, routeURL} from './navigation.js';
 const SourceWorkspace=defineAsyncComponent(()=>import('./SourceWorkspace.vue'));
 const WatchApp=defineAsyncComponent(()=>import('./WatchApp.vue'));
 const SourceImport=defineAsyncComponent(()=>import('./SourceImport.vue'));
@@ -14,19 +15,45 @@ export default {
     components: {SourceWorkspace, WatchApp, SourceImport, NetdiskManager, Icon, SubscriptionPicker, Toaster, AppNavigation},
     setup() {
         const workspaceSource = ref(null);
+        const workspace = ref(null);
+        initializeNavigation();
+        let workspaceRoute = null, restoring = null, allowLeave = false;
         const isAdminPath = () => location.pathname === '/admin' || /^\/sources\/[^/]+\/edit$/.test(location.pathname);
         const watching = ref(!isAdminPath());
         const publicSources = ref(null), watchLoading = ref(false), watchError = ref('');
-        async function openWatch() { history.pushState({}, '', '/'); watching.value = true; await loadWatch(); }
-        async function closeWatch() { history.pushState({}, '', '/admin'); workspaceSource.value = null; page.value = 'sources'; watching.value = false; await loadAdminAccess(); }
-        async function syncWatch() {
+        async function openWatch() { pushRoute('/'); watching.value = true; await loadWatch(); }
+        async function closeWatch() { pushRoute('/admin'); workspaceSource.value = null; page.value = 'sources'; watching.value = false; await loadAdminAccess(); }
+        async function applyRoute() {
+            workspaceSource.value = null; page.value = 'sources';
             watching.value = !isAdminPath();
             if (watching.value) await loadWatch(); else await loadAdminAccess();
         }
+        async function syncWatch(event) {
+            if (restoring && routeURL() === workspaceRoute?.url) { restoring(); restoring = null; return; }
+            if (event?.type === 'popstate' && workspace.value?.dirty && workspaceRoute && !allowLeave) {
+                const target = {url: routeURL(), position: routePosition()};
+                if (target.url === workspaceRoute.url) return;
+                const delta = target.position === null ? 0 : workspaceRoute.position - target.position;
+                let restored = Promise.resolve();
+                if (delta) {
+                    restored = new Promise(resolve => { restoring = resolve; });
+                    history.go(delta);
+                } else replaceRoute(workspaceRoute.url);
+                workspace.value.requestLeave(async () => {
+                    await restored;
+                    if (delta) { allowLeave = true; history.go(-delta); }
+                    else { replaceRoute(target.url); await applyRoute(); }
+                });
+                return;
+            }
+            allowLeave = false;
+            await applyRoute();
+        }
+        function rememberWorkspaceRoute() { workspaceRoute = {url: routeURL(), position: routePosition()}; }
         const state = ref(null), page = ref('sources'), query = ref(''), engine = ref('all'), selected = ref([]), currentPage = ref(1);
         const auth = ref(sessionStorage.getItem('coketv-access') || ''), login = ref({password: ''}), loginError = ref('');
         const requiresSetup = ref(false), accessLoading = ref(true), newPassword = ref(''), confirmPassword = ref(''), setupCode = ref('');
-        const busy = ref(false), notices = ref([]), modal = ref(null), form = ref({}), dependencies = ref(null);
+        const busy = ref(false), modal = ref(null), form = ref({}), dependencies = ref(null);
         const pageSize=ref(20);
         const confirming = ref(null), settings = ref({}), importFile = ref(null), targetAllowlistText = ref('');
         const labels = engineLabels;
@@ -65,7 +92,7 @@ export default {
         async function signIn() {
             if (busy.value) return; busy.value = true;
             auth.value = btoa(unescape(encodeURIComponent(`:${login.value.password}`))); loginError.value = '';
-            try { await load(); sessionStorage.setItem('coketv-access', auth.value); login.value.password = ''; const id=location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1]; const source=sources.value.find(s=>s.id===id); if(source){workspaceSource.value=source;page.value='workspace';} }
+            try { await load(); sessionStorage.setItem('coketv-access', auth.value); login.value.password = ''; const id=location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1]; const source=sources.value.find(s=>s.id===id); if(source){workspaceSource.value=source;page.value='workspace';rememberWorkspaceRoute();} }
             catch (error) { loginError.value = error.message; auth.value = ''; } finally { busy.value = false; }
         }
         async function createPassword() {
@@ -80,7 +107,7 @@ export default {
                 auth.value = btoa(unescape(encodeURIComponent(`:${newPassword.value}`)));
                 newPassword.value = ''; confirmPassword.value = ''; setupCode.value = '';
                 await load(); sessionStorage.setItem('coketv-access', auth.value);
-                const id=location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1];const source=sources.value.find(s=>s.id===id);if(source){workspaceSource.value=source;page.value='workspace';}
+                const id=location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1];const source=sources.value.find(s=>s.id===id);if(source){workspaceSource.value=source;page.value='workspace';rememberWorkspaceRoute();}
             } catch(error) {loginError.value=error.message;auth.value='';} finally {busy.value=false;}
         }
         const sources = computed(() => (state.value?.instances || []).map(instance => ({...instance, script: state.value.scripts.find(s => s.id === instance.scriptId)})));
@@ -117,9 +144,9 @@ export default {
         }
         async function editScript(source) {
             workspaceSource.value = source; page.value = 'workspace';
-            history.pushState({}, '', `/sources/${source.id}/edit`);
+            pushRoute(`/sources/${source.id}/edit`); rememberWorkspaceRoute();
         }
-        function closeWorkspace() { workspaceSource.value = null; page.value = 'sources'; history.replaceState({}, '', '/admin'); }
+        function closeWorkspace() { workspaceSource.value = null; page.value = 'sources'; replaceRoute('/admin'); }
         function newScript() { form.value = {type: 'js', name: ''}; modal.value = 'editor'; }
         async function saveScript() {
             const name = form.value.name.trim().replace(/\.(js|py|php)$/i, '');
@@ -177,11 +204,11 @@ export default {
             finally {accessLoading.value=false;}
             if(requiresSetup.value){auth.value='';sessionStorage.removeItem('coketv-access');return;}
             if (auth.value) await action(load);
-            const id = location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1]; if (id && state.value) { const source = sources.value.find(s => s.id === id); if (source) {workspaceSource.value=source; page.value='workspace';} }
+            const id = location.pathname.match(/^\/sources\/([^/]+)\/edit$/)?.[1]; if (id && state.value) { const source = sources.value.find(s => s.id === id); if (source) {workspaceSource.value=source; page.value='workspace';rememberWorkspaceRoute();} }
         }
         onMounted(async () => { window.addEventListener('popstate', syncWatch); await syncWatch(); });
         onBeforeUnmount(() => window.removeEventListener('popstate', syncWatch));
-        return {removeSelected,openSourceImport,tvboxImported,publicSources,watchLoading,watchError,watchApi,loadWatch,watching,openWatch,closeWatch,requiresSetup,accessLoading,newPassword,confirmPassword,setupCode,createPassword,requestFile,languageLabels,engineLanguage,renameSource,saveName,importSelected,importFile,pageSize,openLinks,switchCapability,modalTitle, workspaceSource, closeWorkspace, api, state, page, query, engine, selected, currentPage, totalPages, visible, filtered, sources, enabledCount, auth, login, loginError, busy, notices, modal, form, dependencies, confirming, settings, labels,
+        return {workspace,removeSelected,openSourceImport,tvboxImported,publicSources,watchLoading,watchError,watchApi,loadWatch,watching,openWatch,closeWatch,requiresSetup,accessLoading,newPassword,confirmPassword,setupCode,createPassword,requestFile,languageLabels,engineLanguage,renameSource,saveName,importSelected,importFile,pageSize,openLinks,switchCapability,modalTitle, workspaceSource, closeWorkspace, api, state, page, query, engine, selected, currentPage, totalPages, visible, filtered, sources, enabledCount, auth, login, loginError, busy, modal, form, dependencies, confirming, settings, labels,
             action, signIn, toggle, selectVisible, switchSource, batch, editInstance, saveInstance, editScript, newScript, saveScript, upload, removeSource, openSubscription, saveSubscription, subscriptionUrl, catSubscriptionUrl, copy, preview, deleteSub, resetToken, saveSettings, checkDependencies, logout, acceptConfirm, load, scan, targetAllowlistText};
     }
 };
@@ -195,7 +222,7 @@ export default {
   <div v-else-if="!auth || !state" class="login-layout">
     <section class="login-form-area"><form class="login-form" @submit.prevent="signIn"><h2>CokeTV 管理后台</h2><FieldGroup><Field :data-invalid="!!loginError"><FieldLabel for="login-password">访问密码</FieldLabel><Input id="login-password" v-model="login.password" type="password" autocomplete="current-password" :aria-invalid="!!loginError" :disabled="busy" required autofocus /><FieldError v-if="loginError">{{loginError}}</FieldError></Field></FieldGroup><Button type="submit" :disabled="busy">{{busy?'验证中…':'进入'}}</Button><Button type="button" variant="ghost" @click="openWatch">返回观影</Button></form></section>
   </div>
-  <SourceWorkspace v-else-if="page==='workspace' && workspaceSource" :key="workspaceSource.id" :source="workspaceSource" :sources="sources" :api="api" @close="closeWorkspace" @saved="action(load)" />
+  <SourceWorkspace v-else-if="page==='workspace' && workspaceSource" ref="workspace" :key="workspaceSource.id" :source="workspaceSource" :sources="sources" :api="api" @close="closeWorkspace" @saved="action(load)" />
   <SidebarProvider v-else>
     <Sidebar collapsible="icon">
       <SidebarHeader><a class="brand-lockup" href="/admin" @click.prevent="page='sources'"><span class="brand-mark"><Icon name="layers" /></span><div class="group-data-[collapsible=icon]:hidden"><strong>CokeTV</strong><small>v0.1.0</small></div></a></SidebarHeader>

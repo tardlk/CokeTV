@@ -11,12 +11,14 @@
 ## 本地检查
 
 ```sh
-npm run check     # 语法检查（src/scripts/web）+ 桥接语法检查（engine/spider/**）+ 空壳发行检查（spider 白名单 + engine 全域站点规则/清单扫描）
+npm run check     # 宿主/辅助语法、未定义变量、桥接语法、空壳发行检查
 npm run build     # 干净克隆请先 build 再 test：页面路由集成测试需要 dist/index.html
 npm test          # 后端 node:test + UI Vitest
 ```
 
 `scripts/check-bridges.mjs` 对 `engine/spider/**` 的 Python/PHP/JS 文件做 `ast.parse` / `php -l` / `node --check`；Python 用 `ast.parse` 而非 `py_compile`，避免产生 `__pycache__` 触发空壳白名单告警。`scripts/check-shell.mjs` 除 `spider/` 的文件白名单外，还会扫整个 `engine/` 是否存在 `var rule=` / `class Spider` / `"sites":[`（判定前剔除整行注释），新增站点定义会让发行检查失败。
+
+`scripts/check-identifiers.mjs` 使用已有 TypeScript 与 Vue 编译器检查宿主、脚本、Web 和 FTP/WebDAV 控制器的未定义变量；Vue script setup 包含内联模板。它不执行完整类型检查，也不对依赖动态注入全局变量的其他兼容引擎套用同一规则，不增加分析依赖。
 
 `npm test` 顺序执行后端 node:test 和 UI Vitest。测试用临时数据目录，不改写现有用户源。若本地开启了批量删除保护，清理临时目录可能被拦截，用 `CODEBUDDY_SAFE_DELETE_ENABLED=0` 运行测试即可（CI 无此限制）。
 
@@ -124,4 +126,4 @@ CONTAINER_REPORT_DIR=/tmp/coketv-container-report node scripts/container-matrix.
 
 不要在正式 data 上验收。报告记录平台、UID、Node/Python/PHP、源码 SHA、镜像 ID、清单与零跳过 TAP；启动初始化码从日志产物中隐藏。`.github/workflows/image-verify.yml` 匿名拉取给定固定 SHA/digest 后复用完整矩阵，产物保存到工作流。旧 `latest` 可供手动选择，但不能用它证明本次源码已发布。
 
-发布时本机没有 Docker CLI，随后已安装隔离的本机 Docker 兼容运行环境（AI_HANDOFF 7.15），不能冒充原生 x86 验收。本轮 GitHub [PR #1 原生 amd64 候选验收](https://github.com/tardlk/CokeTV/actions/runs/37456713645) 已成功：源码门禁、构建和完整矩阵通过，publish job skipped，容器 TAP 全过且零跳过。随后已合并 main；[主线发布](https://github.com/tardlk/CokeTV/actions/runs/37458591100) 和[匿名固定 digest 完整复验](https://github.com/tardlk/CokeTV/actions/runs/37459488105) 均 success，同一镜像身份、ZIP digest 和 TAP 已核对。当前 `sha-c2a1f21` / `latest` 发行证据见 `docs/AI_HANDOFF.md` 第 7.13 节；历史镜像仍只代表当时版本。
+本机是 macOS arm64，兼容运行 Docker 镜像不能冒充原生 amd64 验收。已核对的源码提交、固定镜像 digest 与发布前后验收统一见 [当前接手入口](AI_HANDOFF.md#0-当前接手入口先看本节)及该入口指向的发行记录；历史镜像只代表对应版本，本地门禁通过不代表新版本已经发布。

@@ -46,6 +46,10 @@ export async function createApp({directory, seed = true, netdiskRequest} = {}) {
     const netdisk = await NetdiskService.create(store.directory, netdiskRequest);
     const playback = createPlaybackSessions();
     const tvboxImporter = createTvboxImporter(store);
+    const proxyMint = (headers, scope = {}) => url => playback.createProxy(url, headers, {
+        ...(scope.source ? {source: scope.source} : {}),
+        ...(scope.netdiskRevision ? {netdiskRevision: scope.netdiskRevision} : {}),
+    });
     let catSubscriptions;
     const app = Fastify({logger: false, bodyLimit: 8 * 1024 * 1024, trustProxy: process.env.TRUST_PROXY === '1', routerOptions: {maxParamLength: 4096}});
     await app.register(formbody);
@@ -312,7 +316,7 @@ export async function createApp({directory, seed = true, netdiskRequest} = {}) {
         if (!session || session.kind !== 'media' || !netdisk.current(session.netdiskRevision) || !store.state.instances.some(item => item.id === session.source && item.enabled)) throw fail('播放链接已过期，请重新选择剧集', 403);
         // 只抓服务端票据绑定的 URL 与请求头，绝不接受请求方传入的目标。
         return serveMedia(request, reply, session.url, session.headers || {}, request.params.ticket,
-            url => playback.createProxy(url, session.headers || {}, session.netdiskRevision ? {netdiskRevision: session.netdiskRevision, source: session.source} : {}));
+            proxyMint(session.headers || {}, session));
     }});
     app.get('/admin/logs', async request => runner.logs.filter(entry => !request.query.source || entry.source === request.query.source).slice(-150));
     app.post('/admin/scan', async () => ({added: await store.mutate(() => store.scan())}));
@@ -567,13 +571,13 @@ export async function createApp({directory, seed = true, netdiskRequest} = {}) {
         const carried = typeof content === 'string' ? unwrapMediaProxy(content, baseUrl(request)) : null;
         const target = carried?.url || content;
         const streamHeaders = sanitizeSourceHeaders({...(carried?.headers || {}), ...(headers && typeof headers === 'object' && !Array.isArray(headers) ? headers : {})});
-        const mint = url => playback.createProxy(url, streamHeaders);
+        const mint = proxyMint(streamHeaders, {...playback.get(sub?.token), source: instance.id});
         for (const key of Object.keys(headers || {})) if (key.toLowerCase() === 'location') headers[key] = localToken(headers[key], baseUrl(request), sub?.token);
         if ([2, 3].includes(bytes) && typeof target === 'string' && /^https?:/.test(target)) {
             // toBytes=3：宿主直接拉流；toBytes=2：302 到绑定能力票据的 /mediaProxy。
             // 两条路径携带同一组头，规避播放器 302 丢自定义头。
             if (bytes === 3) return serveMedia(request, reply, target, streamHeaders, sub?.token, mint);
-            return reply.redirect(`/mediaProxy?${new URLSearchParams({url: target, token: playback.createProxy(target, streamHeaders)})}`);
+            return reply.redirect(`/mediaProxy?${new URLSearchParams({url: target, token: mint(target)})}`);
         }
         let body = bytes === 1 ? Buffer.from(String(content).split('base64,').pop(), 'base64') : content;
         if (typeof body === 'string' && (body.startsWith('#EXTM3U') || /mpegurl/i.test(type))) body = rewritePlaylist(body, `${baseUrl(request)}${request.url}`, baseUrl(request), {token: sub?.token, mint, alias: {name: script.file.replace(/\.[^.]+$/, ''), id: instance.id}});
@@ -587,7 +591,7 @@ export async function createApp({directory, seed = true, netdiskRequest} = {}) {
         const supplied = info.kind === 'proxy' ? info.headers || {} : decodeMediaHeaders(request.query);
         const headers = info.kind === 'subscription' ? safeProxyHeaders(supplied) : playbackHeaders(supplied);
         const token = info.kind === 'proxy' ? request.query.token : info.token;
-        return serveMedia(request, reply, target, headers, token, url => playback.createProxy(url, headers));
+        return serveMedia(request, reply, target, headers, token, proxyMint(headers, info));
     };
     app.route({method: ['GET', 'HEAD'], url: '/mediaProxy', handler: mediaProxyHandler});
     for (const route of URL_PROXY_ROUTES) app.route({method: ['GET', 'HEAD'], url: route, handler: mediaProxyHandler});
@@ -615,7 +619,7 @@ export async function createApp({directory, seed = true, netdiskRequest} = {}) {
         const info = await authorizeProxy(request, target);
         const headers = info.headers || {};
         const token = info.kind === 'proxy' ? request.query.token : info.token;
-        return streamMedia(target, headers, request, reply, {base: baseUrl(request), token, mint: url => playback.createProxy(url, headers), guard: targetGuard});
+        return streamMedia(target, headers, request, reply, {base: baseUrl(request), token, mint: proxyMint(headers, info), guard: targetGuard});
     });
     const images = new Map();
     app.post('/image/upload', async request => {

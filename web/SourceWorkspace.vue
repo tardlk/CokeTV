@@ -30,6 +30,16 @@ const envDirty = computed(() => { try { return JSON.stringify(environment()) !==
 const codeDirty = computed(() => code.value !== originalCode.value);
 const paramsDirty = computed(() => params.value !== originalParams.value);
 const dirty = computed(() => codeDirty.value || envDirty.value || paramsDirty.value);
+let leaveAction = null;
+function requestLeave(action) {
+    if (dirty.value) { leaveAction = action; leaveDialog.value = true; }
+    else action();
+}
+function confirmLeave() {
+    const action = leaveAction; leaveAction = null; leaveDialog.value = false;
+    action?.();
+}
+defineExpose({dirty, requestLeave});
 async function loadEnvironment() {
     const data = await props.api(`/admin/instances/${props.source.id}/environment`);
     defaults.value = data.defaults;
@@ -63,7 +73,7 @@ async function verify() {
     finally { logs.value = await props.api(`/admin/logs?source=${props.source.id}`); }
 }
 function next(step, id) { method.value = step; value.value = String(id || ''); }
-function close() { if (dirty.value) leaveDialog.value = true; else emit('close'); }
+function close() { requestLeave(() => emit('close')); }
 function beforeUnload(event) { if (dirty.value) { event.preventDefault(); event.returnValue = ''; } }
 async function restore(revision) {
     if (codeDirty.value) throw new Error('请先保存或撤销代码修改，再恢复历史版本');
@@ -112,6 +122,6 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload));
         </ResizablePanelGroup></section></ResizablePanel>
       </ResizablePanelGroup>
     </div>
-    <AlertDialog v-model:open="leaveDialog"><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>放弃未保存的修改？</AlertDialogTitle><AlertDialogDescription>代码、扩展参数或本源环境变量还没有保存。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>继续编辑</AlertDialogCancel><AlertDialogAction @click="emit('close')">放弃并返回</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog v-model:open="leaveDialog"><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>放弃未保存的修改？</AlertDialogTitle><AlertDialogDescription>代码、扩展参数或本源环境变量还没有保存。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>继续编辑</AlertDialogCancel><AlertDialogAction @click="confirmLeave">放弃并返回</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </div>
 </template>

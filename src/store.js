@@ -75,6 +75,41 @@ export class Store {
         this.tail = job.catch(() => {});
         return job;
     }
+    async mutateFiles(fn) {
+        const files = new Map();
+        let rollbackFailed = false;
+        const write = async (file, content, options) => {
+            if (!files.has(file)) {
+                await fs.mkdir(path.dirname(file), {recursive: true});
+                const backup = `${file}.${randomBytes(8).toString('hex')}.rollback`;
+                try {
+                    // Reserve the old content before replacement. Recovery uses
+                    // rename, so it needs no second copy when the disk is full.
+                    await fs.copyFile(file, backup, fs.constants.COPYFILE_EXCL);
+                    files.set(file, {backup});
+                } catch (error) {
+                    if (error.code !== 'ENOENT') throw error;
+                    files.set(file, {backup: null});
+                }
+            }
+            await this.atomic(file, content, options);
+        };
+        const rollback = async () => {
+            const errors = [];
+            for (const [file, {backup}] of [...files].reverse()) {
+                try { if (backup) await fs.rename(backup, file); else await fs.rm(file, {force: true}); }
+                catch (error) { errors.push(error); }
+            }
+            if (errors.length) {
+                rollbackFailed = true;
+                throw new AggregateError(errors, '文件回滚失败，已保留 .rollback 备份，请检查数据目录');
+            }
+        };
+        try { return await this.mutate(state => fn(state, write), {rollback}); }
+        finally {
+            if (!rollbackFailed) for (const {backup} of files.values()) if (backup) await fs.rm(backup, {force: true}).catch(() => {});
+        }
+    }
     async syncEnvironment() {
         await this.atomic(path.join(this.runtime, 'config/env.json'), JSON.stringify(this.state.settings.env, null, 2), {mode: 0o600});
         await this.atomic(path.join(this.runtime, '.plugins.js'), `export default ${JSON.stringify(this.state.settings.plugins)};\n`, {mode: 0o600});
@@ -149,23 +184,47 @@ export class Store {
     }
     async saveScript(engine, name, code, {createOnly = false} = {}) {
         validFilename(engine, name);
+        return this.mutateFiles((state, write) => this.writeScript(state, write, engine, name, code, {createOnly}));
+    }
+    async writeScript(state, write, engine, name, code, {createOnly = false} = {}) {
+        validFilename(engine, name);
         const id = stableId(`${engine}:${name}`);
         const file = inside(this.runtime, `spider/${ENGINE_DIRS[engine]}/${name}`);
-        return this.mutate(async state => {
-            let previous = null;
-            try { previous = await fs.readFile(file, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-            if (createOnly && (previous !== null || state.scripts.some(script => script.id === id))) throw Object.assign(new Error('同类型的脚本名已存在，请换一个名称'), {statusCode: 409});
-            if (previous !== null) await this.atomic(path.join(this.directory, 'revisions', id, `${Date.now()}-${randomBytes(3).toString('hex')}.txt`), previous);
-            await this.atomic(file, code);
-            let script = state.scripts.find(s => s.id === id);
-            if (!script) {
-                const info = metadata(code, name.slice(0, -EXTENSIONS[engine].length));
-                script = {id, engine, file: name, name: info.title};
-                state.scripts.push(script);
-                state.instances.push({id, scriptId: id, name: info.title, params: '', enabled: true, searchable: info.searchable, filterable: info.filterable});
+        let previous = null;
+        try { previous = await fs.readFile(file, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+        if (createOnly && (previous !== null || state.scripts.some(script => script.id === id))) throw Object.assign(new Error('同类型的脚本名已存在，请换一个名称'), {statusCode: 409});
+        if (previous !== null) await write(path.join(this.directory, 'revisions', id, `${Date.now()}-${randomBytes(3).toString('hex')}.txt`), previous);
+        await write(file, code);
+        let script = state.scripts.find(s => s.id === id);
+        if (!script) {
+            const info = metadata(code, name.slice(0, -EXTENSIONS[engine].length));
+            script = {id, engine, file: name, name: info.title};
+            state.scripts.push(script);
+            state.instances.push({id, scriptId: id, name: info.title, params: '', enabled: true, searchable: info.searchable, filterable: info.filterable});
+        }
+        script.updatedAt = new Date().toISOString();
+        return script;
+    }
+    async importBundle(entries) {
+        return this.mutateFiles(async (state, write) => {
+            const planned = new Map();
+            for (const entry of entries) {
+                const file = inside(this.runtime, entry.relative);
+                let previous;
+                try { previous = await fs.readFile(file, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+                if ((previous !== undefined && previous !== entry.code) || (planned.has(file) && planned.get(file).code !== entry.code)) {
+                    throw Object.assign(new Error(`源包文件冲突：${entry.relative}，不会覆盖已有文件`), {statusCode: 409});
+                }
+                planned.set(file, {...entry, exists: previous !== undefined});
             }
-            script.updatedAt = new Date().toISOString();
-            return script;
+            const before = state.instances.length;
+            for (const [file, entry] of planned) {
+                if (entry.exists) continue;
+                if (entry.engine) await this.writeScript(state, write, entry.engine, path.basename(file), entry.code);
+                else await write(file, entry.code);
+            }
+            await this.scan();
+            return {files: entries.length, added: state.instances.length - before};
         });
     }
     async importSources(entries) {

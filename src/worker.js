@@ -17,9 +17,15 @@ let currentSource = null;
 let wsServer = null;
 let wsPort = null;
 let gateway = null;
+let gatewayStarting = null;
 
 async function startGateway() {
     if (gateway) return gateway.server.address().port;
+    if (gatewayStarting) return gatewayStarting;
+    gatewayStarting = createGateway();
+    try { return await gatewayStarting; } finally { gatewayStarting = null; }
+}
+async function createGateway() {
     const {default: Fastify} = await import('fastify');
     const server = Fastify({logger: false});
     const options = {rootDir: root, PORT: Number(process.env.DRPY_HTTP_PORT) || 54058};
@@ -27,7 +33,8 @@ async function startGateway() {
         const controller = await importRuntime(`controllers/${name}.js`);
         server.register(controller.default, options);
     }
-    await server.listen({host: '127.0.0.1', port: 0});
+    try { await server.listen({host: '127.0.0.1', port: 0}); }
+    catch (error) { await server.close().catch(() => {}); throw error; }
     gateway = server;
     return server.server.address().port;
 }
@@ -135,7 +142,6 @@ process.on('message', async message => {
         let result;
         if (operation === 'proxy') result = await engine.proxy(file, env, query);
         else if (operation === 'parse') result = await engine.jx(file, env, query);
-        else if (operation === 'syntax') result = {ok: true};
         else if ('play' in query) result = await engine.play(file, env, query.flag || '', query.play, []);
         else if ('ac' in query && 't' in query) {
             let filter = {};

@@ -4,6 +4,7 @@ import {Film, Search, Settings2, UserRound, ArrowLeft, List, Grid2X2, ArrowDownU
 import {toast} from 'vue-sonner';
 import {resultObject, playlists, plainText, detailText, safeImage, readWatchStorage, saveWatchStorage} from './watch-model.js';
 import {engineLanguage, languageLabels} from './engine-labels.js';
+import {pushRoute} from './navigation.js';
 import {InputGroupButton} from './components/ui/input-group/index.ts';
 import {Popover, PopoverAnchor, PopoverContent} from './components/ui/popover/index.ts';
 const WebPlayer = defineAsyncComponent(() => import('./WebPlayer.vue'));
@@ -43,7 +44,7 @@ let dataVersion = 0, playVersion = 0;
 function navigate(path, values = {}) {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(values)) if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
-    history.pushState({}, '', `${path}${query.size ? '?' + query : ''}`);
+    pushRoute(`${path}${query.size ? '?' + query : ''}`);
     route.value = readRoute();
 }
 function backToBrowse() { searchPanel.value = false; keyword.value = ''; navigate('/watch', {source: route.value.source}); }

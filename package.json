@@ -13,7 +13,7 @@
     "test": "npm run test:core && npm run test:ui",
     "test:core": "node --test tests/*.test.js",
     "test:ui": "vitest run --config vitest.config.js",
-    "check": "node scripts/check.mjs && node scripts/check-bridges.mjs && node scripts/check-shell.mjs",
+    "check": "node scripts/check.mjs && node scripts/check-identifiers.mjs && node scripts/check-bridges.mjs && node scripts/check-shell.mjs",
     "verify": "node scripts/verify.mjs"
   },
   "dependencies": {
