@@ -12,7 +12,7 @@
 
 `engine/` 是从原项目抽取的兼容内核和辅助库；`src/` 是宿主服务；`web/` 是管理页面；运行文件在 `data/`。不要直接修改用户的运行数据，框架修改进入 `engine/`。
 
-正式文档为 `README.md`、`docs/CONFIGURATION.md`、`docs/DEVELOPMENT.md`、`docs/NETDISK_DEVELOPMENT.md` 和 `docs/THIRD_PARTY.md`。`docs/local-history/` 是本机调研与旧界面留档，内容可能已过时，不作为当前产品规范。运行数据、工具、截图和调研历史由 Git 忽略，不提交。
+正式文档为 `README.md`、`SECURITY.md`、`docs/CONFIGURATION.md`、`docs/DEVELOPMENT.md`、`docs/NETDISK_DEVELOPMENT.md` 和 `docs/THIRD_PARTY.md`，公开交接统一在 `docs/AI_HANDOFF.md`。`docs/local-history/` 若存在，只是本机调研与旧界面留档，内容可能已过时，不作为当前产品规范。运行数据、工具、截图和调研历史由 Git 忽略，不提交。
 
 源执行接口、代理返回语义和原模块名路径需要保持兼容。框架测试使用 node:test，依赖外部站点的结果不能代替固定样本的协议测试。
 

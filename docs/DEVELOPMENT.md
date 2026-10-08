@@ -20,7 +20,7 @@ npm test          # 后端 node:test + UI Vitest
 
 `scripts/check-identifiers.mjs` 使用已有 TypeScript 与 Vue 编译器检查宿主、脚本、Web 和 FTP/WebDAV 控制器的未定义变量；Vue script setup 包含内联模板。它不执行完整类型检查，也不对依赖动态注入全局变量的其他兼容引擎套用同一规则，不增加分析依赖。
 
-`npm test` 顺序执行后端 node:test 和 UI Vitest。测试用临时数据目录，不改写现有用户源。若本地开启了批量删除保护，清理临时目录可能被拦截，用 `CODEBUDDY_SAFE_DELETE_ENABLED=0` 运行测试即可（CI 无此限制）。
+`npm test` 顺序执行后端 node:test 和 UI Vitest。测试用临时数据目录，不改写现有用户源。
 
 多语言集成测试优先寻找 `.tools/` 下的本机解释器，也可指定：
 
@@ -32,10 +32,10 @@ TEST_PYTHON="$PWD/.venv/bin/python3" TEST_PHP=php npm test
 
 ## 当前验证
 
-验证使用 macOS arm64 / Node 22 / Python 3.12 / PHP 8.4。测试数量以 `npm test` 输出为准，语法检查文件数量以 `npm run check` 输出为准；本节不维护固定计数。最新已执行的命令与结果见 `docs/AI_HANDOFF.md` 第 4 节。测试涵盖：
+本机验证为 macOS arm64，GitHub 源码检查及容器验收运行在原生 Linux amd64；具体解释器版本以对应日志与报告为准。测试数量以 `npm test` 输出为准，语法检查文件数量以 `npm run check` 输出为准；本节不维护固定计数。最新已执行的命令与结果统一见 [当前接手入口](AI_HANDOFF.md#0-当前接手入口先看本节)及其指向的发行记录。测试涵盖：
 
 - JS、CatVod、HIPY、PHP、DR2 的首页、分类、搜索、详情、播放与代理协议。
-- 实例参数、源级 ENV 隔离、配置持久化、备份与订阅范围。
+- 各引擎实例参数、JavaScript 源级 ENV 上下文、配置持久化、备份与订阅范围；本源 ENV 不自动映射到 Python/PHP 系统环境。
 - 二进制代理、Range/206、HLS 分片与 key 改写。
 - 旧 PHP/Python 运行副本升级、五引擎升级后执行，以及用户脚本、辅助文件、ENV、订阅、配置与历史保留；JSON 入站可用且旧 pickle 入站被拒绝。
 - 随机媒体/分片票据保密、过期与容量回收、URL/源/路由范围，以及长签名地址的实际媒体跟随、Range 和 HEAD。
@@ -43,8 +43,11 @@ TEST_PYTHON="$PWD/.venv/bin/python3" TEST_PHP=php npm test
 - PHP 普通/初始化/解释器失败的安全错误、脱敏诊断与参数编码/嵌套 ENV/JSON 标量边界，以及私密临时文件权限、设置/导入/重启和引擎 ENV 写入的 0600 保持。
 - PHP 多层继承/trait 的最近声明与同层候选顺序，以及真实 verify CLI 的 v2/旧凭据迁移、stdin、远端服务与终端不回显/取消恢复。
 - 源导入、压缩源编辑、语法检查、版本恢复与同名创建保护。
+- 文件写入/state 提交失败后的脚本与 ZIP 整包回滚、同名冲突拒绝、已有历史保留与再次保存。
+- 多层网盘 HLS/KEY/MAP 的源及账号范围继承，固定 FTP GET/Range/HEAD 协议，以及网关首次并发启动、失败与超时释放。
 - 同步死循环回收，后续调用与管理服务可继续运行。
 - UI 创建后跳转、重命名、语言筛选、订阅排序、配置表单与退出保护。
+- 编辑页未保存代码、参数和 ENV 的取消/放弃，以及浏览器 history 前进/后退的位置恢复。
 - 批量删除确认/取消、所选实例 ID、订阅引用清理与脚本/ENV保留，删除接口继续要求管理密码。
 - 匿名观影、管理鉴权、只读执行、播放短期凭证、Range/206、HLS 分片与密钥请求头、JSON 解析和源代理范围。
 - 网页搜索、详情、线路/选集、直接刷新、收藏和切集时过期响应处理。
@@ -53,7 +56,7 @@ TEST_PYTHON="$PWD/.venv/bin/python3" TEST_PHP=php npm test
 - TVBox 链接预览只读、五种引擎识别、JSON/XML 采集协议、CatVod 依赖、相对 URL/扩展参数、重复导入、文件冲突与持久化失败回滚。
 - 采集首页简略列表没有封面时补取 JSON `ac=detail` / XML `ac=videolist`，协议相对封面地址转为完整 URL。
 
-TVBox 链接导入位于 `src/tvbox-import.js`；生成的采集脚本调用 `engine/utils/tvbox-cms.js`，使用现有 CatVod 引擎，没有添加 Android JAR 运行器。`Store.importSources()` 在一笔状态事务内导入所选站点，创建文件失败或状态持久化失败时回滚新文件，保留既有源与订阅。
+TVBox 链接导入位于 `src/tvbox-import.js`；生成的采集脚本调用 `engine/utils/tvbox-cms.js`，使用现有 CatVod 引擎，没有添加 Android JAR 运行器。`Store.importSources()` 在一笔状态事务内导入所选站点，创建文件失败或状态持久化失败时回滚新文件，保留既有源与订阅。ZIP 使用 `Store.importBundle()` 与文件事务，同名相同复用、不同内容拒绝，失败撤回本包变更；不能将运行中的文件事务等同于断电时的跨文件原子提交。
 
 以下是前期开发记录，不是本次接手重新执行的验证：用户示例链接在临时目录实测，56个站点中47个采集接口通过并导入，9个跳过；生成的“蜜源”源返回43个分类、20条视频。数量随第三方站点状态改变，不是全库播放验收。正式用户源库未由该测试改写。
 
@@ -89,7 +92,7 @@ npm run verify -- <源实例ID> [服务地址] --password-stdin
 
 终端默认提示管理密码且不回显，支持 Unicode、空格、冒号与退格；Ctrl-C/Ctrl-D 取消，退出时恢复终端模式。已通过运行环境注入 `ADMIN_PASSWORD` 时直接使用该值；显式 `--password-stdin` 优先从管道读取至 EOF，只去掉一个末尾 LF/CRLF，保留密码首尾空格。在终端直接使用该选项时仍走隐藏提示，按回车提交。终端/stdin 输入上限为 4096 UTF-8 字节。非交互环境没有凭据或输入为空时明确失败，不发送源请求。`--help` 查看用法。
 
-CLI 不读取本地 admin.json，不依赖 DATA_DIR，也不恢复或保存明文密码；本地 GUI 创建的 v2 哈希和远端服务使用同样的显式凭据方式。旧明文格式在服务端成功登录后照常迁移，迁移后命令仍可使用。首页、分类、详情诊断沿用原源协议；不要把真实密码写入命令行参数、文档、脚本或提交。本次运行的是本仓库的 verify CLI，本机未安装原 drpy-node-coder CLI，不能混称。
+CLI 不读取本地 admin.json，不依赖 DATA_DIR，也不恢复或保存明文密码；本地 GUI 创建的 v2 哈希和远端服务使用同样的显式凭据方式。旧明文格式在服务端成功登录后照常迁移，迁移后命令仍可使用。CLI 的 `ADMIN_PASSWORD` 是要发送给目标服务的凭据，不会更改该服务已经保存的密码。首页、分类、详情诊断沿用原源协议；不要把真实密码写入命令行参数、文档、脚本或提交。这里使用本仓库的 verify CLI，不能与原 drpy-node-coder CLI 混称；本机实际验证范围见交接记录。
 
 ## 执行与前端加载
 
@@ -105,7 +108,7 @@ HTTP 服务启动时不初始化源引擎。执行子进程按需启动，可超
 
 仓库只提交源码、依赖锁文件、正式文档和配置模板。`data/`、`.tools/`、`.venv/`、`node_modules/`、`dist/`、`.env` 和本地截图/调研历史均忽略。
 
-本地历史资料保存在 `docs/local-history/`，不参与代码构建或发布。原始 drpy-node 源码位于 CokeTV 目录之外，作为对照保留。
+本机若保留调研或旧界面资料，应放在忽略的 `docs/local-history/`，不参与代码构建或发布；该目录不随仓库分发，也不保证每台机器都存在。原始 drpy-node 对照源码应另行保存在 CokeTV 目录之外，不带入发行。
 
 ## 空壳发行与 x86 镜像
 

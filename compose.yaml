@@ -9,7 +9,8 @@ services:
     environment:
       TZ: Asia/Shanghai
       # 管理密码只在首次进入 /admin 时创建；观影首页无需密码。
-      # 也可设置 ADMIN_PASSWORD 跳过首装引导（推荐用于无人值守部署）。
+      # 尚未创建密码时，可在此显式配置 ADMIN_PASSWORD 跳过首装引导；不覆盖已有密码。
+      # 主机 .env 的变量不会自动全部传入容器，需要在 environment 中声明。
     restart: unless-stopped
     stop_grace_period: 15s
     # 容器以非 root（node）运行，并裁剪权限：源脚本与 CokeTV 同权限执行，

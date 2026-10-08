@@ -20,10 +20,10 @@
 
 | 位置 | 内容 | 许可 |
 | --- | --- | --- |
-| `engine/libs_drpy/crypto-js.js`、`crypto-js-wasm.js` | CryptoJS / 其 WASM 版 | MIT |
-| `engine/libs_drpy/underscore.js`（如存在） | Underscore | MIT |
-| `engine/libs_drpy/node-rsa.js` | node-rsa | MIT |
-| `engine/libs_drpy/json5.js`、`pako.js`、`hls-parser.js`、`drpyCustom.js` 等 | JSON5 / pako / hls-parser 等 | 各自包许可（MIT/Apache-2.0） |
+| `engine/libs_drpy/crypto-js.js`、`engine/libs_drpy/crypto-js-wasm.js` | CryptoJS / 其 WASM 版 | MIT |
+| `engine/libs_drpy/underscore-esm.js`、`engine/libs_drpy/underscore-esm.min.js` | Underscore | MIT |
+| `engine/libs_drpy/_dist/node-rsa.js` | node-rsa | MIT |
+| `engine/libs_drpy/_dist/json5.js`、`engine/libs_drpy/pako.min.js`、`engine/libs_drpy/hls-parser.js`、`engine/libs_drpy/drpyCustom.js` 等 | JSON5 / pako / hls-parser 等 | 各自包许可（MIT/Apache-2.0） |
 | `engine/spider/catLib/cat.js`（约 486KB）、`cheerio.min.js`、`mod.js`、`spider.js`、`http.js`、`similarity.js`、`sortName.js` | CatVod 运行时 bundle | 随上游，按原包许可 |
 
 许可口径以各 bundle 文件内保留的版权声明为准。`engine/utils/api_validate.js` 生成的版权头曾标注 "LGPL3 (github.com/hjdhnx/drpy-node)"，与本仓库 GPL-3.0-only 声明不一致；以根 `LICENSE` 与实际文件头的作者声明为准，冲突时以上游仓库为准并在此登记。

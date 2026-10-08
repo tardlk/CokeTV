@@ -21,7 +21,7 @@ python3 -m venv .venv
 PYTHON_PATH="$PWD/.venv/bin/python3" PHP_PATH=php npm start
 ```
 
-打开 [http://127.0.0.1:54058](http://127.0.0.1:54058) 直接进入观影首页，浏览、搜索和播放无需密码。进入“管理后台”（`/admin`）才需要访问密码；全新部署首次进入管理后台时创建密码，**需要填写启动日志里打印的「初始化码」**（同时写入 `data/setup-code.txt`，创建成功后自动删除），没有默认密码、用户或账号系统。管理密码只保存加盐 KDF 结果到 `data/admin.json`（不会落盘明文），重启不会再次要求创建，也可以通过 `ADMIN_PASSWORD` 预设并跳过引导码。
+打开 [http://127.0.0.1:54058](http://127.0.0.1:54058) 直接进入观影首页，浏览、搜索和播放无需密码。进入“管理后台”（`/admin`）才需要访问密码；全新部署首次进入管理后台时创建密码，**需要填写启动日志里打印的「初始化码」**（同时写入 `data/setup-code.txt`，创建成功后自动删除），没有默认密码、用户或账号系统。通过页面创建的密码只以加盐 KDF 结果保存到 `data/admin.json`，重启后继续使用。尚未创建密码时，也可通过 `ADMIN_PASSWORD` 预设并跳过引导码；已有管理密码时，该变量不会覆盖或重置它。环境变量方式只在内存中保留 KDF 结果，重启时需要继续提供该变量，并保护保存变量的 `.env` 或部署配置。
 
 后台“网盘管理”支持 115 扫码登录，账号供源和订阅共用。源详情返回标准 115 分享链接后，服务器自动展开分集并处理播放；不会预置搜索站点、转存或删除网盘文件。账号保存和客户端限制见 [网盘配置](docs/CONFIGURATION.md#网盘账号与-115-分享)；爬虫作者请看 [网盘开发指南](docs/NETDISK_DEVELOPMENT.md)，包含详情格式、JS/Python 示例与排错说明。
 
@@ -35,6 +35,9 @@ PHP 源按需要安装 curl、mbstring、xml 等扩展。浏览器、外部插�
 
 ```sh
 docker pull --platform linux/amd64 ghcr.io/tardlk/coketv:latest
+mkdir -p data
+# 首次部署时，确保绑定目录可由容器 UID/GID 1000 写入。
+docker run --rm -v "$(pwd)/data:/app/data" alpine chown -R 1000:1000 /app/data
 docker compose up -d
 ```
 
@@ -43,16 +46,19 @@ docker compose up -d
 ```sh
 docker run -d --name coketv --platform linux/amd64 \
   -p 54058:54058 -v "$(pwd)/data:/app/data" \
+  --cap-drop=ALL --security-opt=no-new-privileges:true \
   --restart unless-stopped ghcr.io/tardlk/coketv:latest
 ```
 
 首次使用空数据目录时，源、解析、直播和环境变量均为空；查看容器日志中的「初始化码」，进入 /admin 用它创建管理密码（或直接设置 `ADMIN_PASSWORD` 跳过），再导入 TVBox 链接或自己的脚本。镜像保留 Node.js 22、Python、PHP、ffmpeg 及兼容辅助库。挂载的 data 持久化用户数据，更新镜像不会清空已有源。
 
-镜像以**非 root 用户 `node`** 运行，`data/` 的属主为 `node`。若挂载的是旧版本（root 属主）遗留的数据目录，需先修正属主，否则容器无法写入：
+镜像以**非 root 用户 `node`（UID/GID 1000）**运行。镜像内的数据目录已设置属主，新建命名卷会继承；`./data:/app/data` 这类主机目录挂载使用主机目录自身的属主，首次部署或旧数据升级都可能需要修正。主机目录挂载与命名卷的区别见 [Docker 官方说明](https://docs.docker.com/engine/storage/bind-mounts/)。若容器无法写入，请先停止正在使用该目录的服务，再确认并修正属主：
 
 ```sh
 docker run --rm -v "$(pwd)/data:/app/data" alpine chown -R 1000:1000 /app/data
 ```
+
+现有部署更新前，先停止服务并备份完整 `data/`，再拉取镜像并启动；不要删除数据目录或同时启动两个共享该目录的容器。Compose 默认只传入 `TZ`，不会自动把主机 `.env` 中的所有变量传给容器；需要 `ADMIN_PASSWORD` 等变量时，须在 `compose.yaml` 的 `environment` 中显式配置，或使用 `docker run -e`。
 
 从源码构建 x86 镜像（可选浏览器）：
 
@@ -93,7 +99,7 @@ TVBox 在另一台设备上时，在设置中填写可达的服务对外地址�
 
 - 源脚本在服务器上以**与 CokeTV 相同的权限**执行：JS 源可直接调用 Node 的 `require`，Python/PHP 源可访问文件系统与网络。
   **导入任何第三方源（尤其是来路不明的 TVBox 订阅链接）= 允许其在你的服务器上执行任意代码。**
-- 因此：不要在公网无鉴权暴露本服务；不要导入不可信的源；生产部署请参考 `compose.yaml` 的非 root/能力裁剪示例。
+- 观影接口默认公开，管理密码只保护管理操作。公网部署若需限制观众，应在外部 HTTPS 网关增加访问鉴权和限流，并按 [安全策略](SECURITY.md) 收紧代理目标；只安装可信源。容器部署请参考 `compose.yaml` 的非 root/能力裁剪配置。
 - 管理后台（`/admin`）的访问密码是唯一的管理凭据，请使用独立强口令，并保护好 `data/` 备份（其中含管理凭据与源 ENV）。
 - 源的 `data/runtime/json/` 参数文件默认不再匿名可读：外部匿名请求被拒绝，源自身的回环请求带内部凭据放行。
 
@@ -118,12 +124,13 @@ TVBox 在另一台设备上时，在设置中填写可达的服务对外地址�
 ```text
 data/admin.json                    访问密码配置
 data/state.json                    源实例、订阅与设置
+data/netdisk/115.json               统一 115 登录凭据（如已登录）
 data/runtime/                      运行内核副本、源与辅助资源
 data/runtime/config/source-env/    按源实例保存的环境变量
 data/revisions/                    脚本历史版本
 ```
 
-首次启动准备引擎辅助库和空源目录，不添加站点源；后续启动刷新 libs/libs_drpy/utils/controllers，并按 `src/runtime-files.js` 的框架保留路径清单原子更新 `runtime/spider` 中的桥接、基类和兼容辅助库，包括旧数据目录。清单以外的用户源、辅助文件、ENV、订阅、配置和脚本历史保留，不需要删除运行目录。框架修改应进入 `engine/`，运行副本中的框架保留路径会随启动刷新。备份整个 `data/` 可完整恢复——**其中含管理凭据的加盐哈希、源 ENV 与源参数，请妥善保管**。管理配置导出包含源环境变量，不包含脚本和插件二进制。
+首次启动准备引擎辅助库和空源目录，不添加站点源；后续启动刷新 libs/libs_drpy/utils/controllers，并按 `src/runtime-files.js` 的框架保留路径清单原子更新 `runtime/spider` 中的桥接、基类和兼容辅助库，包括旧数据目录。清单以外的用户源、辅助文件、ENV、订阅、配置和脚本历史保留，不需要删除运行目录。框架修改应进入 `engine/`，运行副本中的框架保留路径会随启动刷新。备份整个 `data/` 可保留服务器数据——**其中可能含管理凭据哈希、115 登录凭据、源 ENV、源参数和订阅 Token，请妥善保管**；使用环境变量提供的配置和浏览器本地历史/收藏需另外备份。管理配置导出 API 不包含脚本、插件二进制或统一网盘账号，界面已移除配置导入/导出入口，详见 [备份与恢复](docs/CONFIGURATION.md#备份与恢复)。
 
 详见 [配置与源包](docs/CONFIGURATION.md) 和 [开发说明](docs/DEVELOPMENT.md)。
 

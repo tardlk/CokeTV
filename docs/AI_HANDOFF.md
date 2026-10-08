@@ -2,7 +2,7 @@
 
 更新：2026-10-08。**这是本项目唯一的接手文档**：原有的《审查报告》《完善计划》《修复验收报告》《第二轮验收报告》四份过程文件已全部并入本文件并删除，不要再去找它们。
 
-公开交接文件，不含凭据、本机绝对路径或私密地址。接手请按顺序读：
+公开交接文件，不含凭据、本机绝对路径或私密地址。第0–5节说明当前入口、规范和发行；第6–7节保留分阶段历史，其中7.2维护长期待办，最新实际结果以第0节指向的记录为准。旧阶段中的环境、计数和“未完成”不能覆盖后续记录。接手请按顺序读：
 
 1. 根 `AGENTS.md`（硬性工作约定，优先于本文件）
 2. 本文件
@@ -11,6 +11,8 @@
 ---
 
 ## 0. 当前接手入口（先看本节）
+
+**2026-10-08 文档全量复核与同步**：本次核对仓库9份Markdown、配置模板、许可说明与示例，纠正密码变量优先级、Docker目录权限/变量传入、GUI备份入口、本源ENV语言边界、旧验证计数与第三方路径等，详见7.32。只修改文档和模板注释，没有改运行配置、业务代码、服务或已发布镜像；下方9c46614仍为功能发行SHA。
 
 **2026-10-08 本轮修复已同步并发布**：用户授权“执行修复计划”及“推送到github”。六项修复、确定冗余清理、静态检查和回归已提交并推送main：`9c46614999e20f66d4b4b2cad111751128019e27`。Verify、Docker原生amd64发布和匿名固定digest发布后复验均success；源码162后端/58UI与发布前后156容器回归全部通过，详见7.30–7.31。本机运行容器继续保留原版本与数据，没有因推送自动升级。
 
@@ -59,7 +61,7 @@ npm run test:ui -- --configLoader native
 ## 2. 当前产品
 
 - `/` 默认公开观影，兼容 `/watch`；浏览、搜索、详情、播放、历史和收藏无需管理密码。`/admin` 和 `/sources/<id>/edit` 需要密码。
-- 全新部署第一次进入管理后台需要**一次性引导码**（启动日志打印，同时写入 `data/setup-code.txt`，0600，用后删除）再创建密码；无默认密码或账号系统。`ADMIN_PASSWORD` 环境变量可跳过引导。管理凭据在标签页 sessionStorage，退出清除。
+- 全新部署第一次进入管理后台需要**一次性引导码**（启动日志打印，同时写入 `data/setup-code.txt`，0600，用后删除）再创建密码；无默认密码或账号系统。尚未创建密码时，`ADMIN_PASSWORD`可跳过引导，已有密码不会被它覆盖；环境变量方式不自动持久化密码，重启需继续提供。管理凭据在标签页sessionStorage，退出清除。
 - 源列表为选择框、名称、语言、状态、搜索、筛选、操作。JS/Python/PHP 徽章均绿色白字，JS 覆盖内部三种 JS 引擎。名称单击只重命名，操作是编辑和删除。
 - 勾选后启用/停用/删除/取消选择。删除确认后移除实例和订阅引用，保留脚本、版本与 ENV 文件。不拿正式用户数据测试删除。
 - 独立源编辑工作区：白底 Monaco、本源 ENV、扩展参数、接口验证、预览和日志。代码/参数/ENV 独立保存，未保存时禁用验证并提醒退出。
@@ -78,6 +80,8 @@ npm run test:ui -- --configLoader native
 | `src/store.js` | 原子状态、运行副本、扫描、脚本版本、批量导入回滚 |
 | `src/auth.js` | 首装引导码、scrypt 加盐凭据（异步）、旧明文格式登录后迁移、Basic 鉴权 |
 | `src/runner.js` / `src/worker.js` | 按需引擎子进程、64 项串行队列、超时回收、Python 守护进程存活探测与退避重启 |
+| `src/netdisk/` | 统一115账号持久化、扫码、分享展开、播放引用与平台编解码 |
+| `src/cat-client.cjs` / `src/cat-subscriptions.js` | 猫影视连接程序、订阅四文件、业务转接和受订阅范围约束的媒体 |
 | `src/tvbox-import.js` | 配置读取、分类、相对引用、依赖、预览/提交 |
 | `src/playback.js` / `src/media.js` | 最长 12 小时的服务端随机媒体能力票据、请求头、Range/HLS 代理 |
 | `src/media-params.js` | 媒体 URL 与 JSON/base64 headers/旧 header 的统一解包及输入验证 |
@@ -88,7 +92,9 @@ npm run test:ui -- --configLoader native
 | `web/App.vue` / `web/WatchApp.vue` | 管理与公开观影 |
 | `web/SourceWorkspace.vue` / `web/CodeEditor.vue` | 编辑工作区和 Monaco |
 | `web/SourceImport.vue` / `web/WebPlayer.vue` | 导入窗口和播放器 |
+| `web/NetdiskManager.vue` / `web/navigation.js` | 统一网盘界面、页面历史位置与编辑离开保护 |
 | `scripts/check-shell.mjs` | 发行树零预置源断言（spider 逐文件白名单 + 全 engine 内容判定） |
+| `scripts/check-identifiers.mjs` | 宿主、脚本、Web与两网关未定义变量检查；Vue script setup含内联模板 |
 | `scripts/check-bridges.mjs` | `engine/spider/**` 的 ast.parse / php -l / node --check |
 | `scripts/container-smoke.mjs` / `container-matrix.mjs` | 空容器检查与原生 amd64 完整矩阵；发布前/后均已通过 |
 
@@ -98,23 +104,20 @@ npm run test:ui -- --configLoader native
 
 ```sh
 npm ci
-npm run check     # 语法 + 桥接语法 + 空壳发行
+npm run check     # 语法 + 未定义变量 + 桥接语法 + 空壳发行
 npm run build     # 必须先 build，集成测试需要 dist/index.html
 TEST_PYTHON=python3 TEST_PHP=php npm test
 ```
 
-当前实测门禁（2026-10-06，macOS arm64 / Node 22 / Python 3.12.14 / PHP 8.4.23）：
+当前源码门禁涵盖宿主/辅助语法、未定义变量、桥接语法、空壳检查、前端构建、后端协议与UI回归。数量和解释器版本以实际输出为准，最新本机命令见第0节，已发行版本的源码及原生容器证据见7.31。此前2026-10-06的122语法/169测试是历史快照，保留在7.14等对应阶段中，不作为当前计数。
 
-- `npm run check`：`122 文件语法` + `143 桥接文件语法` + 空壳通过（spider 37 个文件全部已登记；engine 共 156 个文件无站点规则/清单）
-- `npm test`：**169 测试 = 120 后端 + 49 UI**，全绿；全部使用临时数据目录
-- `npm audit`：4 项 = 1 runtime `node-forge`（上游无修复版本）+ 3 dev-only（vitest/tinypool/@vitest/mocker），见 `SECURITY.md`
-- `npm run build`：通过
+本机默认Vite配置打包曾挂起，因此本机采用第0节的native loader等价命令；GitHub使用标准check/build/npm test。两者不能混称。`npm audit` 的最新审计日期、包与修复建议统一维护在 `SECURITY.md`；源码门禁通过不代表已消除依赖告警。
 
 注意事项：
 
 - 干净克隆必须先 `npm run build` 再 `npm test`；不能依赖被忽略的本机 `dist/`。CI 已按此顺序。
 - Python 新建模板必须接受 HIPY 守护进程的 `t4_api` 构造参数；创建模板测试除语法检查外实际执行首页，容器验收也覆盖这条路径。
-- 原生 amd64 验收来自 GitHub（7.12–7.13）；随后已安装本机 Docker 并兼容运行同一镜像（7.15）。Mac 为 arm64，不能把本机兼容测试说成原生 amd64 验收。
+- 当前发行的原生 amd64 验收来自 GitHub（7.31）；7.12–7.13、7.15分别保留此前发行与本机兼容运行记录。Mac 为 arm64，不能把本机兼容测试说成原生 amd64 验收。
 - 未运行原 drpy-node-coder CLI，不宣称使用过。协议样本不代表所有第三方站点、解析器或编码可播。
 - 测试数量与文件数以脚本实际输出为准；`docs/DEVELOPMENT.md` 已移除固定计数，并由回归用例防止重新写入。
 
@@ -174,7 +177,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 ## 7. 当前状态与下一步待办
 
-接手时 `main` 领先 `origin/main` 9 个提交的描述是历史快照。本轮限流修复的本地提交是 `a0882c2`，其内容现已同步到 GitHub 代码快照 `984ccf0`；本地 main 已跟随远端，原本地提交保留在交接分支。源码同步/镜像结果见第 5 节与第 7.4 节。**R1–R10 已修复并发布**，见第 7.5–7.8 节；第 7.1 节第 3 项媒体头兼容也已本地修复（第 7.10 节），第 4 项管理员锁出行为保持原产品约定；原生候选验收、main 合并、正式镜像发布及匿名发布后完整复验已完成（第 7.12–7.13 节）。当前发行见第 5 节，辅助分支与重复检查点引用已清理，只保留 main（7.14）；管理员锁出和第 7.2 节长期工作仍不变。
+当前状态和发行身份见第0/5节及7.31。以下按时间保留原待办处置、审查发现、修复、部署和发布阶段；其中旧分支保留、未提交、未发布或未安装Docker等描述只代表当时状态。R1–R10的历史修复见7.5–7.8，后续六项修复和发行见7.30–7.31。7.2继续维护仍需专项安排的工作，管理员失败预算耗尽后同IP正确密码仍429的约定保持。
 
 ### 7.1 原待办处置（前三项已完成，第 4 项维持现状）
 
@@ -203,7 +206,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **原“发布门强度”待办已完成**：五引擎、升级、实际 Range/HLS/分片/key、私密配置与同卷重启已移入发布前完整矩阵，发布后匿名固定 digest 复验也通过（7.12–7.13）。不要再登记成“只返回媒体地址”或“没有容器 Range/HLS 覆盖”。额外人工故障注入 CI 尚未执行；PR publish skipped 与本地条件回归已有证据。
 - **兼容辅助模块整理**：旧审查曾列出约 19 个静态零引用文件，名单与“死代码”判断需重新复核；用户源可以按原模块名动态导入，零静态引用不等于可删除。保留兼容 API 面，必要时在 THIRD_PARTY 说明来源，不凭旧名单裁剪引擎。单独的 utils/with-timeout.js 当前仍无静态接线，PHP 进程回收实际由 execFile timeout/killSignal 完成（已回归）；不要把未接线辅助文件当成已生效机制。
 - **`fServer` 兼容缺口**：`src/worker.js` 注入的 `fServer` 是只回 404 的裸 `http.createServer`，而 `src/server.js` 把 WebSocket upgrade 转发到同一端口；上游 drpy-node 里 `fServer` 是带 websocket 的 Fastify 实例。依赖弹幕 WS 的源不可用。
-- **测试隔离与覆盖**：`tests/integration.test.js` 多用例共享同一 `app/store`，`tests/tvbox-import.test.js` 存在先后用例依赖；本轮未运行随机顺序或逐条隔离矩阵，不把“单跑必失败”作为新实测结论。仍需专项覆盖 `/parse/:jx` 的 parse type=2、`/ftp/*`、`/image/upload`、`/admin/subscriptions/:id/token`及更完整的 ZIP 恶意包场景。`state.json`/`env.json` 损坏拒绝启动、字节保留已经有发布前/后容器验证；不要重新标为零覆盖。旧记录把 `/file-proxy` 与 `bytes===2` 重定向列为零覆盖已经过时：当前 `rate-limit.test.js` / `proxy-headers.test.js` 已覆盖对应固定样本。
+- **测试隔离与覆盖**：`tests/integration.test.js` 多用例共享同一 `app/store`，`tests/tvbox-import.test.js` 存在先后用例依赖；尚未执行随机顺序或逐条隔离矩阵，不把“单跑必失败”作为实测结论。仍需专项覆盖 `/parse/:jx` 的 parse type=2、`/image/upload`、`/admin/subscriptions/:id/token`及更完整的 ZIP 恶意包场景。FTP健康/GET/Range/HEAD、网关并发与失败、ZIP写入失败回滚已在review-regressions及7.31发布前后容器验收覆盖，不能再笼统登记为零覆盖；其他FTP能力与实际NAS仍需分别验证。`state.json`/`env.json`损坏保留、`/file-proxy`与toBytes=2重定向也已有固定回归和容器证据。
 
 ### 7.3 全面接手复核（2026-10-06，历史发现；R1–R10 现已发布）
 
@@ -573,6 +576,17 @@ GitHub 的 work/media-release-gates-20261006 已通过分支页 Delete branch �
 - **匿名发布后完整复验**：[37754052158](https://github.com/tardlk/CokeTV/actions/runs/37754052158) 对上述固定digest匿名拉取并执行完整矩阵，success。下载report.completed=true，sourceSha/verificationSha/imageId/platform/checks/backendTests与候选逐项相同；156/156通过、0失败/跳过。不是只检查health或仅拉取成功。证据保存在忽略目录.tools/review-20261008，公开交接只保留身份与结论。
 - **文档收尾**：本次补记仅更新本文，以纯文档 `[skip ci]` 提交同步main，避免无代码变化重复发布镜像。功能发行SHA始终为9c46614，之后文档HEAD领先镜像revision属于预期；7.30中的未提交/未发布已明确标为修复阶段历史。
 - **本机保留**：推送不自动替换本机容器，不清理或迁移现有账号/源/订阅，不恢复已删除的测试服务。运行数据与私密备份继续只在本机保留。
+
+### 7.32 全部文档与配置说明复核及同步（2026-10-08）
+
+- **范围**：核对全部9份Git跟踪Markdown（根README/AGENTS/SECURITY、docs内5份、冻结旧桥接样本README），同时检查.env.example、compose.yaml、Dockerfile/start.sh/工作流说明、许可文本及网盘验证页。冻结样本与许可正文保留；忽略的私密手册/运行数据不作为公开规范，不复制到提交，docs/local-history不存在时不再写成必定存在。
+- **使用说明修正**：ADMIN_PASSWORD仅在尚未创建密码时生效，已有admin.json密码优先；环境变量方式的KDF只保留内存，重启需继续提供。源码dotenv、CLI发送凭据与Compose环境传入分别说明。Docker目录挂载继承主机目录属主，首次部署也可能需要UID/GID1000写权限；补充停服务备份再升级与单容器使用数据目录的说明。Docker挂载/环境规则已对照官方文档，模板只改注释，实际运行值不变。
+- **界面、备份与语言边界**：移除已不存在的GUI配置导入/导出操作说明，明确保留的是管理鉴权API；导出不包含脚本、插件二进制、管理密码或统一网盘账号。导入不应用全局settings；完整data备份包含115账号，环境变量/外部资源及浏览器历史收藏另备份。JavaScript ENV接口不等于Python/PHP的os.environ/getenv，原生桥接未自动注入同名ENV接口。
+- **当前与历史分离**：SECURITY不再把c2a1f21写成当前镜像；当前发行统一指向第0/7.31节。第4节删除重复维护的旧当前169测试/122语法表，保留其历史阶段记录；第7节去掉已清理交接分支的当前表述，FTP/ZIP新增覆盖从长期待办更新。补充多层媒体范围、回环origin豁免、ZIP失败回滚边界及网盘引用淘汰后可能需等待分享缓存更新，未把尚未实现的能力写成已完成。
+- **路径与依赖**：修正THIRD_PARTY中underscore/node-rsa/JSON5/pako的实际文件名/目录，不改变许可条款。重新npm audit --json，仍为4包告警（运行时node-forge high、另3项dev-only），未升级依赖；SECURITY明确该记录是审计快照而非扫描豁免。
+- **验证**：全部Markdown的本地链接/章节跳转与第三方文件路径通过；README/CONFIGURATION/DEVELOPMENT/网盘指南中17个可解析代码块通过sh语法、JSON解析、JS语法或Python AST检查，含占位CLI用法的块只作说明，未执行真实网络/部署命令。check130语法/187变量/143桥接及37spider/156engine空壳通过；build native loader通过；162后端+58UI=220全过、零跳过。验证脚本、审计JSON与日志在忽略的.tools/docs-review-20261008。仅文档及模板注释变更，未新增测试或修改旧断言，未运行Docker/原CLI/外站验收，没有发布新镜像。
+
+- **同步授权**：用户完成文档复核后明确要求“推送到github”。本地与fetch后的origin/main基线02e9412一致；本次仅提交8份Markdown及.env.example/compose.yaml注释，共10个文件，使用纯文档 `[skip ci]` 提交同步main，不重复构建/发布镜像。功能发行SHA仍为9c46614，本机容器和运行数据保留。
 
 ## 8. 验证证据与探测脚本
 
