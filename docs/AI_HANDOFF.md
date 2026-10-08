@@ -12,18 +12,18 @@
 
 ## 0. 当前接手入口（先看本节）
 
-**2026-10-08 本轮交付与换对话**：用户已明确要求“整理仓库，推送代码到GitHub”，本轮包含115统一网盘模块、后台按钮整理及网盘爬虫开发指南。正在完成提交/推送与新流程核对；最终源码SHA、工作流和镜像状态以7.27为准。下文7.17–7.26保留阶段记录，其中“未实现/未授权/未提交/未发布”仅代表当时状态，不是当前结论。
+**2026-10-08 本轮交付与换对话**：用户已明确要求“整理仓库，推送代码到GitHub”，本轮包含115统一网盘模块、后台按钮整理及网盘爬虫开发指南。功能已提交并推送main：`9dbf42c0d12db0a0bdd2095a4c8bb3aa362ef16c`。Verify与Docker原生amd64流程均成功，GHCR已发布；固定digest与匿名发布后复验见7.27，全部成功。下文7.17–7.26保留阶段记录，其中“未实现/未授权/未提交/未发布”仅代表当时状态，不是当前结论。
 
 **沟通与操作**：用户不懂编程，请用简单中文，技术安装、配置、测试与排障由助手负责。接手先 `git status`，读 `AGENTS.md` 和本节，再读7.25–7.27；猫影视背景在7.17–7.20。唯一公开交接为本文，忽略的根 `HANDOFF.md` 和 `.tools/` 可能含敏感信息，不能提交。
 
 | 项目 | 当前结论 / 入口 |
 | --- | --- |
-| Git与发布 | 本地和远端只保留main；用户本轮已授权提交推送。main代码推送会触发检查、原生amd64容器候选和GHCR发布；不能绕过门禁或把仍运行的流程说成成功。最终状态见7.27 |
+| Git与发布 | 本地与远端只保留main；功能源码9dbf42c已推送。Verify/Docker均success，146原生容器回归全过；latest/sha-9dbf42c已发布，固定digest及发布后复验见7.27 |
 | 115功能 | 后台“网盘管理”统一扫码账号，标准详情中的115分享/URL编码push链接自动展开；网页、TVBox、猫影视共用宿主网盘服务。当前仅115，不预置搜索站点，不转存/上传/删除网盘文件 |
 | 本机Docker | `coketv-local:netdisk-bb046cd4b0a8`，OCI revision为local，基于acbfb1a固定digest的本机派生镜像。54058 healthy；原46源/1订阅/设置/管理密码保留，仅新增私密网盘账号文件。没有因本轮Git推送自动替换本机容器 |
 | 本机回滚 | 完整data/src/dist与容器配置备份在私有 `.tools/netdisk-115-verify/deployment/`；旧 `coketv-local-before-netdisk-1791440886` 已停用且restart=no。不能同时启动共享原data卷的旧/新容器 |
 | 其他服务 | 54060 `drpy-reference` 为独立2.0.6参考容器；54061为独立115验证服务，实际扫码账号保留。54059按用户要求未恢复，目录/数据保留。不要重置Docker context、VM或登录自启 |
-| 本机门禁 | check129语法/143桥接/37spider与156engine空壳检查；build native loader；151后端+52UI=203全过、0跳过。实际本机镜像146回归与五引擎/同卷重启通过，ARM经QEMU，回归并发2；不能冒充新原生amd64结果 |
+| 本机门禁 | check129语法/143桥接/37spider与156engine空壳检查；build native loader；151后端+52UI=203全过、0跳过。实际本机镜像146回归与五引擎/同卷重启通过，ARM经QEMU，回归并发2；本轮GitHub另有真实原生amd64完整成功证据，见7.27 |
 | 真实115验收 | 用户本人扫码；凭据重启仍有效。私密分享47视频；4K HEVC Main10 MKV开播、切第二集、约21分钟大幅拖动后恢复、重启后重新获取详情/播放通过。拖动有明显缓冲，未做完整影片/声音人工确认或手机网盘解码验收 |
 | 开发文档 | `docs/NETDISK_DEVELOPMENT.md` 有标准详情格式、JS/Python片段和排错。没有OmniBox SDK/Runner或可导入的CokeTV SDK；其他SDK能力仅回答研究，没有授权实现 |
 | 下一步 | 等用户提供实际115搜索源/站点，再完成真实搜索→详情→网盘播放验收；保留现有源。其他网盘统一账号、声音/手机客户端与转码等没有完成，不自动扩展范围 |
@@ -524,7 +524,13 @@ GitHub 的 work/media-release-gates-20261006 已通过分支页 Delete branch �
 
 - **新授权**：用户明确要求整理仓库并推送代码，准备换对话。本轮提交包含7.21按钮整理、7.23–7.25统一115功能与测试/许可、7.26网盘开发指南。保持main，不新建工作分支，不带入运行数据/账号/研究源码/截图/本机工具。
 - **交接整理**：第0节已收敛为当前状态表，阶段历史集中保留在第7节，避免多个“最新状态”互相冲突；AGENTS正式文档目录补入网盘开发指南。README猫影视段落的旧“无新网盘登录能力”措辞已按当前独立网盘模块澄清。
-- **提交与远端流程**：待本轮提交推送完成后补记实际SHA、Verify/Docker流程和结果；在结果确认前不得声称已发布网盘镜像。本机54058继续使用已验证的local镜像与原卷，不因推送而自动替换或重扫数据。
+- **功能提交**：`9dbf42c0d12db0a0bdd2095a4c8bb3aa362ef16c` 已推送origin/main，本机与远端SHA一致。共28文件，包含AGENTS文档目录、MIT完整许可及网盘代码/验收工具/测试/开发指南。许可只清理行尾空格，不变更条款；本机旧local镜像的许可文件仍是清理空格之前的副本，运行代码未变。
+- **本轮门禁**：全发行文件与当前私密Cookie/分享值交叉扫描无命中，无data/.tools/.venv/dist/node_modules/HANDOFF进入提交。暂存区diff检查通过。首次单独check漏带本机PHP路径而ENOENT，补齐已有TEST_PYTHON/TEST_PHP后完整check/build(native)/151后端+52UI全部通过，0失败/跳过；未掩盖失败或改测试断言。
+- **远端流程成功**：[Verify 37740948077](https://github.com/tardlk/CokeTV/actions/runs/37740948077)、[Docker amd64 37740948038](https://github.com/tardlk/CokeTV/actions/runs/37740948038) 均success，对应功能SHA9dbf42c。GitHub使用标准check/build/npm test全部通过；原生amd64候选146/146后端回归、零源/非root/首装/五引擎真实GET-HEAD-Range-HLS-key/同卷重启/损坏数据保留/卷属主恢复均成功，0失败/跳过。下载report.completed=true，sourceSha/verificationSha均匹配。实际运行Node22.23.3、Python3.13.5、PHP8.4.26、UID1000。
+- **固定发布身份**：`ghcr.io/tardlk/coketv:sha-9dbf42c` 与 `latest` 均指向 `sha256:d51d92eeaa86c6c03f5944787dc434ea2b0abeb9632b772c1deb9ba52405a77a`；image/config ID为 `sha256:f38e54607900e6f08dd5fc8e9e8b7532523a11231eb77da7db841470f26ad75f`。匿名读取GHCR两个manifest，digest一致且config与已验收候选report一致，发布过程未重新构建。
+- **匿名发布后复验成功**：[37741632204](https://github.com/tardlk/CokeTV/actions/runs/37741632204) 对上述固定digest匿名拉取并复用完整矩阵，success；下载report.completed=true，sourceSha/verificationSha为9dbf42c、imageId与候选相同，146/146回归，0失败/跳过，五引擎/重启/异常数据保留等全部通过。不是仅检查health或仅拉取成功。
+- **换对话收尾**：源码/镜像均已完成同步与验证，最终补记仅修改本文和网盘指南的版本说明，以 `[skip ci]` 文档提交同步，避免无代码变化重复发布镜像。功能SHA始终为9dbf42c；后续文档HEAD领先镜像revision属于预期。当前没有待完成的发布流程；下一对话按第0节继续用户新需求，保留本机账号/服务，不需重复扫码。
+- **本机保留**：54058继续使用已验证的local镜像与原卷，推送前复核healthy；54060参考和54061验证环境保留，54059未恢复。没有因推送自动替换容器、重扫/覆盖源或改账号数据。复核部署前210个文件，209个hash相同；唯一变化为 `runtime/spider/py/base/__pycache__/spider.cpython-313.pyc` 的16字节缓存头，归档与当前缓存字节码完全相同；state/源脚本/ENV/设置/管理凭据不变，只增加已知 `netdisk/115.json`。不得把Python自动缓存头变化误称业务数据被覆盖。
 
 ## 8. 验证证据与探测脚本
 
