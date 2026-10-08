@@ -6,6 +6,7 @@
 - **Lucide / DM Sans**：图标和字体由 npm 包提供，保留包内许可。
 - **ArtPlayer / HLS.js / mpegts.js**：网页播放器及 HLS、FLV/TS 加载，按需加载；各包的许可证随 npm 依赖保留。
 - **OmniBox**：管理、影视站与播放页面的布局和交互参考，未引入 OmniBox SDK、源执行器或前台代码。
+- **CatPawOpen 接口参考**：猫影视连接程序独立实现，参考 [入口与宿主桥接](https://github.com/CatPawApp/CatPawOpen/blob/b956aedabe5f624f1e96c8d21c8866617a0f71c1/nodejs/src/index.js)、站点发现与视频 POST 接口；研究时静态读取 Darklessing/catvod 的发布包（提交 `60cc98cf277224797f0bf39415e394c26c46673a`）作为远程 T4 转接的对照，没有执行、复制或分发其完整 bundle、站点或网盘代码。`src/cat-client.cjs` 无第三方运行依赖。
 
 其他运行依赖及版本记录在 `package.json` / `package-lock.json`。用户导入的源可能依赖站点账号、外部插件或各自辅助资源；源执行协议兼容不代表第三方站点始终可用。
 

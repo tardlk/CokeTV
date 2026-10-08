@@ -18,9 +18,10 @@ export function localToken(url, base, token) {
 // `mint` returns a capability token bound to one absolute URL. When it is
 // provided, cross-origin segments get their own URL-scoped ticket instead of a
 // broad token, so a leaked playlist URL cannot be repurposed as an open proxy.
-export function rewritePlaylist(body, upstream, base, {token, mint, alias} = {}) {
+export function rewritePlaylist(body, upstream, base, {token, mint, alias, wrapUrl} = {}) {
     const wrap = value => {
         const parsed = new URL(value, upstream);
+        if (wrapUrl) return wrapUrl(parsed.href);
         if (parsed.origin === new URL(base).origin) {
             const segments = parsed.pathname.split('/');
             if (alias && segments[1] === 'proxy' && decodeURIComponent(segments[2] || '') === alias.name) { segments[2] = alias.id; parsed.pathname = segments.join('/'); }
@@ -39,14 +40,19 @@ export function rewritePlaylist(body, upstream, base, {token, mint, alias} = {})
     }).join('\n');
 }
 
-export async function streamMedia(url, headers, request, reply, {base, token, mint, guard, redirects = 0, method, body} = {}) {
+export async function streamMedia(url, headers, request, reply, {base, token, mint, guard, redirects = 0, method, body, wrapUrl, ignoreRange = false} = {}) {
     let parsed;
     try { parsed = new URL(url); } catch { throw Object.assign(new Error('媒体地址无效'), {statusCode: 400}); }
     if (!['http:', 'https:'].includes(parsed.protocol)) throw Object.assign(new Error('只支持 HTTP/HTTPS 媒体地址'), {statusCode: 400});
     // 入口与每次重定向后都复核目标地址（SSRF/云元数据）。
     const addresses = guard ? await guard(parsed.href) : null;
     if (redirects > 5) throw new Error('媒体重定向次数过多');
-    const outgoingHeaders = {...cleanHeaders(headers), ...(request.headers.range ? {Range: request.headers.range} : {}), 'Accept-Encoding': 'identity'};
+    const playlistTarget = /\.m3u8$/i.test(parsed.pathname);
+    // Native players probe with Range, including offsets cached from the prior
+    // episode. A partial playlist cannot be safely rewritten. Only subscription
+    // playlists ignore Range; MP4 and HLS segment byte ranges keep their meaning.
+    const range = !ignoreRange && !(wrapUrl && playlistTarget) && request.headers.range;
+    const outgoingHeaders = {...cleanHeaders(headers), ...(range ? {Range: range} : {}), 'Accept-Encoding': 'identity'};
     if (body) { outgoingHeaders['Content-Length'] = Buffer.byteLength(body); outgoingHeaders['Content-Type'] ||= 'application/json'; }
     const transport = parsed.protocol === 'https:' ? https : http;
     const upstream = await new Promise((resolve, reject) => {
@@ -70,10 +76,16 @@ export async function streamMedia(url, headers, request, reply, {base, token, mi
     });
     if ([301, 302, 303, 307, 308].includes(upstream.statusCode) && upstream.headers.location) {
         upstream.resume();
-        return streamMedia(new URL(upstream.headers.location, url).href, headers, request, reply, {base, token, mint, guard, redirects: redirects + 1, method, body});
+        return streamMedia(new URL(upstream.headers.location, url).href, headers, request, reply, {base, token, mint, guard, redirects: redirects + 1, method, body, wrapUrl, ignoreRange});
+    }
+    // Extensionless HLS is identified by its actual response headers. Fetch the
+    // whole list once rather than returning a 206 with unrewritten child URLs.
+    if (wrapUrl && range && upstream.statusCode === 206 && /mpegurl/i.test(upstream.headers['content-type'] || '')) {
+        upstream.resume();
+        return streamMedia(url, headers, request, reply, {base, token, mint, guard, redirects, method, body, wrapUrl, ignoreRange: true});
     }
     const playlist = request.method !== 'HEAD' && upstream.statusCode === 200 &&
-        (/mpegurl/i.test(upstream.headers['content-type'] || '') || parsed.pathname.endsWith('.m3u8'));
+        (/mpegurl/i.test(upstream.headers['content-type'] || '') || playlistTarget);
     if (playlist) {
         const chunks = []; let size = 0;
         for await (const chunk of upstream) {
@@ -81,7 +93,7 @@ export async function streamMedia(url, headers, request, reply, {base, token, mi
             if (size > 2 * 1024 * 1024) { upstream.destroy(); throw new Error('播放列表超过 2MB'); }
             chunks.push(chunk);
         }
-        return reply.code(200).type('application/vnd.apple.mpegurl').send(rewritePlaylist(Buffer.concat(chunks).toString(), url, base, {token, mint}));
+        return reply.code(200).type('application/vnd.apple.mpegurl').send(rewritePlaylist(Buffer.concat(chunks).toString(), url, base, {token, mint, wrapUrl}));
     }
     reply.code(upstream.statusCode || 502).headers(cleanHeaders(upstream.headers));
     return reply.send(upstream);

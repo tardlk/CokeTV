@@ -23,6 +23,7 @@ import {assertTargetAllowed} from './ssrf.js';
 import {guardedHttp} from './outbound.js';
 import {decodeMediaTarget, decodeMediaHeaders, unwrapMediaProxy} from './media-params.js';
 import {createTvboxImporter} from './tvbox-import.js';
+import {registerCatSubscriptions} from './cat-subscriptions.js';
 
 dotenv.config();
 const exec = promisify(execFile);
@@ -43,6 +44,7 @@ export async function createApp({directory, seed = true} = {}) {
     const auth = await createAuth(store);
     const playback = createPlaybackSessions();
     const tvboxImporter = createTvboxImporter(store);
+    let catSubscriptions;
     const app = Fastify({logger: false, bodyLimit: 8 * 1024 * 1024, trustProxy: process.env.TRUST_PROXY === '1', routerOptions: {maxParamLength: 4096}});
     await app.register(formbody);
     await app.register(multipart, {limits: {fileSize: 16 * 1024 * 1024, files: 1}});
@@ -98,20 +100,23 @@ export async function createApp({directory, seed = true} = {}) {
     app.addHook('onClose', async () => runner.close());
     const baseUrl = request => store.state.settings.publicUrl.replace(/\/$/, '') || `${request.protocol}://${request.headers.host}`;
     const contextFor = (request, instance, script, extra) => ({...buildContext(baseUrl(request), instance, script, extra), sourceEnvPath: store.state.instances.some(s => s.id === instance.id) ? store.sourceEnvPath(instance.id) : null, localPort: app.server.address()?.port || Number(process.env.PORT) || 54058});
-    const serveMedia = async (request, reply, target, headers, suppliedToken, mint) => {
+    const serveMedia = async (request, reply, target, headers, suppliedToken, mint, wrapUrl) => {
         const base = baseUrl(request);
         const parsed = new URL(target);
         const ownPort = app.server.address()?.port || Number(process.env.PORT) || 54058;
         const own = parsed.origin === new URL(base).origin || (['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname) && Number(parsed.port) === ownPort);
         if (own) {
             const originalHost = parsed.host;
+            // Native media loops back behind the proxy: remove the external mount.
+            const mount = new URL(base).pathname.replace(/\/$/, '');
+            if (wrapUrl && mount && parsed.pathname.startsWith(mount + '/')) parsed.pathname = parsed.pathname.slice(mount.length);
             if (suppliedToken) parsed.searchParams.set('token', suppliedToken);
             parsed.protocol = 'http:'; parsed.host = `127.0.0.1:${ownPort}`;
             headers = {...headers, host: originalHost};
             if (await auth.isAdmin(request)) headers.authorization = request.headers.authorization;
             if (request.headers['x-drpy-runtime'] === runner.internalKey) headers['x-drpy-runtime'] = runner.internalKey;
         }
-        return streamMedia(parsed.href, headers, request, reply, {base, token: suppliedToken, mint, guard: targetGuard});
+        return streamMedia(parsed.href, headers, request, reply, {base, token: suppliedToken, mint, wrapUrl, guard: targetGuard});
     };
     // 代理出口 SSRF 策略：永久拒绝云元数据；内网/回环可按设置开关；可选白名单。
     const selfOrigins = () => {
@@ -186,10 +191,11 @@ export async function createApp({directory, seed = true} = {}) {
     });
     const URL_PROXY_ROUTES = ['/unified-proxy/proxy', '/file-proxy/proxy', '/m3u8-proxy/playlist', '/m3u8-proxy/ts', '/m3u8-proxy/proxy'];
     const TICKET_RATE_ROUTES = new Set(['/mediaProxy', '/req/*', ...URL_PROXY_ROUTES]);
-    const PUBLIC_RATE_PATHS = /^\/(?:watch\/|mediaProxy$|req\/|m3u8-proxy\/|unified-proxy\/|file-proxy\/|proxy\/|subscription\/|config$|config\/)/;
+    const PUBLIC_RATE_PATHS = /^\/(?:cat\/|watch\/|mediaProxy$|req\/|m3u8-proxy\/|unified-proxy\/|file-proxy\/|proxy\/|subscription\/|config$|config\/)/;
     app.addHook('onRequest', async (request, reply) => {
         const route = request.routeOptions?.url || '';
         if (!PUBLIC_RATE_PATHS.test(route)) return;
+        if (['GET', 'HEAD'].includes(request.method) && route === '/cat/:id/:credential/media/:source/:ticket/:file' && catSubscriptions?.allowsMedia(request)) return;
         // 只豁免 GET/HEAD 媒体转发中绑定当前目标 URL 的 proxy 票据，保留 HLS 分片/key 的余量。
         // media 票据可驱动同源 /proxy/ 执行源逻辑（不绑定 URL），必须照常计入公开限流。
         if (['GET', 'HEAD'].includes(request.method) && TICKET_RATE_ROUTES.has(route)) {
@@ -230,11 +236,11 @@ export async function createApp({directory, seed = true} = {}) {
     };
     app.get('/watch/sources/:id', watchHandler);
     app.get('/admin/watch/:id', watchHandler);
-    const playHandler = async request => {
+    const playHandler = async (request, {native = false, subscription = null} = {}) => {
         const {instance, script, file} = watchSource(request);
         const {play, flag = '', parser} = request.body || {};
         if (!checkString(play, 50000) || typeof flag !== 'string') throw fail('请选择要播放的剧集');
-        const env = contextFor(request, instance, script);
+        const env = contextFor(request, instance, script, {token: subscription?.token});
         let result = await runner.run({engine: script.engine, file, instanceId: instance.id}, {play, flag}, env);
         if (typeof result === 'string') { try { result = JSON.parse(result); } catch { result = {url: result, parse: 0}; } }
         const parses = store.state.settings.parses || [];
@@ -243,12 +249,15 @@ export async function createApp({directory, seed = true} = {}) {
         if (requiresParse) {
             const index = parser === undefined ? parses.findIndex(item => [1, 2].includes(Number(item.type))) : Number(parser);
             const selected = parses[index];
-            if (!selected) return {needsParse: true, parses: options};
+            if (!selected) {
+                if (native && Object.keys(playbackHeaders(result.headers ?? result.header)).length) throw fail('此网页源需要服务器请求头，请在 CokeTV 配置解析或切换源', 422);
+                return native ? {parse: 1, url: playbackUrl(result.url, baseUrl(request))} : {needsParse: true, parses: options};
+            }
             const target = playbackUrl(result.url, baseUrl(request));
             if (Number(selected.type) === 0) {
                 const iframe = playbackUrl(`${selected.url}${encodeURIComponent(target)}`, baseUrl(request));
                 if (new URL(iframe).origin === new URL(baseUrl(request)).origin) throw fail('网页解析须使用外部解析地址');
-                return {iframe, parses: options, parser: index};
+                return native ? {parse: 1, url: iframe} : {iframe, parses: options, parser: index};
             }
             if (Number(selected.type) === 2) {
                 const parsed = new URL(selected.url, baseUrl(request));
@@ -273,11 +282,22 @@ export async function createApp({directory, seed = true} = {}) {
         const carried = unwrapMediaProxy(url, baseUrl(request));
         const headers = playbackHeaders({...carried?.headers, ...playbackHeaders(result.headers ?? result.header)});
         if (carried) url = carried.url;
+        if (native) return {parse: 0, url, headers, type: mediaType(url, result.type)};
         const ticket = playback.create(instance.id, url, headers);
         return {url: `/watch/media/${ticket}`, type: mediaType(url, result.type), parses: options, parser: parser ?? null};
     };
     app.post('/watch/sources/:id/play', playHandler);
     app.post('/admin/watch/:id/play', playHandler);
+    catSubscriptions = registerCatSubscriptions(app, {
+        store, baseUrl, serveMedia,
+        execute: (request, {instance, script, file}, query, sub) => runner.run(
+            {engine: script.engine, file, instanceId: instance.id}, query, contextFor(request, instance, script, {token: sub.token})),
+        play: (request, {instance}, body, subscription) => {
+            const nativeRequest = Object.create(request);
+            nativeRequest.params = {id: instance.id}; nativeRequest.body = body;
+            return playHandler(nativeRequest, {native: true, subscription});
+        },
+    });
     app.route({method: ['GET', 'HEAD'], url: '/watch/media/:ticket', handler: async (request, reply) => {
         const session = playback.get(request.params.ticket);
         if (!session || session.kind !== 'media' || !store.state.instances.some(item => item.id === session.source && item.enabled)) throw fail('播放链接已过期，请重新选择剧集', 403);

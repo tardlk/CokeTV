@@ -41,6 +41,18 @@ beforeEach(()=>{
 afterEach(()=>{wrapper?.unmount();document.body.innerHTML='';sessionStorage.clear();history.replaceState({},'','/');vi.unstubAllGlobals();});
 
 describe('shadcn 控制台绑定',()=>{
+    it('订阅窗口提供猫影视四文件入口并保留 TVBox 链接',async()=>{
+        state.subscriptions=[{id:'cat-sub',name:'家庭订阅',token:'sub-token',enabled:true,instances:['a']}];
+        state.settings.publicUrl='https://coketv.example.test/base/';
+        await start();await button('订阅管理').trigger('click');
+        await wrapper.find('[aria-label="订阅链接"]').trigger('click');await flushPromises();
+        expect(document.querySelector('input[aria-label="订阅链接"]').value).toBe('https://coketv.example.test/base/subscription/cat-sub?token=sub-token');
+        const tab=[...document.querySelectorAll('[role="tab"]')].find(item=>item.textContent.includes('猫影视'));
+        expect(tab).toBeDefined();tab.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await flushPromises();
+        expect(document.querySelector('[aria-label="猫影视订阅链接"]').value).toBe('https://coketv.example.test/base/cat/cat-sub/sub-token/index.js.md5');
+        expect(document.querySelector('[role="dialog"]').textContent).toContain('Miraplay');
+        expect(document.querySelector('[aria-label="复制猫影视订阅链接"]')).not.toBeNull();
+    });
     it('首次进入创建密码，输入不一致不提交，成功后进入并保存新凭据',async()=>{
         setupRequired=true;await start();
         expect(wrapper.text()).toContain('首次进入管理后台');

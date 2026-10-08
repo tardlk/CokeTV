@@ -57,6 +57,12 @@ TVBox 链接导入位于 `src/tvbox-import.js`；生成的采集脚本调用 `en
 
 这些结果不替代整个第三方源库的持续网络可用性、实际 TVBox 播放、外部插件或 Docker/Linux 验收。远程检查结果以 GitHub Actions 日志为准。
 
+## 猫影视连接程序
+
+`src/cat-client.cjs` 是直接提供给手机的 CommonJS 程序，`src/cat-subscriptions.js` 按订阅提供配套四文件、站点清单、业务动作和受订阅约束的媒体。配置模块由服务动态生成并计算最终 MD5，不需要独立 npm 构建或第三方 bundle。Dockerfile 的 `COPY src ./src` 同时纳入连接程序，语法检查覆盖 `.cjs`。
+
+`tests/cat-subscriptions.test.js` 下载最终文件并实际加载，通过宿主 factory 模拟连接真实五引擎；`tests/cat-client.test.js` 检查取消、并发生命周期及网络错误。固定样本覆盖订阅刷新/范围/失效、搜索分页/筛选/多 ID/多线路、媒体头/Range/HLS KEY/MAP、限流、反向代理子路径、服务器解析和模拟嗅探。UI 覆盖两个订阅入口。容器矩阵纳入这两个回归文件；不能把本地或消息模拟称为 iOS 原生验收。
+
 ## 源诊断
 
 ```sh

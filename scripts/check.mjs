@@ -7,7 +7,7 @@ function walk(directory) {
     for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {
         const file = path.join(directory, entry.name);
         if (entry.isDirectory()) { if (entry.name !== '_dist') walk(file); }
-        else if (/\.(js|mjs)$/.test(file) && !file.endsWith('.min.js')) files.push(file);
+        else if (/\.(js|mjs|cjs)$/.test(file) && !file.endsWith('.min.js')) files.push(file);
     }
 }
 for (const root of roots) walk(root);
