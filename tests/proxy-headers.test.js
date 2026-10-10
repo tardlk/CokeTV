@@ -30,8 +30,8 @@ before(async () => {
     await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
     upstreamUrl = `http://127.0.0.1:${upstream.address().port}`;
     app = await createApp({directory, seed: false});
-    const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
-    await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'proxy-password', confirmPassword: 'proxy-password', setupCode}});
+
+    await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'proxy-password', confirmPassword: 'proxy-password'}});
     authorization = `Basic ${Buffer.from(':proxy-password').toString('base64')}`;
     subscriptionToken = app.store.state.subscriptions[0].token;
     await app.listen({host: '127.0.0.1', port: 0});

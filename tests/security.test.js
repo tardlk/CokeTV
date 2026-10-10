@@ -6,7 +6,6 @@ import os from 'node:os';
 import net from 'node:net';
 import http from 'node:http';
 import {createApp} from '../src/server.js';
-import {createAuth} from '../src/auth.js';
 
 let app, directory, upstream, upstreamUrl, source, authorization, subscriptionToken;
 const received = [];
@@ -31,8 +30,7 @@ before(async () => {
     await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
     upstreamUrl = `http://127.0.0.1:${upstream.address().port}`;
     app = await createApp({directory, seed: false});
-    const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
-    assert.equal((await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'security-password', confirmPassword: 'security-password', setupCode}})).statusCode, 200);
+    assert.equal((await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'security-password', confirmPassword: 'security-password'}})).statusCode, 200);
     authorization = `Basic ${Buffer.from(':security-password').toString('base64')}`;
     const code = `var rule={title:'安全样本',host:'https://fixture.invalid',class_parse:async()=>({class:[]}),推荐:async()=>setResult([]),二级:async()=>({vod_name:'样本',vod_play_from:'线路一',vod_play_url:'第1集$${upstreamUrl}/playlist.m3u8'}),play_parse:true,lazy:async(a,b)=>({parse:0,url:b})};`;
     const script = await app.store.saveScript('js', '安全样本.js', code);
@@ -173,8 +171,7 @@ test('P0-3 /admin/* 鉴权失败超过阈值后返回 429，正常凭据不受�
     let fresh;
     try {
         fresh = await createApp({directory: dir, seed: false});
-        const setupCode = (await fs.readFile(path.join(dir, 'setup-code.txt'), 'utf8')).trim();
-        await fresh.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'rl-password', confirmPassword: 'rl-password', setupCode}});
+        await fresh.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'rl-password', confirmPassword: 'rl-password'}});
         const wrong = {headers: {authorization: `Basic ${Buffer.from(':nope').toString('base64')}`}};
         const ok = {headers: {authorization: `Basic ${Buffer.from(':rl-password').toString('base64')}`}};
         // 合法请求本身不计入失败预算。
@@ -189,28 +186,28 @@ test('P0-3 /admin/* 鉴权失败超过阈值后返回 429，正常凭据不受�
     }
 });
 
-// ---- H2：首装引导码 ----
-test('H2 无引导码/错码不能创建密码，正确码后引导码作废', async () => {
+// ---- H2：首次直接创建密码 ----
+test('H2 首装直接创建密码，创建后管理接口需鉴权且不能重新设密', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-setup-'));
+    let fresh;
     try {
-        const store = {directory: dir, atomic: async (file, content) => { await fs.writeFile(`${file}.tmp`, content); await fs.rename(`${file}.tmp`, file); }};
-        const auth = await createAuth(store);
-        const codeFile = path.join(dir, 'setup-code.txt');
-        const code = (await fs.readFile(codeFile, 'utf8')).trim();
-        assert.ok(code.length >= 8);
-        assert.equal((await fs.stat(codeFile)).mode & 0o777, 0o600);
-        const attempt = payload => auth.setup({headers: {}, body: payload}).then(() => ({statusCode: 200}), error => ({statusCode: error.statusCode}));
-        assert.equal((await attempt({password: 'abcdef', confirmPassword: 'abcdef'})).statusCode, 403);
-        assert.equal((await attempt({password: 'abcdef', confirmPassword: 'abcdef', setupCode: 'wrong-code'})).statusCode, 403);
-        assert.equal(auth.needsSetup(), true);
-        assert.equal(JSON.parse(await fs.readFile(path.join(dir, 'admin.json'), 'utf8')).password, undefined);
-        assert.equal((await attempt({password: 'abcdef', confirmPassword: 'abcdef', setupCode: code})).statusCode, 200);
-        assert.equal(auth.needsSetup(), false);
-        await assert.rejects(fs.access(codeFile));
-        assert.equal((await attempt({password: 'abcdef', confirmPassword: 'abcdef', setupCode: code})).statusCode, 409);
+        fresh = await createApp({directory: dir, seed: false});
+        const attempt = payload => fresh.inject({method: 'POST', url: '/admin/access/setup', payload});
+        assert.equal((await fresh.inject('/admin/state')).statusCode, 428);
+        assert.deepEqual((await fresh.inject('/watch/sources')).json(), []);
+        await assert.rejects(fs.access(path.join(dir, 'setup-code.txt')), {code: 'ENOENT'});
+        assert.equal((await attempt({password: 'short', confirmPassword: 'short'})).statusCode, 400);
+        assert.equal((await attempt({password: 'abcdef', confirmPassword: 'mismatch'})).statusCode, 400);
+        assert.equal((await fresh.inject('/access/status')).json().requiresSetup, true);
+        assert.equal((await attempt({password: 'abcdef', confirmPassword: 'abcdef'})).statusCode, 200);
+        assert.equal((await fresh.inject('/access/status')).json().requiresSetup, false);
+        assert.equal((await fresh.inject('/admin/state')).statusCode, 401);
+        const headers = {authorization: 'Basic ' + Buffer.from(':abcdef').toString('base64')};
+        assert.equal((await fresh.inject({url: '/admin/state', headers})).statusCode, 200);
+        assert.equal((await attempt({password: 'replacement', confirmPassword: 'replacement'})).statusCode, 409);
+        assert.deepEqual((await fresh.inject('/watch/sources')).json(), []);
         const saved = JSON.parse(await fs.readFile(path.join(dir, 'admin.json'), 'utf8'));
         assert.equal(saved.version, 2); assert.equal(saved.password, undefined);
         assert.equal((await fs.stat(path.join(dir, 'admin.json'))).mode & 0o777, 0o600);
-    } finally { await fs.rm(dir, {recursive: true, force: true}); }
+    } finally { if (fresh) await fresh.close(); await fs.rm(dir, {recursive: true, force: true}); }
 });
-

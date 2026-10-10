@@ -24,12 +24,12 @@ assert.deepEqual(initial.scripts, []); assert.deepEqual(initial.instances, []);
 assert.deepEqual(initial.subscriptions[0].instances, []);
 assert.deepEqual(initial.settings.parses, []); assert.deepEqual(initial.settings.lives, []); assert.deepEqual(initial.settings.env, {});
 assert.deepEqual(JSON.parse(await fs.readFile(data + '/admin.json', 'utf8')), {requiresSetup: true});
-// H2：首装必须携带引导码，无码应被拒绝。
-assert.equal((await api('/admin/access/setup', {password: 'container-smoke-only', confirmPassword: 'container-smoke-only'})).response.status, 403);
-const setupCode = (await fs.readFile(data + '/setup-code.txt', 'utf8')).trim();
-assert.ok(setupCode.length >= 8);
+// 首装直接创建密码，不生成初始化码；无效密码仍被拒绝。
+await assert.rejects(fs.access(data + '/setup-code.txt'), {code: 'ENOENT'});
+assert.equal((await api('/admin/access/setup', {password: 'short', confirmPassword: 'short'})).response.status, 400);
 const password = 'container-smoke-only';
-assert.equal((await api('/admin/access/setup', {password, confirmPassword: password, setupCode})).response.status, 200);
+assert.equal((await api('/admin/access/setup', {password, confirmPassword: password})).response.status, 200);
+assert.equal((await api('/admin/access/setup', {password, confirmPassword: password})).response.status, 409);
 assert.equal((await api('/access/status')).body.requiresSetup, false);
 const headers = {Authorization: 'Basic ' + Buffer.from(':' + password).toString('base64')};
 for (const type of ['js', 'py', 'php']) {

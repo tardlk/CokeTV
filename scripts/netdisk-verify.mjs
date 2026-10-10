@@ -21,7 +21,7 @@ export async function createNetdiskVerifier({directory, password, request, media
         try { await fs.writeFile(temp, body, {...options, flag: 'wx'}); await fs.rename(temp, file); }
         finally { await fs.rm(temp, {force: true}); }
     }});
-    if (auth.needsSetup()) await auth.setup({body: {password, confirmPassword: password, setupCode: auth.setupCode}});
+    if (auth.needsSetup()) await auth.setup({body: {password, confirmPassword: password}});
     const app = Fastify({logger: false, bodyLimit: 65536});
     const tickets = createPlaybackSessions(), shares = new Map(), buckets = new Map();
     app.decorate('accounts', accounts);

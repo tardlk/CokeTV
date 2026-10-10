@@ -140,8 +140,8 @@ test('R9 宿主 PHP 源代理调用子类 proxy，不被父类 localProxy 默认
     try {
         app = await createApp({directory, seed: false});
         app.store.state.settings.phpPath = PHP;
-        const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
-        assert.equal((await app.inject({method: 'POST', url: '/admin/access/setup', payload: {setupCode, password: 'derived-password', confirmPassword: 'derived-password'}})).statusCode, 200);
+
+        assert.equal((await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'derived-password', confirmPassword: 'derived-password'}})).statusCode, 200);
         const script = await app.store.saveScript('php', '继承代理.php', `<?php require_once __DIR__.'/lib/spider.php'; class ParentSpider extends BaseSpider { public function init($extend='') { return []; } public function localProxy($params=[]) { return [404,'text/plain','parent-default']; } } class MiddleSpider extends ParentSpider {} class Spider extends MiddleSpider { public function proxy($params=[]) { return [200,'text/plain','derived-proxy']; } }`);
         const response = await app.inject({url: `/proxy/${script.id}/`, headers: {authorization: `Basic ${Buffer.from(':derived-password').toString('base64')}`}});
         assert.equal(response.statusCode, 200, response.body); assert.equal(response.body, 'derived-proxy');
@@ -153,8 +153,8 @@ test('M10 Python 守护进程被杀后下一次调用会自动重启', async () 
     let app;
     try {
         app = await createApp({directory, seed: false});
-        const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
-        await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'bridge-password', confirmPassword: 'bridge-password', setupCode}});
+
+        await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'bridge-password', confirmPassword: 'bridge-password'}});
         app.store.state.settings.pythonPath = PYTHON;
         const code = await fs.readFile(path.join(ROOT, 'tests/fixtures/协议样本.py'), 'utf8');
         const script = await app.store.saveScript('py', '重启样本.py', code);

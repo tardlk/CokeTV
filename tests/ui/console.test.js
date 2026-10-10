@@ -29,7 +29,8 @@ beforeEach(()=>{
         if(url==='/admin/instances/batch'&&options.method==='POST')for(const instance of state.instances)if(payload.ids.includes(instance.id))instance.enabled=payload.enabled;
         if(url==='/admin/instances/batch'&&options.method==='DELETE')state.instances=state.instances.filter(item=>!payload.ids.includes(item.id));
         if(url.startsWith('/admin/instances/')&&options.method==='PUT')Object.assign(state.instances.find(s=>s.id===url.split('/').at(-1)),payload);
-        if(url==='/admin/subscriptions'&&options.method==='POST')state.subscriptions.push({id:'s',token:'test',...payload});
+        if(url==='/admin/subscriptions'&&options.method==='POST')state.subscriptions.push({id:'s',...payload,token:payload.token||'test'});
+        if(url.startsWith('/admin/subscriptions/')&&options.method==='PUT')Object.assign(state.subscriptions.find(s=>s.id===url.split('/').at(-1)),payload);
         if(url==='/admin/scripts/create'&&options.method==='POST'){
             const script={id:'created',engine:payload.type,file:payload.name+'.'+payload.type};
             state.scripts.push(script);state.instances.push({...initial().instances[0],id:'created-source',scriptId:script.id,name:payload.name});
@@ -41,29 +42,69 @@ beforeEach(()=>{
 afterEach(()=>{wrapper?.unmount();document.body.innerHTML='';sessionStorage.clear();history.replaceState({},'','/');vi.unstubAllGlobals();});
 
 describe('shadcn 控制台绑定',()=>{
+    it('新建订阅可以填写自定义令牌，并用于两个订阅链接',async()=>{
+        await start();await button('订阅管理').trigger('click');await button('新建订阅').trigger('click');await flushPromises();
+        const input=document.querySelector('#subscription-token');
+        expect(input).not.toBeNull();expect(input.readOnly).toBe(false);expect(input.value).toBe('');
+        const name=document.querySelector('#subscription-name');name.value='客厅';name.dispatchEvent(new Event('input',{bubbles:true}));
+        input.value='Living_room-2026';input.dispatchEvent(new Event('input',{bubbles:true}));await flushPromises();
+        document.querySelector('#subscription-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await flushPromises();
+        expect(requests.find(r=>r.url==='/admin/subscriptions'&&r.method==='POST').payload.token).toBe('Living_room-2026');
+        await wrapper.find('[aria-label="订阅链接"]').trigger('click');await flushPromises();
+        expect(document.querySelector('input[aria-label="订阅链接"]').value).toBe('http://localhost/tvbox/Living_room-2026');
+        const cat=[...document.querySelectorAll('[role="tab"]')].find(item=>item.textContent.includes('猫影视'));
+        cat.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await flushPromises();
+        expect(document.querySelector('input[aria-label="猫影视订阅链接"]').value).toContain('/Living_room-2026/index.js.md5');
+    });
+    it('编辑令牌取消不修改订阅，保存后提交自定义值并保留源顺序',async()=>{
+        state.subscriptions=[{id:'sub',name:'客厅',token:'Old-token',enabled:true,instances:['b','a']}];
+        await start();await button('订阅管理').trigger('click');await wrapper.find('[aria-label="配置订阅"]').trigger('click');await flushPromises();
+        let input=document.querySelector('#subscription-token');expect(input.readOnly).toBe(false);
+        input.value='Cancelled-token';input.dispatchEvent(new Event('input',{bubbles:true}));await flushPromises();
+        [...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.trim()==='取消').click();await flushPromises();
+        expect(state.subscriptions[0].token).toBe('Old-token');
+        expect(requests.some(r=>r.method==='PUT'&&r.url==='/admin/subscriptions/sub')).toBe(false);
+        await wrapper.find('[aria-label="配置订阅"]').trigger('click');await flushPromises();
+        input=document.querySelector('#subscription-token');expect(input.value).toBe('Old-token');
+        input.value='Saved-token';input.dispatchEvent(new Event('input',{bubbles:true}));await flushPromises();
+        document.querySelector('#subscription-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await flushPromises();
+        const saved=requests.find(r=>r.method==='PUT'&&r.url==='/admin/subscriptions/sub').payload;
+        expect(saved.token).toBe('Saved-token');expect(saved.instances).toEqual(['b','a']);expect(saved.enabled).toBe(true);
+    });
     it('订阅窗口提供猫影视四文件入口并保留 TVBox 链接',async()=>{
         state.subscriptions=[{id:'cat-sub',name:'家庭订阅',token:'sub-token',enabled:true,instances:['a']}];
         state.settings.publicUrl='https://coketv.example.test/base/';
         await start();await button('订阅管理').trigger('click');
         await wrapper.find('[aria-label="订阅链接"]').trigger('click');await flushPromises();
-        expect(document.querySelector('input[aria-label="订阅链接"]').value).toBe('https://coketv.example.test/base/subscription/cat-sub?token=sub-token');
+        expect(document.querySelector('input[aria-label="订阅链接"]').value).toBe('https://coketv.example.test/base/tvbox/sub-token');
         const tab=[...document.querySelectorAll('[role="tab"]')].find(item=>item.textContent.includes('猫影视'));
         expect(tab).toBeDefined();tab.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await flushPromises();
-        expect(document.querySelector('[aria-label="猫影视订阅链接"]').value).toBe('https://coketv.example.test/base/cat/cat-sub/sub-token/index.js.md5');
+        expect(document.querySelector('input[aria-label="猫影视订阅链接"]').value).toBe('https://coketv.example.test/base/cat/sub-token/index.js.md5');
         expect(document.querySelector('[role="dialog"]').textContent).toContain('Miraplay');
         expect(document.querySelector('[aria-label="复制猫影视订阅链接"]')).not.toBeNull();
+    });
+    it('旧备份重复令牌仍显示带ID的兼容链接，避免短地址指向不明订阅',async()=>{
+        state.subscriptions=[{id:'one',name:'一',token:'shared',enabled:true,instances:[]},{id:'two',name:'二',token:'shared',enabled:true,instances:[]}];
+        await start();await button('订阅管理').trigger('click');
+        await wrapper.findAll('[aria-label="订阅链接"]')[0].trigger('click');await flushPromises();
+        expect(document.querySelector('input[aria-label="订阅链接"]').value).toBe('http://localhost/subscription/one?token=shared');
+        const cat=[...document.querySelectorAll('[role="tab"]')].find(item=>item.textContent.includes('猫影视'));
+        cat.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await flushPromises();
+        expect(document.querySelector('input[aria-label="猫影视订阅链接"]').value).toBe('http://localhost/cat/one/shared/index.js.md5');
     });
     it('首次进入创建密码，输入不一致不提交，成功后进入并保存新凭据',async()=>{
         setupRequired=true;await start();
         expect(wrapper.text()).toContain('首次进入管理后台');
         expect(requests.some(item=>item.url==='/admin/state')).toBe(false);
-        await wrapper.find('#setup-code').setValue('setup-code-123');
+        expect(wrapper.find('#setup-code').exists()).toBe(false);
+        expect(wrapper.text()).not.toContain('初始化码');
+        expect(wrapper.findAll('input')).toHaveLength(2);
         await wrapper.find('#new-password').setValue('new-password');await wrapper.find('#confirm-password').setValue('different');
         await wrapper.find('form').trigger('submit');await flushPromises();
         expect(wrapper.text()).toContain('两次输入的密码不一致');
         expect(requests.some(item=>item.url==='/admin/access/setup')).toBe(false);
         await wrapper.find('#confirm-password').setValue('new-password');await wrapper.find('form').trigger('submit');await flushPromises();
-        expect(requests.find(item=>item.url==='/admin/access/setup').payload).toEqual({password:'new-password',confirmPassword:'new-password',setupCode:'setup-code-123'});
+        expect(requests.find(item=>item.url==='/admin/access/setup').payload).toEqual({password:'new-password',confirmPassword:'new-password'});
         expect(atob(sessionStorage.getItem('coketv-access'))).toBe(':new-password');
         expect(wrapper.find('.source-table').exists()).toBe(true);
         await wrapper.find('[aria-label="退出"]').trigger('click');await flushPromises();

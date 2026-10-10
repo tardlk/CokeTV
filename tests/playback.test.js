@@ -23,8 +23,8 @@ before(async () => {
     await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
     upstreamUrl = `http://127.0.0.1:${upstream.address().port}`;
     app = await createApp({directory, seed: false});
-    const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
-    await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'watch-password', confirmPassword: 'watch-password', setupCode}});
+
+    await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'watch-password', confirmPassword: 'watch-password'}});
     authorization = `Basic ${Buffer.from(':watch-password').toString('base64')}`;
     const code = `var rule = {title:'网页样本',host:'https://fixture.invalid',class_parse:async()=>({class:[{type_id:'movie',type_name:'电影'}]}),推荐:async()=>setResult([{title:'样本',url:'one'}]),二级:async function(){return {vod_name:'样本',vod_play_from:'线路一$$$线路二',vod_play_url:'第一集$${upstreamUrl}/video.mp4#第二集$${upstreamUrl}/playlist.m3u8$$$备用$${upstreamUrl}/video.mp4'}},play_parse:true,lazy:async function(flag,id){return {parse:id==='vip'?1:0,url:id==='vip'?'https://fixture.invalid/vip':id,header:{Referer:'https://fixture.invalid/'}}},proxy_rule:async()=>[200,'text/plain','own-proxy']};`;
     source = (await app.store.saveScript('js', '网页样本.js', code)).id;

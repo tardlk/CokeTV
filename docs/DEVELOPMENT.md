@@ -127,6 +127,6 @@ docker buildx build --platform linux/amd64 --load -t coketv:candidate .
 CONTAINER_REPORT_DIR=/tmp/coketv-container-report node scripts/container-matrix.mjs coketv:candidate
 ```
 
-不要在正式 data 上验收。报告记录平台、UID、Node/Python/PHP、源码 SHA、镜像 ID、清单与零跳过 TAP；启动初始化码从日志产物中隐藏。`.github/workflows/image-verify.yml` 匿名拉取给定固定 SHA/digest 后复用完整矩阵，产物保存到工作流。旧 `latest` 可供手动选择，但不能用它证明本次源码已发布。
+不要在正式 data 上验收。报告记录平台、UID、Node/Python/PHP、源码 SHA、镜像 ID、清单与零跳过 TAP；首次设密验收直接提交密码和确认密码，日志产物不记录管理密码。`.github/workflows/image-verify.yml` 匿名拉取给定固定 SHA/digest 后复用完整矩阵，产物保存到工作流。旧 `latest` 可供手动选择，但不能用它证明本次源码已发布。
 
 本机是 macOS arm64，兼容运行 Docker 镜像不能冒充原生 amd64 验收。已核对的源码提交、固定镜像 digest 与发布前后验收统一见 [当前接手入口](AI_HANDOFF.md#0-当前接手入口先看本节)及该入口指向的发行记录；历史镜像只代表对应版本，本地门禁通过不代表新版本已经发布。

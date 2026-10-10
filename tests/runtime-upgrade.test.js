@@ -16,8 +16,8 @@ const PHP = process.env.TEST_PHP || 'php';
 async function oldRuntime(directory) {
     const app = await createApp({directory, seed: false});
     try {
-        const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
-        const setup = await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'upgrade-password', confirmPassword: 'upgrade-password', setupCode}});
+
+        const setup = await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'upgrade-password', confirmPassword: 'upgrade-password'}});
         assert.equal(setup.statusCode, 200, setup.body);
         const sources = {};
         for (const engine of ['js', 'dr2', 'cat', 'py', 'php']) {

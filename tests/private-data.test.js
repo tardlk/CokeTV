@@ -23,8 +23,8 @@ async function fixture(t) {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-private-'));
     const app = await createApp({directory, seed: false});
     t.after(async () => { await app.close(); await fs.rm(directory, {recursive: true, force: true}); });
-    const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
-    const setup = await app.inject({method: 'POST', url: '/admin/access/setup', payload: {setupCode, password: 'private-password', confirmPassword: 'private-password'}});
+
+    const setup = await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'private-password', confirmPassword: 'private-password'}});
     assert.equal(setup.statusCode, 200, setup.body);
     app.store.state.settings.phpPath = PHP;
     const authorization = `Basic ${Buffer.from(':private-password').toString('base64')}`;
@@ -149,8 +149,8 @@ test('R8 管理设置、每源 ENV、配置导入和凭据保存从临时文件�
     const globalFile = path.join(directory, 'runtime/config/env.json'), adminFile = path.join(directory, 'admin.json');
     const temps = observePrivateTemps(t, [globalFile, adminFile]);
     app = await createApp({directory, seed: false});
-    const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
-    assert.equal((await app.inject({method: 'POST', url: '/admin/access/setup', payload: {setupCode, password: 'permission-password', confirmPassword: 'permission-password'}})).statusCode, 200);
+
+    assert.equal((await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'permission-password', confirmPassword: 'permission-password'}})).statusCode, 200);
     const authorization = `Basic ${Buffer.from(':permission-password').toString('base64')}`;
     const settings = {...app.store.state.settings, env: globalEnv};
     assert.equal((await app.inject({method: 'PUT', url: '/admin/settings', headers: {authorization}, payload: settings})).statusCode, 200);

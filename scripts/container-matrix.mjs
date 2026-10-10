@@ -13,6 +13,7 @@ assert.equal(process.platform,'linux','必须在原生 Linux runner 验收');
 assert.equal(process.arch,'x64','必须在原生 amd64 runner 验收，不能用模拟架构替代');
 const output = path.resolve(process.env.CONTAINER_REPORT_DIR || path.join(os.tmpdir(),'coketv-container-report'));
 await fs.mkdir(output,{recursive:true});
+// 兼容旧版镜像的历史日志脱敏；当前源码不再输出初始化码。
 const redact = text => String(text || '').replace(/首次部署初始化码：[^\r\n]+/g,'首次部署初始化码：[已隐藏]');
 const docker = args => {
     const result = spawnSync('docker',args,{cwd:root,encoding:'utf8',timeout:180000,maxBuffer:32*1024*1024});
@@ -64,7 +65,7 @@ try {
 
     // Every regression creates its own temporary data; no test mutates /app/data.
     const regressions = create('regressions'); await wait(regressions); inject(regressions);
-    const files = ['core','access','integration','tvbox-import','cat-subscriptions','cat-client','netdisk-115','netdisk-cipher','netdisk-integration','review-regressions','shell','runtime-upgrade','bridge','private-data','source-env','playback-capabilities','playback','outbound','ssrf','proxy-headers','rate-limit','security','verify-cli'];
+    const files = ['core','access','subscription-tokens','integration','tvbox-import','cat-subscriptions','cat-client','netdisk-115','netdisk-cipher','netdisk-integration','review-regressions','shell','runtime-upgrade','bridge','private-data','source-env','playback-capabilities','playback','outbound','ssrf','proxy-headers','rate-limit','security','verify-cli'];
     let tap;
     try { tap = inside(regressions,['env','TEST_PYTHON=/opt/python/bin/python3','TEST_PHP=php','node','--test','--test-reporter=tap',...files.map(file=>'tests/'+file+'.test.js')]); }
     catch (error) { await fs.writeFile(path.join(output,'regressions.tap'),error.output || error.message); throw error; }

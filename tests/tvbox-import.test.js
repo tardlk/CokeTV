@@ -30,8 +30,8 @@ before(async () => {
     });
     await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve)); base = 'http://127.0.0.1:' + upstream.address().port;
     app = await createApp({directory, seed: false});
-    const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
-    await app.inject({url: '/admin/access/setup', method: 'POST', payload: {password: 'tvbox-password', confirmPassword: 'tvbox-password', setupCode}});
+
+    await app.inject({url: '/admin/access/setup', method: 'POST', payload: {password: 'tvbox-password', confirmPassword: 'tvbox-password'}});
     authorization = 'Basic ' + Buffer.from(':tvbox-password').toString('base64');
     const localPython = path.join(ROOT, '.tools/python/bin/python3'), localPhp = path.join(ROOT, '.tools/php/php');
     app.store.state.settings.pythonPath = process.env.TEST_PYTHON || await fs.access(localPython, fs.constants.X_OK).then(() => localPython).catch(() => 'python3');

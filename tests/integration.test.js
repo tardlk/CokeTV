@@ -19,8 +19,8 @@ before(async () => {
     assert.equal(credentials.password,undefined);
     assert.equal((await app.inject({url:'/admin/state',headers:{authorization:'Basic '+Buffer.from(':111111').toString('base64')}})).statusCode,428);
     const setupPassword='integration-password';
-    const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
-    assert.equal((await app.inject({url:'/admin/access/setup',method:'POST',payload:{password:setupPassword,confirmPassword:setupPassword,setupCode}})).statusCode,200);
+
+    assert.equal((await app.inject({url:'/admin/access/setup',method:'POST',payload:{password:setupPassword,confirmPassword:setupPassword}})).statusCode,200);
     credentials.password=setupPassword;
     authorization = `Basic ${Buffer.from(`:${credentials.password}`).toString('base64')}`;
     const localPython = path.join(ROOT, '.tools/python/bin/python3'), localPhp = path.join(ROOT, '.tools/php/php');

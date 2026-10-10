@@ -73,6 +73,98 @@ after(async () => {
     if (directory) await fs.rm(directory,{recursive:true,force:true});
 });
 
+test('短猫影视入口四文件无需重定向，MD5正确，连接程序实际调用五引擎', async () => {
+    const shortRoot = `${base}/cat/${credential}`;
+    let shortClient;
+    try {
+        for (const filename of ['index.js', 'index.config.js']) {
+            const response = await fetch(`${shortRoot}/${filename}`);
+            assert.equal(response.status, 200);
+            assert.equal(response.redirected, false);
+            assert.match(response.headers.get('cache-control'), /private.*no-store/);
+            const bytes = Buffer.from(await response.arrayBuffer());
+            assert.equal(await (await fetch(`${shortRoot}/${filename}.md5`)).text(), createHash('md5').update(bytes).digest('hex'));
+            await fs.writeFile(path.join(directory, 'short-' + filename.replace('.js', '.cjs')), bytes);
+        }
+        const require = createRequire(import.meta.url);
+        shortClient = require(path.join(directory, 'short-index.cjs'));
+        const config = require(path.join(directory, 'short-index.config.cjs')).default;
+        assert.equal(config.endpoint, shortRoot);
+        const previousFactory = globalThis.catServerFactory;
+        globalThis.catServerFactory = handler => http.createServer(handler);
+        let address;
+        try { address = await shortClient.start(config); }
+        finally { if (previousFactory) globalThis.catServerFactory = previousFactory; else delete globalThis.catServerFactory; }
+        const local = `http://127.0.0.1:${address.port}`;
+        assert.equal((await json(local + '/config')).data.video.sites.length, sub.instances.length);
+        for (const engine of ['js', 'dr2', 'cat', 'py', 'php']) {
+            const prefix = `${local}/spider/coketv_${ids[engine]}/3/`;
+            assert.equal((await json(prefix + 'init', {})).status, 200);
+            assert.equal((await json(prefix + 'home', {})).data.class[0].type_id, 'movie');
+            assert.equal((await json(prefix + 'category', {id: 'movie', page: 2})).data.list[0].vod_name, 'movie-2-');
+            assert.equal((await json(prefix + 'search', {wd: '短链接', page: 2})).status, 200);
+            assert.ok((await json(prefix + 'detail', {id: 'one'})).data.list[0].vod_play_url);
+            const play = await json(prefix + 'play', {id: upstreamBase + '/video.mp4'});
+            assert.equal(play.status, 200);
+            assert.ok(play.data.url.startsWith(shortRoot + '/media/'));
+            const response = await fetch(play.data.url, {headers: {Range: 'bytes=2-5'}});
+            assert.equal(response.status, 206); assert.equal(await response.text(), '2345');
+            assert.equal((await fetch(play.data.url, {method: 'HEAD'})).status, 200);
+        }
+        assert.equal((await json(`${shortRoot}/api/${ids.excluded}/home`, {})).status, 403);
+        assert.equal((await fetch(`${shortRoot}/admin.json`)).status, 404);
+    } finally { await shortClient?.stop(); }
+});
+
+test('短猫影视HLS子清单、KEY、MAP和分片继承权限及短路径，停用后拒绝', async () => {
+    const shortRoot = `${base}/cat/${credential}`;
+    const play = await json(`${shortRoot}/api/${ids.rich}/play`, {id: upstreamBase + '/strict/master.m3u8', flag: 'HLS'});
+    assert.equal(play.status, 200);
+    const master = await (await fetch(play.data.url)).text();
+    const childUrl = master.split('\n').find(line => line && !line.startsWith('#'));
+    assert.ok(childUrl.startsWith(shortRoot + '/media/'));
+    const child = await (await fetch(childUrl)).text();
+    const targets = [...child.matchAll(/URI="([^"]+)"/g)].map(match => match[1]);
+    targets.push(child.split('\n').find(line => line && !line.startsWith('#')));
+    for (const target of targets) {
+        assert.ok(target.startsWith(shortRoot + '/media/'));
+        assert.equal((await fetch(target)).status, 200);
+    }
+    sub.enabled = false;
+    try { for (const target of [childUrl, ...targets]) assert.equal((await fetch(target)).status, 403); }
+    finally { sub.enabled = true; }
+});
+
+test('短订阅入口共享公开限流预算，仅有效猫影视媒体GET和HEAD豁免', async () => {
+    const previous = process.env.RATE_LIMIT_PER_MINUTE;
+    process.env.RATE_LIMIT_PER_MINUTE = '3';
+    let limited;
+    try { limited = await createApp({directory: path.join(directory, 'short-limited'), seed: false}); }
+    finally { if (previous === undefined) delete process.env.RATE_LIMIT_PER_MINUTE; else process.env.RATE_LIMIT_PER_MINUTE = previous; }
+    try {
+        const fixture = await fs.readFile(path.join(ROOT, 'tests/fixtures/协议样本.cat.js'), 'utf8');
+        const script = await limited.store.saveScript('cat', 'short-limited.js', fixture);
+        const id = limited.store.state.instances.find(item => item.scriptId === script.id).id;
+        limited.store.state.subscriptions.push({id: 'rate', token: 'short-rate', enabled: true, instances: [id]});
+        await limited.listen({host: '127.0.0.1', port: 0});
+        const shortBase = `http://127.0.0.1:${limited.server.address().port}`;
+        const media = await json(`${shortBase}/cat/short-rate/api/${id}/play`, {id: upstreamBase + '/video.mp4'});
+        assert.equal(media.status, 200);
+        assert.equal((await fetch(shortBase + '/tvbox/short-rate')).status, 200);
+        assert.equal((await fetch(shortBase + '/cat/short-rate/manifest')).status, 200);
+        const executions = limited.runner.sequence;
+        assert.equal((await fetch(shortBase + '/tvbox/short-rate')).status, 429);
+        assert.equal((await fetch(shortBase + '/s/short-rate')).status, 429);
+        assert.equal((await json(`${shortBase}/cat/short-rate/api/${id}/home`, {})).status, 429);
+        assert.equal(limited.runner.sequence, executions);
+        for (let index = 0; index < 4; index++) {
+            assert.equal((await fetch(media.data.url, {headers: {Range: 'bytes=2-5'}})).status, 206);
+            assert.equal((await fetch(media.data.url, {method: 'HEAD'})).status, 200);
+        }
+        assert.equal((await fetch(media.data.url.slice(0, -1) + '!')).status, 429);
+    } finally { await limited.close(); }
+});
+
 test('猫影视四文件、鉴权、最终字节摘要与轻量连接配置', async () => {
     for (const filename of ['index.js','index.config.js']) {
         const response = await fetch(`${root}/${filename}`);

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {createPlaybackSessions, mediaType} from './playback.js';
+import {uniqueSubscriptionByToken} from './subscriptions.js';
 
 const program = await fs.readFile(new URL('./cat-client.cjs', import.meta.url));
 const md5 = bytes => createHash('md5').update(bytes).digest('hex');
@@ -13,13 +14,14 @@ const text = (value, label, max = 10000) => {
 
 // Each subscription owns a directory, so sibling-file loading never depends on
 // clients retaining a query string. Connection config contains no source ENV.
-export function catSubscriptionPath(subscription) {
-    return `/cat/${encodeURIComponent(subscription.id)}/${encodeURIComponent(subscription.token)}`;
+export function catSubscriptionPath(subscription, short = false) {
+    return `/cat/${short ? '' : encodeURIComponent(subscription.id) + '/'}${encodeURIComponent(subscription.token)}`;
 }
 export function registerCatSubscriptions(app, {store, baseUrl, execute, play, serveMedia, isNetdiskCurrent = () => true}) {
     const sessions = createPlaybackSessions();
     const authorize = request => {
-        const sub = store.state.subscriptions.find(item => item.id === request.params.id && item.enabled && item.token === request.params.credential);
+        const sub = request.params.id === undefined ? uniqueSubscriptionByToken(store.state, request.params.credential)
+            : store.state.subscriptions.find(item => item.id === request.params.id && item.enabled && item.token === request.params.credential);
         if (!sub) throw fail('订阅不存在、已停用或凭证无效', 403);
         return sub;
     };
@@ -31,20 +33,22 @@ export function registerCatSubscriptions(app, {store, baseUrl, execute, play, se
     const scope = (sub, instance) => `${sub.id}:${sub.token}:${instance.id}`;
     const mediaUrl = (request, sub, instance, url, headers, type, netdiskRevision) => {
         const extension = mediaType(url, type) || (/^(mkv|avi|mp4|m4v|webm|mov)$/.test(type || '') ? type : '') || new URL(url).pathname.match(/\.(mp4|m4v|webm|mov|mkv|avi|mp3|m4a|aac|bin)$/i)?.[1]?.toLowerCase() || 'bin';
-        return `${baseUrl(request)}${catSubscriptionPath(sub)}/media/${encodeURIComponent(instance.id)}/${sessions.create(scope(sub, instance), url, headers, netdiskRevision ? {netdiskRevision} : {})}/stream.${extension}`;
+        return `${baseUrl(request)}${catSubscriptionPath(sub, request.params.id === undefined)}/media/${encodeURIComponent(instance.id)}/${sessions.create(scope(sub, instance), url, headers, netdiskRevision ? {netdiskRevision} : {})}/stream.${extension}`;
     };
-    const prefix = '/cat/:id/:credential';
-    app.get(prefix + '/:file', async (request, reply) => {
+    const route = (method, suffix, handler) => {
+        for (const prefix of ['/cat/:id/:credential', '/cat/:credential']) app.route({method, url: prefix + suffix, handler});
+    };
+    route('GET', '/:file', async (request, reply) => {
         const sub = authorize(request);
         if (!['index.js','index.js.md5','index.config.js','index.config.js.md5'].includes(request.params.file)) throw fail('文件不存在', 404);
         const config = Buffer.from('"use strict";\nObject.defineProperty(exports, "__esModule", {value: true});\nexports.default = ' +
-            JSON.stringify({version: 1, endpoint: baseUrl(request) + catSubscriptionPath(sub)}) + ';\n');
+            JSON.stringify({version: 1, endpoint: baseUrl(request) + catSubscriptionPath(sub, request.params.id === undefined)}) + ';\n');
         const bytes = request.params.file.startsWith('index.config.') ? config : program;
         reply.header('Cache-Control', 'private, no-store');
         return request.params.file.endsWith('.md5') ? reply.type('text/plain; charset=utf-8').send(md5(bytes))
             : reply.type('application/javascript; charset=utf-8').send(bytes);
     });
-    app.get(prefix + '/manifest', async (request, reply) => {
+    route('GET', '/manifest', async (request, reply) => {
         const sub = authorize(request);
         reply.header('Cache-Control', 'private, no-store');
         return {timeout: store.state.settings.timeout, sites: sub.instances.flatMap(id => {
@@ -53,7 +57,7 @@ export function registerCatSubscriptions(app, {store, baseUrl, execute, play, se
             return [{id: instance.id, name: instance.name, searchable: !!instance.searchable, filterable: !!instance.filterable}];
         })};
     });
-    app.post(prefix + '/api/:source/:action', async (request, reply) => {
+    route('POST', '/api/:source/:action', async (request, reply) => {
         const sub = authorize(request), resolved = source(request, sub), body = request.body === undefined ? {} : request.body;
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw fail('请求体必须是 JSON 对象');
         reply.header('Cache-Control', 'private, no-store');
@@ -96,7 +100,7 @@ export function registerCatSubscriptions(app, {store, baseUrl, execute, play, se
         const result = await execute(request, resolved, query, sub);
         return action === 'homeVod' ? {list: result.list || []} : result;
     });
-    app.route({method: ['GET','HEAD'], url: prefix + '/media/:source/:ticket/:file', handler: async (request, reply) => {
+    route(['GET','HEAD'], '/media/:source/:ticket/:file', async (request, reply) => {
         const sub = authorize(request), {instance} = source(request, sub);
         if (!mediaFile.test(request.params.file)) throw fail('媒体文件不存在', 404);
         const session = sessions.get(request.params.ticket);
@@ -104,7 +108,7 @@ export function registerCatSubscriptions(app, {store, baseUrl, execute, play, se
         reply.header('Cache-Control', 'private, no-store');
         return serveMedia(request, reply, session.url, session.headers, sub.token, undefined,
             url => mediaUrl(request, sub, instance, url, session.headers, undefined, session.netdiskRevision));
-    }});
+    });
     return {allowsMedia(request) {
         try {
             const sub = authorize(request), {instance} = source(request, sub);

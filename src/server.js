@@ -13,7 +13,7 @@ import {Store, token} from './store.js';
 import {Runner} from './runner.js';
 import {ROOT, ENGINE_DIRS, EXTENSIONS, inside, validFilename} from './paths.js';
 import {createAuth} from './auth.js';
-import {buildSubscription, authorizedSubscription} from './subscriptions.js';
+import {buildSubscription, authorizedSubscription, uniqueSubscriptionByToken} from './subscriptions.js';
 import {buildContext} from './context.js';
 import {localToken, rewritePlaylist, streamMedia} from './media.js';
 import {syntaxCheck, importBundle, decodeSource, detectSourceEngine} from './sources.js';
@@ -204,11 +204,11 @@ export async function createApp({directory, seed = true, netdiskRequest} = {}) {
     });
     const URL_PROXY_ROUTES = ['/unified-proxy/proxy', '/file-proxy/proxy', '/m3u8-proxy/playlist', '/m3u8-proxy/ts', '/m3u8-proxy/proxy'];
     const TICKET_RATE_ROUTES = new Set(['/mediaProxy', '/req/*', ...URL_PROXY_ROUTES]);
-    const PUBLIC_RATE_PATHS = /^\/(?:cat\/|watch\/|mediaProxy$|req\/|m3u8-proxy\/|unified-proxy\/|file-proxy\/|proxy\/|subscription\/|config$|config\/)/;
+    const PUBLIC_RATE_PATHS = /^\/(?:cat\/|tvbox\/|s\/|watch\/|mediaProxy$|req\/|m3u8-proxy\/|unified-proxy\/|file-proxy\/|proxy\/|subscription\/|config$|config\/)/;
     app.addHook('onRequest', async (request, reply) => {
         const route = request.routeOptions?.url || '';
         if (!PUBLIC_RATE_PATHS.test(route)) return;
-        if (['GET', 'HEAD'].includes(request.method) && route === '/cat/:id/:credential/media/:source/:ticket/:file' && catSubscriptions?.allowsMedia(request)) return;
+        if (['GET', 'HEAD'].includes(request.method) && ['/cat/:id/:credential/media/:source/:ticket/:file', '/cat/:credential/media/:source/:ticket/:file'].includes(route) && catSubscriptions?.allowsMedia(request)) return;
         // 只豁免 GET/HEAD 媒体转发中绑定当前目标 URL 的 proxy 票据，保留 HLS 分片/key 的余量。
         // media 票据可驱动同源 /proxy/ 执行源逻辑（不绑定 URL），必须照常计入公开限流。
         if (['GET', 'HEAD'].includes(request.method) && TICKET_RATE_ROUTES.has(route)) {
@@ -462,10 +462,17 @@ export async function createApp({directory, seed = true, netdiskRequest} = {}) {
             throw error;
         }
     });
-    const subscriptionFields = body => {
+    const subscriptionFields = (body, current) => {
         if (!checkString(body.name) || !Array.isArray(body.instances)) throw fail('订阅名称或源列表无效');
         if (body.description !== undefined && (typeof body.description !== 'string' || body.description.length > 2000)) throw fail('订阅描述无效');
-        return {name: body.name.trim(), description: body.description || '', enabled: !!body.enabled, instances: [...new Set(body.instances)].filter(id => store.state.instances.some(s => s.id === id))};
+        const fields = {name: body.name.trim(), description: body.description || '', enabled: !!body.enabled, instances: [...new Set(body.instances)].filter(id => store.state.instances.some(s => s.id === id))};
+        // 未提交令牌时沿用原行为；既有导入令牌不因编辑其他字段而被重新限制。
+        if (body.token !== undefined && body.token !== current?.token && !(body.token === '' && !current)) {
+            if (typeof body.token !== 'string' || body.token.length < 1 || body.token.length > 200 || /[^A-Za-z0-9_-]/.test(body.token)) throw fail('访问令牌须为1–200位字母、数字、短横线或下划线');
+            if (store.state.subscriptions.some(sub => sub.id !== current?.id && sub.token === body.token)) throw fail('访问令牌已被其他订阅使用，请换一个', 409);
+            fields.token = body.token;
+        }
+        return fields;
     };
     app.post('/admin/subscriptions', async request => store.mutate(state => {
         const sub = {id: token().slice(0, 16), token: token(), ...subscriptionFields(request.body || {})};
@@ -474,7 +481,7 @@ export async function createApp({directory, seed = true, netdiskRequest} = {}) {
     app.put('/admin/subscriptions/:id', async request => store.mutate(state => {
         const sub = state.subscriptions.find(s => s.id === request.params.id);
         if (!sub) throw fail('订阅不存在', 404);
-        Object.assign(sub, subscriptionFields(request.body || {})); return sub;
+        Object.assign(sub, subscriptionFields(request.body || {}, sub)); return sub;
     }));
     app.post('/admin/subscriptions/:id/token', async request => store.mutate(state => {
         const sub = state.subscriptions.find(s => s.id === request.params.id);
@@ -544,6 +551,14 @@ export async function createApp({directory, seed = true, netdiskRequest} = {}) {
         return buildSubscription(store.state, sub, baseUrl(request));
     };
     app.get('/subscription/:id', subscriptionHandler);
+    const shortSubscriptionHandler = async (request, reply) => {
+        const sub = uniqueSubscriptionByToken(store.state, request.params.credential);
+        if (!sub) throw fail('订阅不存在、已停用或凭证无效', 403);
+        reply.header('Cache-Control', 'private, no-store');
+        return buildSubscription(store.state, sub, baseUrl(request));
+    };
+    app.get('/tvbox/:credential', shortSubscriptionHandler);
+    app.get('/s/:credential', shortSubscriptionHandler);
     app.get('/config', subscriptionHandler); app.get('/config/1', subscriptionHandler);
     app.route({method: ['GET', 'POST'], url: '/api/:module', handler: async request => {
         const query = {...request.query, ...(request.body || {})};
@@ -685,13 +700,6 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
     await app.listen({port: Number(process.env.PORT) || 54058, host: process.env.HOST || '0.0.0.0'});
     console.log(`CokeTV 已启动：http://127.0.0.1:${app.server.address().port}`);
     console.log(`访问密码配置：${path.join(app.store.directory, 'admin.json')}（或使用 ADMIN_PASSWORD）`);
-    try {
-        const code = (await fs.readFile(path.join(app.store.directory, 'setup-code.txt'), 'utf8')).trim();
-        console.log('============================================================');
-        console.log(`首次部署初始化码：${code}`);
-        console.log('进入 /admin 创建访问密码时必须填写该码；创建成功后文件自动删除。');
-        console.log('============================================================');
-    } catch { /* 已创建密码或使用 ADMIN_PASSWORD，无需引导码 */ }
     const close = async () => { await app.close(); process.exit(); };
     process.on('SIGINT', close); process.on('SIGTERM', close);
 }

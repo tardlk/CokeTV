@@ -25,8 +25,8 @@ test('网盘账号只在后台管理；源详情自动展开，网页/TVBox/猫�
                 {fc: '1', fid: '2', n: '第2集.mp4'}, {fc: '1', fid: '1', n: '第1集.mp4'}
             ]} : {url: {url: options.params.file_id === '2' ? mediaURL.replace('video.mp4', 'list.m3u8') : mediaURL}}})};
         }});
-        const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
-        await app.inject({method: 'POST', url: '/admin/access/setup', payload: {setupCode, password: 'test-netdisk', confirmPassword: 'test-netdisk'}});
+
+        await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'test-netdisk', confirmPassword: 'test-netdisk'}});
         const authorization = 'Basic ' + Buffer.from(':test-netdisk').toString('base64');
         assert.equal((await app.inject('/admin/netdisk')).statusCode, 401);
         assert.equal((await app.inject('/%61dmin/netdisk')).statusCode, 401);

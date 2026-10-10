@@ -16,3 +16,9 @@ export function buildSubscription(state, subscription, baseUrl) {
 export function authorizedSubscription(state, supplied, instanceId) {
     return state.subscriptions.find(s => s.enabled && s.token === supplied && (!instanceId || s.instances.includes(instanceId)));
 }
+// 短入口没有订阅ID；旧备份中的重复令牌不能任意命中其中一个订阅。
+export function uniqueSubscriptionByToken(state, supplied) {
+    if (typeof supplied !== 'string' || !supplied) return undefined;
+    const matches = state.subscriptions.filter(sub => sub.token === supplied);
+    return matches.length === 1 && matches[0].enabled ? matches[0] : undefined;
+}

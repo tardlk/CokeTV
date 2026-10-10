@@ -18,8 +18,8 @@ async function fixture(t, {legacy = false} = {}) {
     app.addHook('onRequest', async request => { if (request.url.startsWith('/api/')) requests.push(request.url); });
     t.after(async () => { await app.close(); await fs.rm(directory, {recursive: true, force: true}); });
     if (!legacy) {
-        const setupCode = (await fs.readFile(path.join(directory, 'setup-code.txt'), 'utf8')).trim();
-        const response = await app.inject({method: 'POST', url: '/admin/access/setup', payload: {setupCode, password, confirmPassword: password}});
+
+        const response = await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password, confirmPassword: password}});
         assert.equal(response.statusCode, 200, response.body);
     }
     const code = await fs.readFile(path.join(ROOT, 'tests/fixtures/协议样本.js'), 'utf8');
