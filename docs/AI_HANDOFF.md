@@ -12,57 +12,47 @@
 
 ## 0. 当前接手入口（先看本节）
 
-**2026-10-10 本地提交当前成果（未推送、未发布）**：用户暂不推进解析功能，要求提交现有代码。本轮提交包含移除初始化码、自定义订阅令牌、TVBox默认tvbox入口/猫影视短目录及旧地址兼容、相关回归与文档，并纳入此前未跟踪的subscription-tokens测试。业务文件逐项核对与235项测试全过的基线一致，详见7.38；此前同日“未提交”属于对应阶段快照。私密运行数据、环境、截图和研究文件仍忽略，CokeTV本机服务保持。
+**当前快照：2026-10-10换对话交付。** 用户已要求提交并推送，功能提交 `8cec6c25f57b3c0dfeff9b4a62036a248279e0f2` 已在origin/main。源码检查、原生amd64发布前容器矩阵和GHCR发布成功；本次仅整理交接文档，纯文档HEAD可领先功能发行SHA。详细发行证据见7.39。
 
-**2026-10-10 OmniBox latest解析调研（本轮仅研究）**：按用户选择，只研究未改CokeTV业务或导入解析器。最初误选beta，用户纠正后切换latest，实际页面v2.1.4.1，确认有“解析资源”与独立parse-play入口；Web/JSON固定样本播放、默认/启停及SDK浏览器嗅探均已实测。临时容器/卷/镜像/虚拟机/工具已清理，CokeTV原数据与54058服务保持。详见7.37；既有未提交改动继续保留。
+接手顺序：先 `git status` → 读根 `AGENTS.md` → 本节 → 7.39。需要追溯实现时再读7.33–7.38；第7节其余记录为历史。不要把旧阶段“未提交/未推送/未发布”、旧机器46源和Docker状态当作当前状态。
 
-**2026-10-10 TVBox入口命名（本机阶段记录，未发布）**：按用户要求，后台默认TVBox地址改为 `/tvbox/<令牌>`，`/s/<令牌>` 与原带ID地址继续兼容。235项测试、check/build通过，本机服务已重启并实际显示新地址；161个运行文件hash保持。详见7.36，未推送或发布。
+### 当前版本、产品和验证
 
-**2026-10-10 简短订阅地址（本机阶段记录，未发布）**：TVBox默认显示 `/s/<令牌>`，猫影视显示 `/cat/<令牌>/index.js.md5`，原带ID地址继续兼容。174后端+61UI=235全过，check/build成功；本机已重启并验证新旧地址和四文件MD5。161个data文件hash保持，未修改用户密码/令牌/源。详见7.35；此前同日两项记录为阶段快照，仍未推送或发布。
-
-**2026-10-10 订阅令牌自定义（本机阶段记录，未发布）**：用户要求“访问令牌”可以自定义。新建/编辑已支持，保留随机生成与重置；170后端+60UI=230全过，默认check/build通过。本机服务已重启，161个运行文件hash全部保持；当前订阅及令牌未代为更改，浏览器已打开配置窗口。详见7.34，未推送或发布。
-
-**2026-10-10 当前本机改动（未发布）**：用户明确要求移除初始化码。首次进入后台直接填写新密码和确认密码；升级启动仅清理旧版 `setup-code.txt`。已有密码、加盐保存、环境变量预设和管理鉴权保持。前后端、测试夹具及容器验收脚本已同步修改；默认check/build/npm test全部通过（165后端+58UI），本机服务已重启并通过浏览器与数据保留验收，详见7.33。没有推送GitHub或发布镜像，已发布版本仍为9c46614。
-
-**机器状态区分**：当前是新克隆的本机源码环境，直接运行Node服务；下面2026-10-08的Docker、46源、账号与研究材料是旧机器交接快照，不能当作当前机器实况。本机私密运行记录在忽略的 `HANDOFF.md` 和 `.tools/ENVIRONMENT.md`。
-
-**2026-10-08 文档全量复核与同步**：本次核对仓库9份Markdown、配置模板、许可说明与示例，纠正密码变量优先级、Docker目录权限/变量传入、GUI备份入口、本源ENV语言边界、旧验证计数与第三方路径等，详见7.32。只修改文档和模板注释，没有改运行配置、业务代码、服务或已发布镜像；下方9c46614仍为功能发行SHA。
-
-**2026-10-08 本轮修复已同步并发布**：用户授权“执行修复计划”及“推送到github”。六项修复、确定冗余清理、静态检查和回归已提交并推送main：`9c46614999e20f66d4b4b2cad111751128019e27`。Verify、Docker原生amd64发布和匿名固定digest发布后复验均success；源码162后端/58UI与发布前后156容器回归全部通过，详见7.30–7.31。本机运行容器继续保留原版本与数据，没有因推送自动升级。
-
-**历史记录说明**：115统一网盘版本9dbf42c的发行证据在7.27；其后的清理与OmniBox研究在7.28–7.29。7.17–7.30中的“未实现/未授权/未提交/未发布”是对应阶段快照，不能覆盖7.31的最终结论；也不能使用旧版CI/digest证明本轮修复已发布。
-
-**沟通与操作**：用户不懂编程，请用简单中文，技术安装、配置、测试与排障由助手负责。接手先 `git status`，读 `AGENTS.md` 和本节，再读7.25–7.27及7.30–7.31；猫影视背景在7.17–7.20。唯一公开交接为本文，忽略的根 `HANDOFF.md` 和 `.tools/` 可能含敏感信息，不能提交。
-
-| 项目 | 当前结论 / 入口 |
+| 项目 | 当前结论 |
 | --- | --- |
-| Git与发布 | main修复源码9c46614已推送；Verify/Docker和匿名发布后完整复验均success。latest/sha-9c46614已发布，固定digest及证据见7.31。后续纯文档HEAD领先镜像revision属于预期 |
-| 115功能 | 后台“网盘管理”统一扫码账号，标准详情中的115分享/URL编码push链接自动展开；网页、TVBox、猫影视共用宿主网盘服务。当前仅115，不预置搜索站点，不转存/上传/删除网盘文件 |
-| 本机Docker | `coketv-local:netdisk-bb046cd4b0a8`，OCI revision为local，基于acbfb1a固定digest的本机派生镜像。54058 healthy；原46源/1订阅/设置/管理密码保留，仅新增私密网盘账号文件。没有因本轮Git推送自动替换本机容器 |
-| 本机回滚 | 完整data/src/dist与容器配置备份已移至私有 `.tools/netdisk-deployment-backup-20261008/`；旧 `coketv-local-before-netdisk-1791440886` 已停用且restart=no。不能同时启动共享原data卷的旧/新容器 |
-| 其他服务 | 54060 `drpy-reference` 为独立2.0.6参考容器；用户已要求停用并删除54061独立115验证环境及54059旧手机测试环境，两个测试目录及相关临时容器/卷已清理，见7.28。不要恢复这些测试服务或重置Docker context、VM或登录自启 |
-| 本机门禁 | 本轮check130语法/187未定义变量/143桥接/37spider与156engine空壳；build native loader；162后端+58UI=220全过。GitHub标准check/build/npm test同样通过，原生amd64发布前后156容器回归及完整矩阵均通过/零跳过，见7.31。本轮没有重新构建或验收本机Docker |
-| 真实115验收 | 用户本人扫码；凭据重启仍有效。私密分享47视频；4K HEVC Main10 MKV开播、切第二集、约21分钟大幅拖动后恢复、重启后重新获取详情/播放通过。拖动有明显缓冲，未做完整影片/声音人工确认或手机网盘解码验收 |
-| 开发文档 | `docs/NETDISK_DEVELOPMENT.md` 有标准详情格式、JS/Python片段和排错。没有OmniBox SDK/Runner或可导入的CokeTV SDK；其他SDK能力仅回答研究，没有授权实现 |
-| OmniBox研究 | 用户授权研究参考项目并尝试从镜像恢复源码，首轮结果见7.29；原文件、可读前端、Go结构/反汇编与恢复包仅在忽略目录，未接入CokeTV |
-| 下一步 | 按用户新要求继续OmniBox研究或功能对照；真实115搜索→详情→网盘播放验收仍待实际源/站点，保留现有源。其他网盘统一账号、声音/手机客户端与转码等没有完成，不自动扩展范围 |
-| 固定约定 | 保留五引擎、原协议、发行零预置源、脚本与宿主同权限；管理鉴权依据匹配路由。不得reset本轮成果或用旧GHCR镜像覆盖本机网盘功能 |
+| Git与发布 | main功能SHA为8cec6c2；[Verify 38031990353](https://github.com/tardlk/CokeTV/actions/runs/38031990353)与[Docker amd64 38031990348](https://github.com/tardlk/CokeTV/actions/runs/38031990348)均success，candidate/publish均成功 |
+| 当前镜像 | `ghcr.io/tardlk/coketv:latest` 与 `sha-8cec6c2` 同为 `sha256:54a3b18a8e83059831922c449e7c4a1de8310e3906e6cdb60980795dcbea8800`；匿名manifest/config已核对linux/amd64、User=node及OCI revision8cec6c2 |
+| 验收边界 | 本机与GitHub源码check/build/test通过，174后端+61UI=235；发布前完整容器矩阵168回归全过/零跳过。**本轮发布后匿名拉取容器完整复验尚未执行**，不能用9c46614的旧成功记录替代 |
+| 首次后台 | 已移除初始化码，首次直接填写新密码/确认密码；启动清理旧setup-code.txt。已有密码、scrypt加盐保存、ADMIN_PASSWORD优先级保持 |
+| 订阅 | 访问令牌可自定义，支持1–200位ASCII字母/数字/短横线/下划线；新建留空随机生成，重复409、非法400，编辑省略保持，旧导入令牌兼容 |
+| 订阅地址 | 默认TVBox为 `/tvbox/<令牌>`，猫影视为 `/cat/<令牌>/index.js.md5`；原 `/s/<令牌>`、带ID地址和猫影视四文件/源/媒体权限继续兼容 |
+| 当前本机 | macOS arm64直接运行源码，默认端口54058仅本机监听；健康。0脚本/0源、1个默认订阅、0解析器，管理密码已创建，当前没有115账号文件 |
+| 运行数据 | data由本机服务使用；本轮重启、研究及提交没有更改用户密码/令牌/源。不得删除、重建或用旧镜像覆盖data |
+| 环境 | 项目本地Node22.23.3/npm10.9.9、PHP8.4.23、Python3.12.14虚拟环境；默认build/test可用，没有当前必须使用native loader的限制。开发环境约774MiB，项目整体约804MiB |
+| 临时研究 | OmniBox最终使用latest，页面v2.1.4.1；Web/JSON固定样本播放及独立嗅探实测。容器/卷/镜像/VM/工具/样本服务均已清理约7.2GiB，只保留约444KiB研究证据 |
+| 其他服务 | 当前54059–54063均无监听。旧drpy-reference、旧本机Docker和恢复包没有迁入这台机器；不要按历史记录恢复测试服务 |
+| 保留约定 | 五引擎/原模块路径/代理语义、发行零预置源与解析、公开观影/管理鉴权、脚本与宿主同权限信任边界继续保持 |
 
-本机工具及私密信息：`.tools/container/local-test-info.json`、`.tools/container/CokeTV测试使用说明.txt` 记录当前本机配置，回滚备份路径已更新。旧独立验证和手机预览的会话文件、账号副本、样片与证据已按用户要求删除；下文相关路径仅为历史记录。只在本机读取保留的私密文件，不回显Cookie/密码/测试分享/临时媒体签名，不放入公开文档或每源ENV。
+### 用户意图与解析话题停点
 
-本机默认Vite config bundle曾卡住，已实际通过以下等价门禁；普通新环境/CI仍使用标准build/test，不要把替代参数说成默认命令直接通过：
+用户最后明确说“先不要管这个解析了，提交目前的代码”，随后要求推送与完善交接。**当前没有新的解析功能开发授权**；不自动写腾讯源、增加解析管理/独立解析接口/服务器浏览器嗅探，或导入那8个Web解析。
+
+已完成的是OmniBox参考调研与概念说明：latest的“解析资源”支持Web/JSON、启停与默认；首页粘贴支持的视频网页链接进入独立parse-play。CokeTV已有Web/JSON/本地脚本调用，主要欠可视化管理和独立网址入口，服务器嗅探需单独评估。不能把Web解析网页等同于MP4/M3U8直链，也不能把固定样本成功说成真实腾讯影片成功。源脚本指定解析前缀属于TVBox兼容协议讨论，没有据此改CokeTV或写腾讯脚本。
+
+### 本机续接与资料
+
+实际PID、绝对路径、日志与工具记录在被忽略的根 `HANDOFF.md`、`.tools/ENVIRONMENT.md` 和 `.tools/run/service.json`，仅本机阅读，不提交。详细研究为 `.tools/omnibox-parser-research/notes/OmniBox解析调研.md`，版本必须以latest/v2.1.4.1证据为准，不能混用最初误选beta的页面；8cec6c2发行证据在 `.tools/handoff-20261010/`。
+
+当前环境已有依赖和dist，无需重复安装；新对话先核对服务再启动，避免占用同一端口。已有本机终端环境可用：
 
 ```sh
-export PATH="$PWD/.tools/node/bin:$PATH"
-export TEST_PYTHON="$PWD/.venv/bin/python3"
-export TEST_PHP="$PWD/.tools/php/php"
+source .tools/activate.sh
 npm run check
-npm run build -- --configLoader native
-npm run test:core
-npm run test:ui -- --configLoader native
+npm run build
+npm test
 ```
 
-源码门禁不代表镜像发布成功。7.20猫影视、7.27统一115均为此前版本记录；本轮审查修复的发行身份和验收见7.31。纯文档补记可用 `[skip ci]`，不能用于跳过代码门禁。
+共享Codex运行时与已有Lima镜像缓存保留，不能删除其他项目共用工具。Lima缓存约3.3GiB是2026-10-06已有资源，本次研究0文件新增/修改；研究用Lima可执行文件与VM已删除，不代表当前装有Docker。源码门禁不替代镜像实跑；后续若安排发布后复验，应使用上表固定digest运行image-verify工作流。
 
 ## 1. 发行约定
 
@@ -76,6 +66,7 @@ npm run test:ui -- --configLoader native
 
 - `/` 默认公开观影，兼容 `/watch`；浏览、搜索、详情、播放、历史和收藏无需管理密码。`/admin` 和 `/sources/<id>/edit` 需要密码。
 - 全新部署第一次进入管理后台直接填写新密码和确认密码；无默认密码或账号系统。尚未创建密码时，`ADMIN_PASSWORD`可预设密码，已有密码不会被它覆盖；环境变量方式不自动持久化密码，重启需继续提供。管理凭据在标签页sessionStorage，退出清除。
+- 订阅令牌可自定义，默认入口为 `/tvbox/<令牌>` 和 `/cat/<令牌>/index.js.md5`；旧地址兼容，修改令牌后原地址失效，详见7.34–7.36。
 - 源列表为选择框、名称、语言、状态、搜索、筛选、操作。JS/Python/PHP 徽章均绿色白字，JS 覆盖内部三种 JS 引擎。名称单击只重命名，操作是编辑和删除。
 - 勾选后启用/停用/删除/取消选择。删除确认后移除实例和订阅引用，保留脚本、版本与 ENV 文件。不拿正式用户数据测试删除。
 - 独立源编辑工作区：白底 Monaco、本源 ENV、扩展参数、接口验证、预览和日志。代码/参数/ENV 独立保存，未保存时禁用验证并提醒退出。
@@ -110,7 +101,7 @@ npm run test:ui -- --configLoader native
 | `scripts/check-shell.mjs` | 发行树零预置源断言（spider 逐文件白名单 + 全 engine 内容判定） |
 | `scripts/check-identifiers.mjs` | 宿主、脚本、Web与两网关未定义变量检查；Vue script setup含内联模板 |
 | `scripts/check-bridges.mjs` | `engine/spider/**` 的 ast.parse / php -l / node --check |
-| `scripts/container-smoke.mjs` / `container-matrix.mjs` | 空容器检查与原生 amd64 完整矩阵；发布前/后均已通过 |
+| `scripts/container-smoke.mjs` / `container-matrix.mjs` | 空容器检查与原生amd64完整矩阵；当前发行发布前通过，发布后完整复验状态见第0/5节 |
 
 `engine/spider/` 只保留辅助模块、HIPY core/base、PHP 桥接/lib 和 WASM。`engine/json/`、`engine/jx/`、`engine/data/` 为空，config 是空默认值。第一次准备空运行目录；升级保留已有 data，不添加原站点。
 
@@ -123,21 +114,23 @@ npm run build     # 必须先 build，集成测试需要 dist/index.html
 TEST_PYTHON=python3 TEST_PHP=php npm test
 ```
 
-当前源码门禁涵盖宿主/辅助语法、未定义变量、桥接语法、空壳检查、前端构建、后端协议与UI回归。数量和解释器版本以实际输出为准，最新本机命令见第0节，已发行版本的源码及原生容器证据见7.31。此前2026-10-06的122语法/169测试是历史快照，保留在7.14等对应阶段中，不作为当前计数。
+当前源码门禁涵盖宿主/辅助语法、未定义变量、桥接语法、空壳检查、前端构建、后端协议与UI回归。数量和解释器版本以实际输出为准，最新本机命令见第0节，当前8cec6c2发行的源码及原生容器证据见7.39，7.31仅为旧版证据。此前2026-10-06的122语法/169测试是历史快照，保留在7.14等对应阶段中，不作为当前计数。
 
-本机默认Vite配置打包曾挂起，因此本机采用第0节的native loader等价命令；GitHub使用标准check/build/npm test。两者不能混称。`npm audit` 的最新审计日期、包与修复建议统一维护在 `SECURITY.md`；源码门禁通过不代表已消除依赖告警。
+旧机器曾出现Vite配置打包挂起并使用native loader；当前本机默认check/build/npm test均已通过，不需要沿用旧替代参数。GitHub同样使用标准命令。`npm audit` 的最新审计日期、包与修复建议统一维护在 `SECURITY.md`；源码门禁通过不代表已消除依赖告警。
 
 注意事项：
 
 - 干净克隆必须先 `npm run build` 再 `npm test`；不能依赖被忽略的本机 `dist/`。CI 已按此顺序。
 - Python 新建模板必须接受 HIPY 守护进程的 `t4_api` 构造参数；创建模板测试除语法检查外实际执行首页，容器验收也覆盖这条路径。
-- 当前发行的原生 amd64 验收来自 GitHub（7.31）；7.12–7.13、7.15分别保留此前发行与本机兼容运行记录。Mac 为 arm64，不能把本机兼容测试说成原生 amd64 验收。
+- 当前发行的原生 amd64 发布前验收来自GitHub（7.39）；7.12–7.13、7.15分别保留此前发行与本机兼容运行记录。Mac 为 arm64，不能把本机兼容测试说成原生 amd64 验收。
 - 未运行原 drpy-node-coder CLI，不宣称使用过。协议样本不代表所有第三方站点、解析器或编码可播。
 - 测试数量与文件数以脚本实际输出为准；`docs/DEVELOPMENT.md` 已移除固定计数，并由回归用例防止重新写入。
 
 ## 5. 发布现状
 
-**最新已核对发行（2026-10-08）**：审查修复源码 `9c46614999e20f66d4b4b2cad111751128019e27` 的 [Verify 37753160674](https://github.com/tardlk/CokeTV/actions/runs/37753160674)、[Docker amd64 37753161089](https://github.com/tardlk/CokeTV/actions/runs/37753161089) 和[匿名固定digest发布后复验37754052158](https://github.com/tardlk/CokeTV/actions/runs/37754052158) 均success。`latest` 与 `sha-9c46614` 同为 `sha256:b0ddf2027e5e78b732ddacce15e23344ec3037677d0794f8b0633616815275d6`，发布前后156容器回归及完整矩阵通过，见7.31。本机Docker仍保留之前的local网盘镜像，未自动升级。
+**最新已核对发行（2026-10-10）**：功能源码 `8cec6c25f57b3c0dfeff9b4a62036a248279e0f2` 的 [Verify 38031990353](https://github.com/tardlk/CokeTV/actions/runs/38031990353)、[Docker amd64 38031990348](https://github.com/tardlk/CokeTV/actions/runs/38031990348) 均success；candidate/publish成功，发布前168回归与完整矩阵通过。`latest` 与 `sha-8cec6c2` 同为 `sha256:54a3b18a8e83059831922c449e7c4a1de8310e3906e6cdb60980795dcbea8800`，匿名元数据已核对平台/UID声明/revision与候选镜像一致。**该版本发布后拉取容器完整复验未执行**，见7.39。本机继续运行相同业务源码，没有因推送切换为Docker。
+
+**历史发行（2026-10-08）**：审查修复源码 `9c46614999e20f66d4b4b2cad111751128019e27` 的 [Verify 37753160674](https://github.com/tardlk/CokeTV/actions/runs/37753160674)、[Docker amd64 37753161089](https://github.com/tardlk/CokeTV/actions/runs/37753161089) 和[匿名固定digest发布后复验37754052158](https://github.com/tardlk/CokeTV/actions/runs/37754052158) 均success。`latest` 与 `sha-9c46614` 同为 `sha256:b0ddf2027e5e78b732ddacce15e23344ec3037677d0794f8b0633616815275d6`，发布前后156容器回归及完整矩阵通过，见7.31。此处Docker状态是旧机器当时记录，当前本机为第0节的源码服务。
 
 **此前猫影视发行（2026-10-08）**：猫影视功能 `acbfb1a` 的 [Docker amd64 37715845159](https://github.com/tardlk/CokeTV/actions/runs/37715845159) 已成功；当时`latest` 与 `sha-acbfb1a` 均为 digest `sha256:9330d3285d1ac11ff276972f3fcc487246c78987e39ca72291ce46eb9384f8ae`。固定 digest 的 [匿名发布后复验 37716710290](https://github.com/tardlk/CokeTV/actions/runs/37716710290) 已成功，发布前/后原生 amd64 均完成 131 项回归及完整容器矩阵。本机 Docker 当时已按用户授权升级并保留数据，见 7.20。随后的115统一网盘发行见7.27。
 
@@ -222,7 +215,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **原“发布门强度”待办已完成**：五引擎、升级、实际 Range/HLS/分片/key、私密配置与同卷重启已移入发布前完整矩阵，发布后匿名固定 digest 复验也通过（7.12–7.13）。不要再登记成“只返回媒体地址”或“没有容器 Range/HLS 覆盖”。额外人工故障注入 CI 尚未执行；PR publish skipped 与本地条件回归已有证据。
 - **兼容辅助模块整理**：旧审查曾列出约 19 个静态零引用文件，名单与“死代码”判断需重新复核；用户源可以按原模块名动态导入，零静态引用不等于可删除。保留兼容 API 面，必要时在 THIRD_PARTY 说明来源，不凭旧名单裁剪引擎。单独的 utils/with-timeout.js 当前仍无静态接线，PHP 进程回收实际由 execFile timeout/killSignal 完成（已回归）；不要把未接线辅助文件当成已生效机制。
 - **`fServer` 兼容缺口**：`src/worker.js` 注入的 `fServer` 是只回 404 的裸 `http.createServer`，而 `src/server.js` 把 WebSocket upgrade 转发到同一端口；上游 drpy-node 里 `fServer` 是带 websocket 的 Fastify 实例。依赖弹幕 WS 的源不可用。
-- **测试隔离与覆盖**：`tests/integration.test.js` 多用例共享同一 `app/store`，`tests/tvbox-import.test.js` 存在先后用例依赖；尚未执行随机顺序或逐条隔离矩阵，不把“单跑必失败”作为实测结论。仍需专项覆盖 `/parse/:jx` 的 parse type=2、`/image/upload`、`/admin/subscriptions/:id/token`及更完整的 ZIP 恶意包场景。FTP健康/GET/Range/HEAD、网关并发与失败、ZIP写入失败回滚已在review-regressions及7.31发布前后容器验收覆盖，不能再笼统登记为零覆盖；其他FTP能力与实际NAS仍需分别验证。`state.json`/`env.json`损坏保留、`/file-proxy`与toBytes=2重定向也已有固定回归和容器证据。
+- **测试隔离与覆盖**：`tests/integration.test.js` 多用例共享同一 `app/store`，`tests/tvbox-import.test.js` 存在先后用例依赖；尚未执行随机顺序或逐条隔离矩阵，不把“单跑必失败”作为实测结论。仍需专项覆盖 `/parse/:jx` 的 parse type=2、`/image/upload`及更完整的ZIP恶意包场景；订阅Token重置现已由subscription-tokens回归和8cec6c2发布前容器矩阵覆盖。FTP健康/GET/Range/HEAD、网关并发与失败、ZIP写入失败回滚已在review-regressions及7.31发布前后容器验收覆盖，不能再笼统登记为零覆盖；其他FTP能力与实际NAS仍需分别验证。`state.json`/`env.json`损坏保留、`/file-proxy`与toBytes=2重定向也已有固定回归和容器证据。
 
 ### 7.3 全面接手复核（2026-10-06，历史发现；R1–R10 现已发布）
 
@@ -650,11 +643,19 @@ GitHub 的 work/media-release-gates-20261006 已通过分支页 Delete branch �
 - **验证与隐私**：提交前git diff --check通过；业务源码与最后默认check/build/npm test通过的基线逐项hash一致（174后端+61UI=235，零失败/跳过），新增测试文件早于最终门禁。本次只更新交接状态，沿用已执行门禁，不声称又重跑一遍。暂存文件逐项审查，运行data、密码/账号、工具/虚拟环境、构建/依赖、截图/研究记录与私密HANDOFF均不进入提交；不改锁文件。
 - **Git与服务边界**：保持main，本轮仅本地提交；提交身份以Git历史为准，没有推送GitHub或触发镜像发布，已发布功能镜像仍对应9c46614。CokeTV原服务和data保留，原开发环境继续使用；OmniBox临时环境已在7.37清理，本轮无新增服务/工具/自启项。原生CokeTV容器验收未在本轮执行。
 
+### 7.39 GitHub发布核对与换对话交接（2026-10-10）
+
+- **源码与发布**：用户明确要求推送GitHub，8cec6c25f57b3c0dfeff9b4a62036a248279e0f2正常fast-forward至origin/main，无强推；Verify38031990353与Docker38031990348均success，candidate/publish各步骤成功。源码check/build/test174后端+61UI=235通过；原生amd64发布前完整矩阵168回归、零失败/跳过，通过空数据/非root/首次设密/CLI/五引擎实际GET-HEAD-Range-HLS-key、同卷重启、旧桥接升级/用户内容保持、坏配置保留及旧卷属主修复。
+- **候选证据**：实际下载[容器证据11663180697](https://github.com/tardlk/CokeTV/actions/runs/38031990348/artifacts/11663180697)，ZIP SHA256与artifact digest一致，为sha256:e02def1e8287a7d211550cdd7bc5956b080be64bf12fea5d0e107e4e7bc16939；读取report.completed=true与TAP168通过/0失败/0跳过。实际Node22.23.3、Python3.13.5、PHP8.4.26、UID1000。image/config ID为sha256:27f1a99dc216637a8f2924d50f42bd50bf2a54ad9630bbb1015d30125f82040d。
+- **发行身份**：publish推送同一已验收artifact，无二次构建；latest与sha-8cec6c2均为sha256:54a3b18a8e83059831922c449e7c4a1de8310e3906e6cdb60980795dcbea8800。未用GitHub凭据的匿名manifest/config读取，计算manifest原始字节hash，核对linux/amd64、User=node、OCI revision8cec6c2与候选image ID一致。本轮未触发image-verify，发布后拉取容器完整复验尚未执行；不能用此前9c46614的工作流证明本轮已复验。
+- **交接整理**：第0节重写为当前快照，移除堆叠的多个“最新”和旧机器环境；同步第2/4/5节、旧探针可用性及长期覆盖待办。明确初始化码已移除、自定义Token、tvbox/cat短地址、本机源0/订阅1/解析0/管理员已设、临时研究清理与环境保留。解析仅研究和讨论，用户已暂不推进，不自动实现。根私密HANDOFF和环境清单收敛为当前可执行说明，不带密码/Token进公开文档。
+- **文档同步边界**：本轮只改交接文档，使用纯文档[skip ci]提交同步GitHub，不重复发布同一业务镜像；新的文档HEAD领先功能发行SHA属于预期。未重跑业务门禁、重启服务或改data；本机PID/路径仅在忽略记录。约774MiB开发环境及3.3GiB已有共享缓存保留，当前仅CokeTV服务运行；新下载证据仅保留小体积JSON/TAP，无临时服务或新环境。
+
 ## 8. 验证证据与探测脚本
 
 两轮修复都用**攻击探测**独立验证过（不是只看代码）：管理鉴权绕过矩阵（编码前缀、`/./` 前缀、absolute-form 原始 socket）、票据挪用、请求头注入、HLS 正向对照、`/json/` 策略、scrypt 事件循环阻塞、`toBytes=2` 头透传、空壳检查绕过尝试。
 
-探测脚本在**与仓库同级的 `coketv-audit/` 目录**（未纳入仓库，内含本机绝对路径，不要提交），用 `node <脚本>` 运行，各自使用临时数据目录、不改动仓库：
+以下探针是旧机器**与仓库同级的 `coketv-audit/` 目录**中的历史材料，当前克隆没有该目录，不能声称重新执行或要求新对话必须找到它。当前可执行回归在tests/及scripts/，发行证据见7.39。旧探针未纳入仓库，各自使用临时数据目录、不改动正式data：
 
 | 脚本 | 用途 |
 | --- | --- |
