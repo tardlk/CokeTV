@@ -19,7 +19,7 @@ async function temporary(t) {
 const cookie = 'UID=fixture; CID=fixture; SEID=fixed-test-only';
 const localURL = value => { const url = new URL(value); return url.pathname + url.search; };
 const uris = body => [...body.matchAll(/(?:URI="|\n)(http[^"\n]+)/g)].map(match => match[1]);
-test('多层网盘 HLS 的清单、KEY/MAP、分片跨代理入口继承源与账号范围', async t => {
+test('兼容代理模式的多层网盘 HLS 的清单、KEY/MAP、分片跨代理入口继承源与账号范围', async t => {
     const directory = await temporary(t);
     const upstream = http.createServer((req, res) => {
         res.setHeader('Content-Type', req.url.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'application/octet-stream');
@@ -34,7 +34,7 @@ test('多层网盘 HLS 的清单、KEY/MAP、分片跨代理入口继承源与�
     const script = await app.store.saveScript('js', 'scope.js', 'var rule={};');
     const source = app.store.state.instances.find(item => item.scriptId === script.id);
     const [reference] = await app.netdisk.files(source.id, 'https://115.com/s/fixture');
-    const played = await app.inject({method: 'POST', url: `/watch/sources/${source.id}/play`, payload: {play: reference.reference}});
+    const played = await app.inject({method: 'POST', url: `/watch/sources/${source.id}/play`, payload: {play: reference.reference, delivery: 'proxy'}});
     assert.equal(played.statusCode, 200, played.body);
     const root = await app.inject(played.json().url);
     const middleURL = uris(root.body)[0];

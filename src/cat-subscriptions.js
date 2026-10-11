@@ -82,8 +82,9 @@ export function registerCatSubscriptions(app, {store, baseUrl, execute, play, se
         } else if (action === 'play') {
             text(body.id, '剧集', 50000);
             if (body.flag !== undefined && typeof body.flag !== 'string') throw fail('播放线路无效');
-            const media = await play(request, resolved, {play: body.id, flag: body.flag || '', parser: body.parser}, sub);
+            const media = await play(request, resolved, {play: body.id, flag: body.flag || '', parser: body.parser, delivery: body.delivery}, sub);
             if (media.parse === 1) return {parse: 1, url: media.url, header: {}};
+            if (media.direct) return {parse: 0, url: media.url, header: media.headers, type: media.type};
             return {parse: 0, url: mediaUrl(request, sub, resolved.instance, media.url, media.headers, media.type, media.netdiskRevision), header: {}, type: media.type};
         } else throw fail('方法不存在', 404);
         if (detailIds) {

@@ -39,11 +39,11 @@ function validateEnvironment(values) {
     }
 }
 
-export async function createApp({directory, seed = true, netdiskRequest} = {}) {
+export async function createApp({directory, seed = true, netdiskRequest, guangyaRequest} = {}) {
     const store = await new Store(directory).init({seed});
     const runner = new Runner(store);
     const auth = await createAuth(store);
-    const netdisk = await NetdiskService.create(store.directory, netdiskRequest);
+    const netdisk = await NetdiskService.create(store.directory, netdiskRequest, guangyaRequest);
     const playback = createPlaybackSessions();
     const tvboxImporter = createTvboxImporter(store);
     const proxyMint = (headers, scope = {}) => url => playback.createProxy(url, headers, {
@@ -251,9 +251,14 @@ export async function createApp({directory, seed = true, netdiskRequest} = {}) {
     app.get('/admin/watch/:id', watchHandler);
     const playHandler = async (request, {native = false, subscription = null} = {}) => {
         const {instance, script, file} = watchSource(request);
-        const {play, flag = '', parser} = request.body || {};
+        const {play, flag = '', parser, delivery} = request.body || {};
         if (!checkString(play, 50000) || typeof flag !== 'string') throw fail('请选择要播放的剧集');
+        if (delivery !== undefined && !['direct', 'proxy'].includes(delivery)) throw fail('播放传输方式无效');
+        const netdiskPlay = netdisk.isReference(play);
         const env = contextFor(request, instance, script, {token: subscription?.token});
+        // A browser cannot set its video element's User-Agent. Obtain the 115
+        // URL for the requesting browser instead of sending account credentials.
+        if (netdiskPlay && !native && delivery !== 'proxy') env.mediaUserAgent = request.headers['user-agent'];
         let result = await netdisk.execute({script, instance, file}, {play, flag}, env, runner);
         if (typeof result === 'string') { try { result = JSON.parse(result); } catch { result = {url: result, parse: 0}; } }
         const parses = store.state.settings.parses || [];
@@ -295,7 +300,13 @@ export async function createApp({directory, seed = true, netdiskRequest} = {}) {
         const carried = unwrapMediaProxy(url, baseUrl(request));
         const headers = playbackHeaders({...carried?.headers, ...playbackHeaders(result.headers ?? result.header)});
         if (carried) url = carried.url;
-        if (native) return {parse: 0, url, headers, type: mediaType(url, result.type) || result.netdiskFileName?.match(/\.(mkv|mp4|m4v|webm|mov|avi)$/i)?.[1]?.toLowerCase() || '', ...(result.netdiskRevision ? {netdiskRevision: result.netdiskRevision} : {})};
+        if (native) return {parse: 0, url, headers, direct: netdiskPlay && delivery !== 'proxy', type: mediaType(url, result.type) || result.netdiskFileName?.match(/\.(mkv|mp4|m4v|webm|mov|avi)$/i)?.[1]?.toLowerCase() || '', ...(result.netdiskRevision ? {netdiskRevision: result.netdiskRevision} : {})};
+        if (netdiskPlay && result.netdiskRevision && delivery !== 'proxy') {
+            // Only the unified provider's temporary media URL leaves the server;
+            // generic source headers may contain private ENV and stay proxied.
+            const type = mediaType(url, result.type) || mediaType('file.' + result.netdiskFileName?.split('.').pop()) || 'native';
+            return {url, type, direct: true, parses: options, parser: parser ?? null};
+        }
         const ticket = playback.create(instance.id, url, headers, result.netdiskRevision ? {netdiskRevision: result.netdiskRevision} : {});
         return {url: `/watch/media/${ticket}`, type: mediaType(url, result.type), parses: options, parser: parser ?? null};
     };

@@ -54,6 +54,7 @@
     "pickleparser": "^0.2.1",
     "pinyin": "^4.0.0",
     "python-shell": "^5.0.0",
+    "qrcode": "^1.5.4",
     "qs": "^6.13.1",
     "reka-ui": "^2.10.5",
     "simplecc-wasm": "^1.1.0",

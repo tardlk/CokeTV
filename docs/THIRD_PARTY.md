@@ -14,6 +14,12 @@
 
 `src/netdisk/` 的扫码与分享接口流程参考 [SheltonZhu/115driver v1.3.5](https://github.com/SheltonZhu/115driver/tree/v1.3.5) 的 `pkg/driver/qrcode.go`、`share.go`、`download.go` 和 `api.go`；`m115.js` 将其 `pkg/crypto/m115` 的协议编解码适配为 Node 内置 crypto，用于兼容 App 分享接口。MIT License、版权和作者特别声明完整保留在 [LICENSES/115driver.txt](../LICENSES/115driver.txt)。没有内嵌或执行 Go SDK，没有复制 MoonTVPlus/LitePan 的网盘程序，无新增依赖。实际网盘授权和播放仍须按当前平台接口验证。
 
+### 光鸭模块的协议参考
+
+独立实现官方光鸭网页使用的分享、个人目录、转存与取链流程；对照 [LitePan](https://github.com/Ponphil/LitePan/tree/e0e29c0e4c7fb4bc172d9bb66cb0292911b6693b/drivers/Guangya) 的OAuth设备授权/刷新协议和 [OpenList](https://github.com/OpenListTeam/OpenList/tree/482464c2affc5eeba5d4a25bb272aeb352ec5918/drivers/guangyapan) 的目录/取链字段。LitePan为PolyForm Noncommercial，OpenList为AGPL-3.0；没有复制、执行或随包分发两者实现。另对照MIT许可的 [ChenyangGao/guangyapan](https://github.com/ChenyangGao/guangyapan) 接口字段。平台协议参考不代表平台授权或永久可用。
+
+新增npm运行依赖 `qrcode` 1.5.4（MIT）在服务器生成登录二维码，不依赖外部二维码服务；其许可证及传递依赖许可随npm包保留。
+
 ## 随附 bundle
 
 `engine/libs_drpy/**` 与 `engine/spider/catLib/**` 是随内核一同分发的第三方 bundle，均随上游 drpy-node 2.0.4 引入，来源为 `https://github.com/hjdhnx/drpy-node`（版权归其作者）：

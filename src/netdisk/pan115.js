@@ -1,4 +1,5 @@
 import {randomBytes} from 'node:crypto';
+import {validateHeaderValue} from 'node:http';
 import JSONbig from 'json-bigint';
 import {guardedHttp} from '../outbound.js';
 import {assertTargetAllowed} from '../ssrf.js';
@@ -11,6 +12,13 @@ const hosts = new Set(['115.com', '115cdn.com', 'anxia.com']);
 export const LOGIN_DEVICES = ['alipaymini', 'wechatmini', 'tv', 'web', 'android', 'ios', 'qandroid'];
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 const MEDIA = /\.(?:mp4|mkv|webm|m4v|mov|avi|flv|ts|m2ts|mpeg|mpg|wmv|3gp)$/i;
+function playbackAgent(value = UA) {
+    try {
+        if (typeof value !== 'string' || !value.trim() || value.length > 1024) throw new Error();
+        validateHeaderValue('User-Agent', value);
+        return value;
+    } catch { throw fail('播放客户端标识无效'); }
+}
 const idText = value => {
     if (typeof value === 'number' && !Number.isSafeInteger(value)) throw fail('115 文件标识超过安全范围');
     const id = String(value ?? '');
@@ -38,8 +46,8 @@ export class Pan115 {
         this.useAppShare = false;
         this.request = request || (options => guardedHttp({...options, maxRedirects: 0}, url => assertTargetAllowed(url, {allowPrivate: false})));
     }
-    async call(url, {method = 'GET', params, data, authenticated = false, timeout = 20000, share} = {}) {
-        const headers = {'User-Agent': UA, Accept: 'application/json'};
+    async call(url, {method = 'GET', params, data, authenticated = false, timeout = 20000, share, userAgent = UA} = {}) {
+        const headers = {'User-Agent': playbackAgent(userAgent), Accept: 'application/json'};
         if (authenticated) {
             const cookie = this.accounts.cookie();
             if (!cookie) throw fail('请先扫码登录 115', 401);
@@ -161,18 +169,19 @@ export class Pan115 {
         if (!files.length) throw fail('分享中没有视频文件', 404);
         return files.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', {numeric: true}) || a.path.localeCompare(b.path));
     }
-    async resolveFile(file) {
+    async resolveFile(file, {userAgent = UA} = {}) {
         if (!file || !/^[A-Za-z0-9]+$/.test(file.shareCode) || !/^[A-Za-z0-9]{0,20}$/.test(file.receiveCode)) throw fail('115 播放引用无效');
+        userAgent = playbackAgent(userAgent);
         const appShare = async () => {
             const encoded = this.cipher.encode(JSON.stringify({...shareParams(file), file_id: idText(file.fileId)}));
-            const encrypted = await this.call('https://proapi.115.com/app/share/downurl', {method: 'POST', authenticated: true, share: file, data: new URLSearchParams({data: encoded.data}).toString()});
+            const encrypted = await this.call('https://proapi.115.com/app/share/downurl', {method: 'POST', authenticated: true, share: file, userAgent, data: new URLSearchParams({data: encoded.data}).toString()});
             try { return json.parse(this.cipher.decode(encrypted, encoded.key)); }
             catch { throw fail('115 App 播放信息返回异常', 502); }
         };
         let value, usedApp = this.useAppShare;
         if (usedApp) value = await appShare();
         else {
-            try { value = await this.call('https://115cdn.com/webapi/share/downurl', {authenticated: true, share: file, params: {...shareParams(file), file_id: idText(file.fileId), dl: 1}}); }
+            try { value = await this.call('https://115cdn.com/webapi/share/downurl', {authenticated: true, share: file, userAgent, params: {...shareParams(file), file_id: idText(file.fileId), dl: 1}}); }
             catch (error) {
                 if (error.apiCode !== 50029) throw error;
                 value = await appShare(); usedApp = true;
@@ -184,8 +193,9 @@ export class Pan115 {
         if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw fail('115 返回的播放地址不可用', 502);
         if (usedApp) this.useAppShare = true;
         // Keep the platform account Cookie off CDN requests. This share API's
-        // download link is UA-bound; media gets that exact UA, server-side.
-        return {url: parsed.href, headers: {'User-Agent': UA}};
+        // download link is UA-bound. Browsers use their own UA; native clients
+        // receive the UA with which this address was obtained.
+        return {url: parsed.href, headers: {'User-Agent': userAgent}};
     }
 }
 const shareParams = share => ({share_code: share.shareCode, receive_code: share.receiveCode});

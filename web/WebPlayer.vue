@@ -10,6 +10,7 @@ let art, transport, probe, generation = 0, lastProgress = 0, activeContext;
 function clearTransport() { probe?.abort(); probe = null; transport?.destroy(); transport = null; }
 function icon(component) { return component === 'prev' ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M5 4h2v16H5zM19 4v16L8 12z"/></svg>' : '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M17 4h2v16h-2zM5 4v16l11-8z"/></svg>'; }
 function report(message) { emit('error', message); }
+function mediaFailure(message) { return props.media?.direct ? '直连播放失败，请重试或切换线路；也可使用 TVBox 等客户端。' : message; }
 function formatTime(seconds) { const value = Math.max(0, Math.floor(seconds || 0)); return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`; }
 function updateTime() { const layer = art?.layers['watch-time']; if (layer) { layer.children[0].textContent = formatTime(art.currentTime); layer.children[1].textContent = formatTime(art.duration); } }
 function loadMedia() {
@@ -37,7 +38,7 @@ onMounted(() => {
             {name: 'media-info', html: '<button type="button" aria-label="媒体信息" title="媒体信息"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg></button>', style: {position: 'absolute', height: '22px', top: '10px', right: '10px'}, click: () => { art.info.show = !art.info.show; }},
         ],
         customType: {
-            auto: detectMedia, m3u8: loadHls,
+            auto: detectMedia, native: loadNative, m3u8: loadHls,
             flv: loadTransport, ts: loadTransport,
         },
     });
@@ -48,19 +49,27 @@ onMounted(() => {
     });
     art.on('video:pause', () => emit('progress', art.currentTime, art.duration, activeContext));
     art.on('video:ended', () => emit('ended'));
-    art.on('video:error', () => { if (props.media?.url) report('视频无法播放，请重试或切换线路；浏览器可能不支持此视频的编码。'); });
+    art.on('video:error', () => { if (props.media?.url) report(mediaFailure('视频无法播放，请重试或切换线路；浏览器可能不支持此视频的编码。')); });
     loadMedia();
 });
+function loadNative(video, url) {
+    clearTransport();
+    // Native media loading does not require the CDN to allow a cross-origin
+    // JavaScript probe. Account cookies and custom headers are never attached.
+    video.removeAttribute('crossorigin');
+    video.src = url;
+}
 function loadHls(video, url) {
     clearTransport();
     if (Hls.isSupported()) {
         const hls = new Hls(); transport = hls;
         hls.loadSource(url); hls.attachMedia(video);
-        hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) { hls.destroy(); report('视频加载失败，请重试或切换线路。'); } });
+        hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) { hls.destroy(); report(mediaFailure('视频加载失败，请重试或切换线路。')); } });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = url;
     else report('当前浏览器不支持 HLS 播放，请使用新版 Chrome、Edge 或 Safari。');
 }
 async function detectMedia(video, url) {
+    if (props.media?.direct) { loadNative(video, url); return; }
     const version = generation, controller = new AbortController(); probe = controller;
     try {
         const response = await fetch(url, {headers: {Range: 'bytes=0-511'}, signal: controller.signal});
@@ -75,7 +84,7 @@ async function detectMedia(video, url) {
         else if (/flv/i.test(type) || (bytes?.[0] === 70 && bytes?.[1] === 76 && bytes?.[2] === 86)) loadTransport(video, url, 'flv');
         else if (/mp2t/i.test(type)) loadTransport(video, url, 'ts');
         else video.src = url;
-    } catch (failure) { if (version === generation && failure.name !== 'AbortError') report(failure.message); }
+    } catch (failure) { if (version === generation && failure.name !== 'AbortError') report(mediaFailure(failure.message)); }
 }
 async function loadTransport(video, url, detectedType) {
     const version = generation;
@@ -85,7 +94,7 @@ async function loadTransport(video, url, detectedType) {
     clearTransport();
     const player = mpegts.createPlayer({type: (typeof detectedType === 'string' ? detectedType : props.media.type) === 'ts' ? 'mpegts' : 'flv', url}); transport = player;
     player.attachMediaElement(video); player.load();
-    player.on(mpegts.Events.ERROR, () => report('视频加载失败，请重试或切换线路。'));
+    player.on(mpegts.Events.ERROR, () => report(mediaFailure('视频加载失败，请重试或切换线路。')));
 }
 watch(() => props.media, loadMedia);
 onBeforeUnmount(() => { generation++; clearTransport(); if (art) { emit('progress', art.currentTime, art.duration, activeContext); art.destroy(false); art = null; } });

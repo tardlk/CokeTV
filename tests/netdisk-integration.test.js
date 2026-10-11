@@ -6,7 +6,7 @@ import os from 'node:os';
 import http from 'node:http';
 import {createApp} from '../src/server.js';
 
-test('网盘账号只在后台管理；源详情自动展开，网页/TVBox/猫影视共用且保持实例与订阅范围', async () => {
+test('兼容代理模式：网盘账号只在后台管理；源详情自动展开，网页/TVBox/猫影视共用且保持实例与订阅范围', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-netdisk-integration-'));
     let app, upstream;
     const secret = 'UID=123; CID=fixture; SEID=private-netdisk-cookie';
@@ -49,7 +49,7 @@ test('网盘账号只在后台管理；源详情自动展开，网页/TVBox/猫�
         assert.equal(vod.vod_play_url.split('$$$')[1], '普通$' + mediaURL);
         const ref = episodes[0].split('$')[1];
         assert.ok(ref.startsWith('coketv-netdisk:115:'));
-        const play = await app.inject({method: 'POST', url: `/watch/sources/${source}/play`, payload: {play: ref}});
+        const play = await app.inject({method: 'POST', url: `/watch/sources/${source}/play`, payload: {play: ref, delivery: 'proxy'}});
         assert.equal(play.statusCode, 200, play.body);
         const media = await app.inject({url: play.json().url, headers: {range: 'bytes=0-3'}});
         assert.equal(media.statusCode, 206); assert.equal(media.body, '0123');
@@ -60,13 +60,13 @@ test('网盘账号只在后台管理；源详情自动展开，网页/TVBox/猫�
         const catDetail = await app.inject({method: 'POST', url: catBase + '/detail', payload: {id: ['one']}});
         assert.equal(catDetail.statusCode, 200, catDetail.body);
         const catRef = catDetail.json().list[0].vod_play_url.split('$$$')[0].split('#')[0].split('$')[1];
-        const catPlay = await app.inject({method: 'POST', url: catBase + '/play', payload: {id: catRef, flag: '115'}});
+        const catPlay = await app.inject({method: 'POST', url: catBase + '/play', payload: {id: catRef, flag: '115', delivery: 'proxy'}});
         assert.equal(catPlay.statusCode, 200, catPlay.body);
         const catURL = new URL(catPlay.json().url), catMedia = await app.inject({url: catURL.pathname, headers: {range: 'bytes=0-3'}});
         assert.equal(catMedia.statusCode, 206, catMedia.body);
         assert.equal((await app.inject({method: 'POST', url: `/cat/netdisk-sub/netdisk-token/api/${other}/play`, payload: {id: ref}})).statusCode, 403);
         const secondRef = episodes[1].split('$')[1];
-        const hls = await app.inject({method: 'POST', url: `/watch/sources/${source}/play`, payload: {play: secondRef}});
+        const hls = await app.inject({method: 'POST', url: `/watch/sources/${source}/play`, payload: {play: secondRef, delivery: 'proxy'}});
         const list = await app.inject(hls.json().url);
         assert.equal(list.statusCode, 200, list.body);
         const child = new URL(list.body.split('\n').find(line => line.startsWith('http')));
