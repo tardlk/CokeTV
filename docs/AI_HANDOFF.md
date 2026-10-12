@@ -12,37 +12,37 @@
 
 ## 0. 当前接手入口（先看本节）
 
-**最新交付：2026-10-12，Emby及网盘授权管理已提交推送并发布。** 功能提交 [081db7d](https://github.com/tardlk/CokeTV/commit/081db7dee4c65c68c41213334126bfdbd70cfdf1) 已在main；[Verify38212969852](https://github.com/tardlk/CokeTV/actions/runs/38212969852)、[Docker38212969858](https://github.com/tardlk/CokeTV/actions/runs/38212969858)均success。GHCR latest/sha-081db7d为同一已验收镜像，详情见7.52。随后纯文档交接提交不重复发布镜像。
+**最新交付：2026-10-12，drpy-node兼容基线与持续对照门禁已提交推送并发布。** 功能提交 [cbcd7dd](https://github.com/tardlk/CokeTV/commit/cbcd7ddaafebfa7fbddc5cb59eeedd5e7da8387f) 已在main；[Verify38255541113](https://github.com/tardlk/CokeTV/actions/runs/38255541113)、[Docker38255540891](https://github.com/tardlk/CokeTV/actions/runs/38255540891)均success。GHCR latest/sha-cbcd7dd为同一已验收镜像，详情见7.57。随后纯文档交接提交使用skip ci，不重复发布镜像。
 
 Emby在每条订阅的链接弹窗提供根地址、coke和订阅Token；自动准备有限电影/剧集目录，无独立页面/开关/账号创建。115/光鸭网盘管理改为平台卡片与授权弹窗，支持扫码/已有授权及确认移除本机授权。新增依赖/系统包/常驻服务0，发行仍零预置源。最新界面与规则见7.50–7.51；7.47–7.49为历史阶段，独立账号/默认关闭/独立Emby页面描述不再代表当前行为。
 
-**同日兼容修复（本机，未推送/发布）**：已完成模块入口/参数/首页合并（7.54）、CatVod冷启动（7.55），继续统一至2.0.6文件基线，补齐Python/PHP基类、大响应、跨规则和分阶段超时，恢复原版DR2客户端下发。46组固定原版实际对照、285全量、17独立源及206原生arm64容器回归通过；77真实源+2控制源共258组扩大抽测及边界见7.56。Verify/Docker已配置持续对照门禁，远端未运行。不能把抽测扩大为所有源完全一致；TVBox专有适配和豆瓣导航仍暂停扩展。
+**本轮兼容修复（已发布）**：已完成模块入口/参数/首页合并（7.54）、CatVod冷启动（7.55），统一至2.0.6文件基线，补齐Python/PHP基类、大响应、跨规则和分阶段超时，恢复原版DR2客户端下发。46组固定原版实际对照、285全量、17独立源、本机206原生arm64和远端206原生amd64容器回归通过；77真实源+2控制源共258组扩大抽测及边界见7.56。Verify/Docker持续对照门禁均已实际通过，提交发布见7.57。不能把抽测扩大为所有源完全一致；TVBox专有适配和豆瓣导航仍暂停扩展。
 
 **同日只读核验（未改业务）**：按用户要求实际部署原版drpy-node2.0.6并读取镜像源码，五脚本API和固定响应对照已验证；结论/清理见7.53。不能将“支持default导出”等同于这五份TVBox脚本直接全部可用。
 
 **上一发行快照：2026-10-11，已提交推送并发布。** 功能提交 `fee3f9c29b1f9574c96c210db37b06515fc2cdba` 已在origin/main，Verify与Docker amd64均success，发布前178项容器回归及完整矩阵通过；GHCR latest/sha-fee3f9c已匿名核对同一digest，详见7.46。其后的纯文档交接提交不重复发布。本机继续源码运行，两个独立站点源与凭据仅保存在本机；发行仍零预置源。
 
-接手先 `git status` → 根 `AGENTS.md` → 本节 → 7.54–7.56。7.52是最新提交发布记录，7.50–7.51是最终界面/行为；7.54–7.56为尚未推送的本机兼容修复，执行文件当前基线以7.56和engine/UPSTREAM.json为准。不得用旧镜像覆盖本机data，也不要按历史描述重复安装环境、恢复临时服务或重复发表评论。
+接手先 `git status` → 根 `AGENTS.md` → 本节 → 7.56–7.57。7.57是最新提交发布记录，7.50–7.51是当前界面/行为；7.54–7.56记录兼容修复的过程，执行文件基线以7.56和engine/UPSTREAM.json为准。不得用旧镜像覆盖本机data，也不要按历史描述重复安装环境、恢复临时服务或重复发表评论。
 
 ### 当前状态
 
 | 项目 | 当前结论 |
 | --- | --- |
-| Git/发行 | main功能SHA081db7d；[Verify38212969852](https://github.com/tardlk/CokeTV/actions/runs/38212969852)、[Docker38212969858](https://github.com/tardlk/CokeTV/actions/runs/38212969858)均success，candidate/publish成功；后续纯文档提交领先功能发行SHA属于预期 |
-| 当前已核对镜像 | `ghcr.io/tardlk/coketv:latest` / `sha-081db7d`：`sha256:fa59fe6d82cdfff51409d6b1a9665197ee0abc412baded0b11a51de2d93599fa`，linux/amd64、User=node、OCI revision081db7d；config digest与已验收候选image ID一致 |
+| Git/发行 | main功能SHAcbcd7dd；[Verify38255541113](https://github.com/tardlk/CokeTV/actions/runs/38255541113)、[Docker38255540891](https://github.com/tardlk/CokeTV/actions/runs/38255540891)均success，candidate/publish成功；后续纯文档提交领先功能发行SHA属于预期 |
+| 当前已核对镜像 | `ghcr.io/tardlk/coketv:latest` / `sha-cbcd7dd`：`sha256:13e7e53b5e67729865eefed3ab2dad54fe965b3e4113fd547cf8cd7cfe3544bb`，linux/amd64、User=node、OCI revisioncbcd7dd；config digest与已验收候选image ID一致 |
 | 统一网盘 | 115和光鸭三端默认客户端直连，NAS只负责目录/API转存/取地址，失败不自动回退中转；普通源及显式delivery=proxy仍兼容原媒体权限 |
 | 光鸭授权/转存 | 后台二维码/已有授权导入、原子0600保存、自动刷新；转存默认关闭。本机获明确批准已开启，仅新增所选视频到CokeTV专用目录并复用，不移动/删除/覆盖，副本不自动清理 |
 | 本机运行数据 | 2脚本/2源（蜗牛4K、光鸭臻影社），1默认订阅且成员0，0解析器。管理密码、网站Cookie与两网盘账号私有保留；不重置、不删除、不随Git推送 |
 | 独立源位置 | 忽略的.tools/woniu4k/与.tools/guangya-source/，各含JS/说明/测试；通过后台导入到本机data，源和凭据不在发行树。源码克隆不会自动得到这两个源 |
 | 网站权限 | 光鸭臻影社源v1.0.1，仅取账号可见资源；未回复文章服务端不下发链接，正常回复需滑块。用户手动完成一次回复后已读取14集，未实现无人值守回复。同篇文章不需逐集回复，先刷新详情；会话失效再更新Cookie/对应UA |
-| 已执行验证 | 当前本机check/build、212后端+73UI=285、独立源17项、原版实际46组及原生arm64容器206回归通过，见7.56。已发布081db7d的GitHub为273测试、原生amd64容器194回归及矩阵，不能作为尚未发布修改的验收。Infuse自动目录与第二集本机样片见7.50 |
+| 已执行验证 | 本机及远端check/build、212后端+73UI=285通过，本机独立源17项。两远端门禁分别完成amd64原版46组实际对照；原生amd64候选206回归与完整矩阵通过，发布身份核对见7.57。本机原生arm64与扩大实源见7.56；Infuse样片仍为7.50的实测 |
 | 尚未验收 | 发布后拉取容器完整复验未执行；异地公网IP、真实TVBox/猫影视新网盘解码、人工听音/整片、完整光鸭App扫码确认未实测。二维码生成/已有授权真实验证通过，扫码确认/刷新有固定样本 |
 | 服务/环境 | 仅本机54058源码服务及按需worker，无自动启动项；54059–54063临时服务均已清理。既有Node22.23.3/npm10.9.9、Python3.12.14、PHP8.4.23、项目依赖与dist约777MiB保留，新增qrcode约3MiB已计入 |
 | 私有资料 | 真实PID/绝对路径/日志见忽略的HANDOFF.md、.tools/ENVIRONMENT.md、.tools/run/service.json。网站/网盘账号与订阅Token不得复制进公开文档 |
 
 ### 下一对话的工作边界
 
-2026-10-12 用户已要求提交GitHub，Emby和网盘管理最终实现已按要求推送并由既有流程发布，见7.52。后续新工作仍以用户指令为准，不自动部署PanSou。
+2026-10-12 已按用户授权完成Emby/网盘管理（7.52）及原版脚本兼容基线（7.57）的提交和发布。当前兼容修复及持续门禁已在main，后续新工作仍以用户指令为准，不自动部署PanSou。
 
 PanSou已完成只读研究（7.45）：建议可选HTTP聚合源，先返回光鸭/115分享，再由现有模块展开和直连；需要另行决定后端部署。没有安装/运行PanSou、移植Go插件或改变CokeTV搜索。它的光鸭分类不等于光鸭臻影社适配，未找到该站或自动回复代码，不能用它保证绕过网站回复/滑块。
 
@@ -852,3 +852,12 @@ GitHub 的 work/media-release-gates-20261006 已通过分支页 Delete branch �
 - **扩大实源**：同一隔离arm64 Linux网络，77真实源（JS37/CatVod13/PY14/PHP13）+2控制源，源SHA全部核对、79/79注册，249+9=258请求对。新增30源检查首页/首分类，其余走可达主链；54真实源至少一接口有非空内容，不等于54全链可播。麦田PY两组空列表候选来自源码随机域名，固定seed后两边实际联网及同响应重放首页115/推荐115/分类157且完整散列相同；坚果/山有木兮PHP双方超时，保留未形成结论。变量推荐/CDN/元数据、双方空/失败不冒充一致性通过，未全量执行所有302候选或账号/付费/网盘分支。
 - **验收**：check/build、212后端+73UI=285、17独立源及46组原版实际对照通过，零失败/跳过。真实Dockerfile原生arm64最终候选206回归、空壳/非root/首装、既有五服务端入口GET/HEAD/Range/HLS/key/正式CLI、同卷重启/旧票据失效通过。正式smoke脚本x64断言保持，本机临时副本只将架构断言/日志标签改为arm64，首次架构拒绝日志保留；不称原生amd64验收。源码运行库载荷不是Docker压缩层增量。
 - **本机与清理**：主服务更新仍仅127.0.0.1:54058。测试期间167个正式data文件hash不变；启动按既有Store规则刷新9个登记框架副本，其余脚本、状态/订阅、ENV/账号及历史hash逐项不变。5个任务容器及卷、3个候选tag/原版镜像和构建缓存全部清零，停止并删除独立Lima VM/工具/下载/源与原始响应缓存，54060/54062关闭，无新产品依赖/长期工具/自启。保留既有约777MiB维护环境、约3.29GiB共享Lima缓存及忽略目录.tools/runtime-alignment-20261012约1MiB脱敏方法/指标/hash/日志。本机详细报告docs/local-history/runtime-alignment-20261012.md，真实PID/清理清单见.tools/ENVIRONMENT.md；本轮未推送/发布。
+
+### 7.57 兼容基线提交与原生amd64发布（2026-10-12）
+
+- **授权与提交**：用户要求“推送至github”，随后要求继续检查。7.54–7.56的最终改动40文件、2505新增/172删除，功能提交cbcd7ddaafebfa7fbddc5cb59eeedd5e7da8387f正常快进推main，没有强推。提交前核对运行/工具/历史资料未进入Git，真实敏感值无匹配；158执行文件在Git对象中的字节与基线哈希一致，原版两份客户端bundle保持原样，没有为格式化改写第三方载荷。
+- **本机门禁**：再次运行check/build、212后端+73UI=285及17独立源回归，零失败/跳过；正式data167文件hash逐项一致，原54058源码服务未重启。没有重新部署Docker/VM或安装工具，本机原版46组和arm64实源/容器证据沿用7.56。
+- **远端门禁**：[Verify38255541113](https://github.com/tardlk/CokeTV/actions/runs/38255541113)和[Docker38255540891](https://github.com/tardlk/CokeTV/actions/runs/38255540891)均success，candidate/publish全部成功。两门禁分别实际运行amd64原版46组，与Coke及冻结响应一致；两份JSON证据均下载并核对artifact digest。原生amd64候选206回归、空数据/非root/正式CLI、五既有服务端入口媒体GET/HEAD/Range/HLS/key、同卷重启/旧票据、升级/损坏数据/旧root属主矩阵通过；DR2客户端下发另有专用回归。
+- **发行身份**：匿名读取GHCR验证latest与sha-cbcd7dd同一digest sha256:13e7e53b5e67729865eefed3ab2dad54fe965b3e4113fd547cf8cd7cfe3544bb，linux/amd64、User=node、OCI revision cbcd7ddaafebfa7fbddc5cb59eeedd5e7da8387f。config digest sha256:e2e499046ba774cc282aea7b4265e7d40bde479b79c5d944c88fe95c1abfdd16与验收报告imageId一致；发布作业加载同一验收tar后推送，未二次构建。
+- **体积与证据**：压缩层合计364637739字节，上一081db7d为364406886字节，实际增加230853字节（约225KiB）；没有增加运行依赖或常驻服务。容器证据artifact11749838365为15758字节，ZIP SHA256与API digest df904ccb6ea9887f0bf470b11fbb9a94cec5ec5514341aa5fb145209810f90e7一致。只保留小体积报告/TAP/散列，不下载候选image.tar，验证后的ZIP已删。
+- **本机/交接**：仍仅本项目54058源码服务及按需worker，无新自启；既有约777MiB维护环境、共享Lima缓存和其他项目工具保留。忽略目录.tools/github-push-20261012保留本轮本机/远端门禁、隐私/data hash、registry身份和小体积证据；真实PID在.tools/ENVIRONMENT.md。本节后纯文档提交使用skip ci，main文档SHA领先功能镜像SHA属于预期，不重复发布。未在发布后拉取完整镜像再次跑容器；原生候选与已发布config身份相同已验证。外站/账号/客户端解码等范围仍按7.56记录，不因发布扩大验收结论。
