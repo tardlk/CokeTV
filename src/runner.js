@@ -4,6 +4,7 @@ import {EventEmitter} from 'events';
 import {fileURLToPath} from 'url';
 import path from 'path';
 import {randomBytes} from 'crypto';
+import {sourceOperation} from './source-operation.js';
 
 async function freePort() {
     const server = net.createServer();
@@ -46,6 +47,14 @@ export class Runner extends EventEmitter {
             if (this.child !== child) return;
             if (message.kind === 'log') this.log({...message, source: message.source || this.current?.source});
             if (message.kind === 'stats') this.stats = message;
+            if (message.kind === 'phase' && this.current?.id === message.id &&
+                this.current.method === 'home' && message.method === 'homeVod' && !this.current.recommendationPhase) {
+                // Original home and homeVod each receive the configured timeout.
+                // Re-arm once between phases; a stuck phase still kills the worker.
+                const pending = this.current;
+                pending.recommendationPhase = true;
+                clearTimeout(pending.timer); pending.timer = pending.armTimer();
+            }
             if (message.kind === 'ws') this.wsPort = message.port;
             if (message.kind === 'gatewayReady' && this.gatewayPending) {
                 const pending = this.gatewayPending; this.gatewayPending = null;
@@ -92,9 +101,12 @@ export class Runner extends EventEmitter {
             await this.start();
             return new Promise((resolve, reject) => {
                 const id = ++this.sequence;
-                const timeout = operation === 'api' && query.ac === 'action' ? Math.max(60000, this.store.state.settings.timeout) : this.store.state.settings.timeout;
-                const timer = setTimeout(() => this.reset(`源执行超过 ${timeout / 1000} 秒，已回收运行进程`), timeout);
-                this.current = {id, source: source.instanceId, resolve, reject, timer};
+                const method = sourceOperation(query, operation);
+                const timeout = method === 'action' ? Math.max(60000, this.store.state.settings.timeout) : this.store.state.settings.timeout;
+                const armTimer = () => setTimeout(() => {
+                    if (this.current?.id === id) this.reset(`源执行超过 ${timeout / 1000} 秒，已回收运行进程`);
+                }, timeout);
+                this.current = {id, source: source.instanceId, resolve, reject, timer: armTimer(), armTimer, method};
                 this.child.send({kind: 'run', id, source, query, env, operation}, error => {
                     if (error) this.reset(error.message);
                 });

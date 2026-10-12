@@ -4,6 +4,8 @@ import net from 'net';
 import http from 'http';
 import {spawn} from 'child_process';
 import util from 'util';
+import {access} from 'fs/promises';
+import {sourceOperation} from './source-operation.js';
 
 const root = process.env.ROOT;
 process.chdir(root);
@@ -86,10 +88,10 @@ async function getEngine(name) {
     if (key === 'py') await startPython();
     if (engines.has(key)) return engines.get(key);
     if (key === 'cat') {
-        await importRuntime('libs_drpy/drpyInject.js');
-        const loader = await importRuntime('libs_drpy/moduleLoader.js');
-        globalThis.require = loader.rootRequire;
-        loader.initializeGlobalDollar();
+        // The original server always imports drpyS before registering CatVod.
+        // Cat sources use its shared globals and String.parseX even when no
+        // drpyS source has run (for example BaseSpider.fetch().data).
+        await importRuntime('libs/drpyS.js');
     }
     const filenames = {js: 'drpyS', py: 'hipy', php: 'php', cat: 'catvod'};
     if (!filenames[key]) throw new Error(`不支持的执行引擎: ${name}`);
@@ -111,11 +113,18 @@ async function hydrateEnv(raw, source) {
     env.getRule = async moduleName => {
         // 相同引擎内的跨规则调用保留原模块名。
         const target = path.join(path.dirname(source.file), `${moduleName}${path.extname(source.file)}`);
+        try { await access(target); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
         const engine = await getEngine(source.engine);
-        const moduleObject = await engine.init(target, env);
+        const proxy = new URL(raw.proxyUrl);
+        proxy.pathname = `/proxy/${encodeURIComponent(moduleName)}/`;
+        const targetEnv = {...env, proxyUrl: proxy.href, getProxyUrl: () => proxy.href};
+        const moduleObject = await engine.init(target, targetEnv);
         moduleObject.callRuleFn = (method, args = []) => {
             const functions = {'一级': 'category', '二级': 'detail', '搜索': 'search', lazy: 'play', 推荐: 'homeVod', class_parse: 'home', proxy_rule: 'proxy', action: 'action'};
-            return functions[method] ? engine[functions[method]](target, env, ...args) : moduleObject[method]?.(...args);
+            // Original unknown methods resolve to null; custom methods are returned
+            // as functions by withTimeout rather than invoked by this helper.
+            return functions[method] ? engine[functions[method]](target, targetEnv, ...args) :
+                typeof moduleObject[method] === 'function' ? moduleObject[method] : null;
         };
         return moduleObject;
     };
@@ -138,26 +147,28 @@ process.on('message', async message => {
         const engine = await getEngine(source.engine);
         const env = await hydrateEnv(rawEnv, source);
         const file = source.file;
-        const page = Math.max(1, Number(query.pg) || 1);
+        const page = Number(query.pg) || 1;
+        const method = sourceOperation(query, operation);
         let result;
-        if (operation === 'proxy') result = await engine.proxy(file, env, query);
-        else if (operation === 'parse') result = await engine.jx(file, env, query);
-        else if ('play' in query) result = await engine.play(file, env, query.flag || '', query.play, []);
-        else if ('ac' in query && 't' in query) {
+        if (method === 'proxy') result = await engine.proxy(file, env, query);
+        else if (method === 'parse') result = await engine.jx(file, env, query);
+        else if (method === 'play') result = await engine.play(file, env, query.flag, query.play);
+        else if (method === 'category') {
             let filter = {};
             if (query.ext) {
                 try { filter = JSON.parse(Buffer.from(query.ext, 'base64').toString()); }
-                catch { throw new Error('筛选参数 ext 必须为 Base64 JSON'); }
+                catch { filter = {}; }
             }
             result = await engine.category(file, env, query.t, page, 1, filter);
-        } else if ('ac' in query && 'ids' in query) result = await engine.detail(file, env, String(query.ids).split(','));
-        else if ('ac' in query && 'action' in query) result = await engine.action(file, env, query.action, query.value);
-        else if ('wd' in query) result = await engine.search(file, env, query.wd, query.quick || 0, page);
-        else if ('refresh' in query) { await engine.init(file, env, true); result = {ok: true, refreshed: true}; }
+        } else if (method === 'detail') result = await engine.detail(file, env, String(query.ids).split(','));
+        else if (method === 'action') result = await engine.action(file, env, query.action, query.value);
+        else if (method === 'search') result = await engine.search(file, env, query.wd, 'quick' in query ? query.quick : 0, page);
+        else if (method === 'refresh') { await engine.init(file, env, true); result = {ok: true, refreshed: true}; }
         else {
-            const home = await engine.home(file, env, query.filter ?? 1);
+            const home = await engine.home(file, env, 'filter' in query ? query.filter : 1);
+            process.send?.({kind: 'phase', id, method: 'homeVod'});
             const recommendations = await engine.homeVod(file, env);
-            result = {...home, ...(Array.isArray(recommendations) ? {list: recommendations} : {})};
+            result = {...home, ...(Array.isArray(recommendations) && recommendations.length ? {list: recommendations} : {})};
         }
         process.send?.({kind: 'result', id, result});
     } catch (error) {

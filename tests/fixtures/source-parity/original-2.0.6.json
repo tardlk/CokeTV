@@ -1,0 +1,613 @@
+[
+  {
+    "case": "cat_cold:0",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "class": [],
+      "extracted": "fixture",
+      "subtitle": "1\n00:00:01,000 --> 00:00:04,000\n样片",
+      "database": "function",
+      "jsonBig": "object"
+    }
+  },
+  {
+    "case": "js:0",
+    "engine": "js",
+    "status": 200,
+    "result": {
+      "class": [
+        {
+          "type_id": "movie",
+          "type_name": "样片"
+        }
+      ],
+      "list": [
+        {
+          "vod_id": "home",
+          "vod_name": "首页"
+        }
+      ],
+      "filter": 1,
+      "type": "影视",
+      "filters": null
+    }
+  },
+  {
+    "case": "js:1",
+    "engine": "js",
+    "status": 200,
+    "result": {
+      "page": 2,
+      "pagecount": 9999,
+      "limit": 20,
+      "total": 999999,
+      "list": [
+        {
+          "vod_id": "category",
+          "vod_name": "{\"tid\":\"movie\",\"pg\":2,\"filter\":1,\"extend\":{}}"
+        }
+      ]
+    }
+  },
+  {
+    "case": "js:2",
+    "engine": "js",
+    "status": 200,
+    "result": {}
+  },
+  {
+    "case": "js:3",
+    "engine": "js",
+    "status": 200,
+    "result": {
+      "list": [
+        {
+          "list": [],
+          "ids": [
+            "one",
+            "two"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "case": "js:4",
+    "engine": "js",
+    "status": 200,
+    "result": {
+      "parse": 0,
+      "url": "https://media.example.test/fixture.mp4",
+      "jx": 0
+    }
+  },
+  {
+    "case": "js:5",
+    "engine": "js",
+    "status": 200,
+    "result": {
+      "name": "echo",
+      "value": "fixture"
+    }
+  },
+  {
+    "case": "cat:0",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "class": [
+        {
+          "type_id": "movie",
+          "type_name": "样片"
+        }
+      ],
+      "list": [
+        {
+          "vod_id": "home",
+          "vod_name": "首页"
+        }
+      ],
+      "filter": 1
+    }
+  },
+  {
+    "case": "cat:1",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "list": [],
+      "args": {
+        "tid": "movie",
+        "pg": 2,
+        "filter": 1,
+        "extend": {}
+      },
+      "config": {
+        "stype": 4,
+        "skey": "catvod_compat_fixture_cat",
+        "sourceKey": "catvod_compat_fixture_cat",
+        "ext": ""
+      }
+    }
+  },
+  {
+    "case": "cat:2",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "list": [],
+      "args": {
+        "wd": "样片",
+        "quick": "",
+        "pg": 2
+      }
+    }
+  },
+  {
+    "case": "cat:3",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "list": [],
+      "ids": [
+        "one",
+        "two"
+      ]
+    }
+  },
+  {
+    "case": "cat:4",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "parse": 0,
+      "url": "https://media.example.test/fixture.mp4",
+      "args": {
+        "flag": "default-flag",
+        "flags": "default-flags"
+      }
+    }
+  },
+  {
+    "case": "cat:5",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "name": "echo",
+      "value": "fixture"
+    }
+  },
+  {
+    "case": "cat:6",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "class": [
+        {
+          "type_id": "movie",
+          "type_name": "样片"
+        }
+      ],
+      "list": [
+        {
+          "vod_id": "home",
+          "vod_name": "首页"
+        }
+      ],
+      "filter": null
+    }
+  },
+  {
+    "case": "cat:7",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "list": [],
+      "args": {
+        "tid": "movie",
+        "pg": -2,
+        "filter": 1,
+        "extend": {}
+      },
+      "config": {
+        "stype": 4,
+        "skey": "catvod_compat_fixture_cat",
+        "sourceKey": "catvod_compat_fixture_cat",
+        "ext": ""
+      }
+    }
+  },
+  {
+    "case": "py:0",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "class": [
+        {
+          "type_id": "movie",
+          "type_name": "样片"
+        }
+      ],
+      "filter": 1,
+      "list": [
+        {
+          "vod_id": "home",
+          "vod_name": "首页"
+        }
+      ]
+    }
+  },
+  {
+    "case": "py:1",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "list": [],
+      "args": {
+        "tid": "movie",
+        "pg": 2,
+        "filter": 1,
+        "extend": {}
+      }
+    }
+  },
+  {
+    "case": "py:2",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "list": [],
+      "args": {
+        "wd": "样片",
+        "quick": "",
+        "pg": 2
+      }
+    }
+  },
+  {
+    "case": "py:3",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "list": [],
+      "ids": [
+        "one",
+        "two"
+      ]
+    }
+  },
+  {
+    "case": "py:4",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "parse": 0,
+      "url": "https://media.example.test/fixture.mp4",
+      "args": {
+        "flag": null,
+        "flags": null
+      }
+    }
+  },
+  {
+    "case": "py:5",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "list": [],
+      "args": {
+        "tid": 123,
+        "pg": 2,
+        "filter": 1,
+        "extend": {}
+      }
+    }
+  },
+  {
+    "case": "py:6",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "list": [],
+      "args": {
+        "wd": 123,
+        "quick": 0,
+        "pg": 2
+      }
+    }
+  },
+  {
+    "case": "php:0",
+    "engine": "php",
+    "status": 200,
+    "result": {
+      "class": [
+        {
+          "type_id": "movie",
+          "type_name": "样片"
+        }
+      ],
+      "filter": 1,
+      "list": [
+        {
+          "vod_id": "home",
+          "vod_name": "首页"
+        }
+      ]
+    }
+  },
+  {
+    "case": "php:1",
+    "engine": "php",
+    "status": 200,
+    "result": {
+      "list": [],
+      "args": {
+        "tid": "movie",
+        "pg": 2,
+        "filter": 1,
+        "extend": []
+      }
+    }
+  },
+  {
+    "case": "php:2",
+    "engine": "php",
+    "status": 200,
+    "result": {
+      "list": [],
+      "args": {
+        "wd": "样片",
+        "quick": "",
+        "pg": 2
+      }
+    }
+  },
+  {
+    "case": "php:3",
+    "engine": "php",
+    "status": 200,
+    "result": {
+      "list": [],
+      "ids": [
+        "one",
+        "two"
+      ]
+    }
+  },
+  {
+    "case": "php:4",
+    "engine": "php",
+    "status": 200,
+    "result": {
+      "parse": 0,
+      "url": "https://media.example.test/fixture.mp4",
+      "args": {
+        "flag": null,
+        "flags": null
+      }
+    }
+  },
+  {
+    "case": "py_partial:0",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "class": [
+        {
+          "type_id": "minimal",
+          "type_name": "最小源"
+        }
+      ]
+    }
+  },
+  {
+    "case": "py_partial:1",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "list": []
+    }
+  },
+  {
+    "case": "py_partial:2",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "list": []
+    }
+  },
+  {
+    "case": "py_build_url:0",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "class": [],
+      "value": "https://fixture.example.test/x?raw=YQ==&flag=&page=2",
+      "list": [
+        {
+          "vod_id": "home",
+          "vod_name": "首页"
+        }
+      ]
+    }
+  },
+  {
+    "case": "py_hex:0",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "class": [],
+      "value": "01 FF",
+      "list": [
+        {
+          "vod_id": "home",
+          "vod_name": "首页"
+        }
+      ]
+    }
+  },
+  {
+    "case": "py_hls:0",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "class": [],
+      "value": "#EXTM3U\n#EXTINF:4,\nhttps://fixture.example.test/live/a.ts\n#EXTINF:4,\nhttps://fixture.example.test/live/b.ts",
+      "list": [
+        {
+          "vod_id": "home",
+          "vod_name": "首页"
+        }
+      ]
+    }
+  },
+  {
+    "case": "py_rsa:0",
+    "engine": "py",
+    "status": 200,
+    "result": {
+      "class": [],
+      "value": true,
+      "list": [
+        {
+          "vod_id": "home",
+          "vod_name": "首页"
+        }
+      ]
+    }
+  },
+  {
+    "case": "php_env:0",
+    "engine": "php",
+    "status": 200,
+    "result": {
+      "class": [],
+      "proxy": "http://fixture.example.test/proxy/compat_fixture_php_env/?do=php&extend=",
+      "initial": "http://fixture.example.test/proxy/compat_fixture_php_env/?do=php&extend="
+    }
+  },
+  {
+    "case": "php_large:0",
+    "engine": "php",
+    "status": 200,
+    "result": {
+      "class": [],
+      "payload": {
+        "length": 11534336,
+        "sha256": "d3cc623cd0df8c815806104a74383e616f7fc26c4c8710ae8d787809de886bea"
+      }
+    }
+  },
+  {
+    "case": "child:0",
+    "engine": "js",
+    "status": 200,
+    "result": {
+      "class": [],
+      "proxy": "http://fixture.example.test/proxy/compat_fixture_child/?do=js&extend=",
+      "type": "影视",
+      "filters": null,
+      "list": []
+    }
+  },
+  {
+    "case": "cross_missing:0",
+    "engine": "js",
+    "status": 200,
+    "result": {
+      "class": [],
+      "missing": true,
+      "type": "影视",
+      "filters": null,
+      "list": []
+    }
+  },
+  {
+    "case": "cross_child:0",
+    "engine": "js",
+    "status": 200,
+    "result": {
+      "class": [],
+      "title": "child",
+      "child": {
+        "class": [],
+        "proxy": "http://fixture.example.test/proxy/compat_fixture_child/?do=js&extend=",
+        "type": "影视",
+        "filters": null,
+        "list": []
+      },
+      "unknown": null,
+      "customType": "function",
+      "type": "影视",
+      "filters": null,
+      "list": []
+    }
+  },
+  {
+    "case": "refresh:0",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "class": [],
+      "count": 1
+    }
+  },
+  {
+    "case": "refresh:1",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "refreshed": true
+    }
+  },
+  {
+    "case": "refresh:2",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "class": [],
+      "count": 2
+    }
+  },
+  {
+    "case": "home_budget:0",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "configured": true
+    }
+  },
+  {
+    "case": "home_budget:1",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "class": [],
+      "phase": "home",
+      "list": [
+        {
+          "vod_id": "budget",
+          "vod_name": "per-method"
+        }
+      ]
+    }
+  },
+  {
+    "case": "home_budget:2",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "configured": false
+    }
+  },
+  {
+    "case": "action_budget:0",
+    "engine": "cat",
+    "status": 200,
+    "result": {
+      "completed": true
+    }
+  }
+]

@@ -118,14 +118,16 @@ TVBox 在另一台设备上时，在设置中填写可达的服务对外地址�
 | 引擎 | 语言 | 执行入口 |
 | --- | --- | --- |
 | drpyS / JS | JavaScript | 原规则引擎及上下文注入 |
-| DR2 | JavaScript | DS 规则兼容入口，特殊规则需逐源验证 |
+| DR2 | JavaScript | TVBox客户端运行；订阅提供脚本及原版配套运行库 |
 | CatVod | JavaScript | 原 ESM 适配及 `assets://` 加载 |
 | HIPY | Python | 原 Python 桥接与按需 T4 守护进程 |
 | PHP | PHP | 原 PHP Spider 桥接 |
 
 保留原模块名 API/代理入口、网盘辅助库、WASM、源代理、Range/206、媒体流及 HLS 分片/key 地址改写。源引擎、Python 与辅助服务按需启动。
 
-内核来自 drpy-node 2.0.4。旧播放器、音乐控制台、在线终端等外围页面未纳入 CokeTV。CatVod 此处指服务器支持的 JS 模块，不是 Android JAR 运行器。固定样本协议通过不等于所有第三方站点当前可播放。
+执行兼容基线固定为 drpy-node 2.0.6，文件来源、哈希和必要的Coke补丁登记在 `engine/UPSTREAM.json`。旧播放器、音乐控制台、在线终端等外围页面未纳入 CokeTV。CatVod 此处指服务器支持的 JS 模块，不是 Android JAR 运行器。支持自动识别 `__jsEvalReturn`、`export default` 及默认导出别名/重导出；导入、初始化、参数传递和首页合并按原版脚本契约验证，保留异步 `req` 与包含 `ext` 的初始化对象。固定样本协议通过不等于所有第三方站点当前可播放。
+
+DR2订阅使用type3客户端脚本方式，与原版保持一致；脚本和运行库地址受有效订阅Token保护，脚本下载还检查源是否启用及属于该订阅，不下发源ENV或网盘账号。DR2客户端运行能力不能自动等同于网页/Emby服务端可执行；旧服务端drpyS尝试入口保留。原版XBPQ空样例也无法初始化，Coke保留占位实现，不将其列为可用引擎。
 
 ## 数据与配置
 

@@ -1,0 +1,1001 @@
+{
+  "version": "2.0.6",
+  "repository": "https://github.com/hjdhnx/drpy-node",
+  "revision": "c466cb162fbf9522570722449ca6706ced01cb2b",
+  "image": "ghcr.io/hjdhnx/drpy-node@sha256:2edbbdd6608590eb821809d6c871bf3ed19e86dc61ede2aed7a6ff49fc2ebe24",
+  "manifests": {
+    "amd64": "sha256:b1742a8da3f654cf5cd2cf6473c574ef9b260f0835107c26b33e860a79b01a7f",
+    "arm64": "sha256:5ad11f1bf6b14b070a79e30dcd752a0f16c64e623494cda9030a2dc6b9b49545"
+  },
+  "contract": {
+    "casesSha256": "a8edfc1286ba9422fc222cd64665f94682df91b90529426c5793588dad591563",
+    "snapshotSha256": "fb1a2a3a8b6948c1e3dbdd5b452fdf96ff0cacba3bab44f60d9b5ae6f88e40c4"
+  },
+  "intentionalBoundaries": [
+    "Source ENV, authentication, subscription scope and private output remain Coke host responsibilities.",
+    "Refresh runs source init but returns acknowledgement instead of exposing the original rule/config object.",
+    "Python IPC uses JSON, not legacy pickle. PHP errors are redacted and TLS is verified by default.",
+    "DR2 is distributed as client type3 with the original runtime; legacy server drpyS fallback is not a separate original DR2 API.",
+    "Original XBPQ empty test.json fails rule.init; the placeholder is retained but not advertised as an executable source engine.",
+    "Reference container interpreter versions can differ; the gate checks script behavior, not arbitrary operating-system APIs."
+  ],
+  "dependencies": {
+    "@fastify/formbody": {
+      "range": "^8.0.2",
+      "upstreamRange": "^7.4.0",
+      "reason": "Coke HTTP host uses Fastify5; original script operations are checked through its host adapter."
+    },
+    "@fastify/multipart": {
+      "range": "^9.4.0",
+      "upstreamRange": "^8",
+      "reason": "Coke HTTP host uses Fastify5; original script operations are checked through its host adapter."
+    },
+    "@fastify/static": {
+      "range": "^10.1.5",
+      "upstreamRange": "7.0.4",
+      "reason": "Coke HTTP host uses Fastify5; original script operations are checked through its host adapter."
+    },
+    "adm-zip": {
+      "range": "^0.6.0",
+      "upstreamRange": "^0.6.0"
+    },
+    "axios": {
+      "range": "^1.7.9",
+      "upstreamRange": "^1.7.9"
+    },
+    "basic-ftp": {
+      "range": "^6.2.2",
+      "upstreamRange": "^5.0.5",
+      "reason": "Existing maintained transport dependency; host streaming regression coverage retained."
+    },
+    "cheerio": {
+      "range": "^1.0.0-rc.12",
+      "upstreamRange": "^1.0.0-rc.12"
+    },
+    "crypto-js": {
+      "range": "^4.2.0",
+      "upstreamRange": "^4.2.0"
+    },
+    "dayjs": {
+      "range": "^1.11.13",
+      "upstreamRange": "^1.11.13"
+    },
+    "dotenv": {
+      "range": "^16.4.7",
+      "upstreamRange": "^16.4.7"
+    },
+    "fastify": {
+      "range": "^5.12.5",
+      "upstreamRange": "^4.15.0",
+      "reason": "Coke HTTP host uses Fastify5; original script operations are checked through its host adapter."
+    },
+    "fastq": {
+      "range": "^1.17.1",
+      "upstreamRange": "^1.17.1"
+    },
+    "form-data": {
+      "range": "^4.0.4",
+      "upstreamRange": "^4.0.4"
+    },
+    "fs-extra": {
+      "range": "^11.3.4",
+      "upstreamRange": "^11.3.4"
+    },
+    "google-protobuf": {
+      "range": "^3.21.4",
+      "upstreamRange": "^3.21.4"
+    },
+    "https-proxy-agent": {
+      "range": "^7.0.6",
+      "upstreamRange": "^7.0.6"
+    },
+    "iconv-lite": {
+      "range": "^0.6.3",
+      "upstreamRange": "^0.6.3"
+    },
+    "json-bigint": {
+      "range": "^1.0.0",
+      "upstreamRange": "^1.0.0"
+    },
+    "lodash": {
+      "range": "^4.17.21",
+      "upstreamRange": "^4.17.21"
+    },
+    "lru-cache": {
+      "range": "^9.1.2",
+      "upstreamRange": "^9.1.2"
+    },
+    "mime-types": {
+      "range": "^2.1.35",
+      "upstreamRange": "^2.1.35"
+    },
+    "minizlib": {
+      "range": "^3.0.1",
+      "upstreamRange": "^3.0.1"
+    },
+    "node-forge": {
+      "range": "^1.3.1",
+      "upstreamRange": "^1.3.1"
+    },
+    "node-sqlite3-wasm": {
+      "range": "^0.8.35",
+      "upstreamRange": "^0.8.35"
+    },
+    "pickleparser": {
+      "range": "^0.2.1",
+      "upstreamRange": "^0.2.1"
+    },
+    "pinyin": {
+      "range": "^4.0.0",
+      "upstreamRange": "^4.0.0"
+    },
+    "python-shell": {
+      "range": "^5.0.0",
+      "upstreamRange": "^5.0.0"
+    },
+    "qs": {
+      "range": "^6.13.1",
+      "upstreamRange": "^6.13.1"
+    },
+    "simplecc-wasm": {
+      "range": "^1.1.0",
+      "upstreamRange": "^1.1.0"
+    },
+    "sync-fetch": {
+      "range": "^0.6.0-2",
+      "upstreamRange": "^0.6.0-2"
+    },
+    "tslib": {
+      "range": "^2.8.1",
+      "upstreamRange": "^2.8.1"
+    },
+    "tunnel": {
+      "range": "^0.0.6",
+      "upstreamRange": "^0.0.6"
+    },
+    "undici": {
+      "range": "^6.21.1",
+      "upstreamRange": "^6.21.1"
+    },
+    "ws": {
+      "range": "^8.18.0",
+      "upstreamRange": "^8.18.0"
+    },
+    "xmlhttprequest": {
+      "range": "^1.8.0",
+      "upstreamRange": "^1.8.0"
+    },
+    "puppeteer-core": {
+      "range": "^25.12.0",
+      "upstreamRange": "25.0.4",
+      "reason": "External configured browser, no bundled Chromium download."
+    }
+  },
+  "files": {
+    "LICENSE": {
+      "kind": "upstream",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+      "upstreamSha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    },
+    "client/dist/drpy-core-lite.min.js": {
+      "kind": "upstream",
+      "sha256": "18bab373dfa67a4956f25f273fafb3e5b6b9fdf7bafb21acf0f6264b474900f5",
+      "upstreamSha256": "18bab373dfa67a4956f25f273fafb3e5b6b9fdf7bafb21acf0f6264b474900f5",
+      "upstreamPath": "public/dist/drpy-core-lite.min.js"
+    },
+    "client/drpy/drpy2.min.js": {
+      "kind": "upstream",
+      "sha256": "8b4568984b7e2e0b13d4fb181ac0d362226292c00b86136e8efd529b6fa3cb55",
+      "upstreamSha256": "8b4568984b7e2e0b13d4fb181ac0d362226292c00b86136e8efd529b6fa3cb55",
+      "upstreamPath": "public/drpy/drpy2.min.js"
+    },
+    "config/filter_keywords.json": {
+      "kind": "patch",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "upstreamSha256": "de2163148e0cab0165d214a97437d0c900ed36f356a0ccab08496725ed9550cd",
+      "reason": "Empty-shell configuration: no preloaded catalog, parser or service settings."
+    },
+    "config/map.txt": {
+      "kind": "patch",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "upstreamSha256": "e9ca21b6ce28e60754bc01f4a6ab3d2382c25531af7dad0fee24ecbe4087689c",
+      "reason": "Empty-shell configuration: no preloaded catalog, parser or service settings."
+    },
+    "config/market-plugins.json": {
+      "kind": "patch",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "upstreamSha256": "2f8a0df7ca81ba3212da173eab3918f71af4ae32c0374d1d1da7572583dbd330",
+      "reason": "Empty-shell configuration: no preloaded catalog, parser or service settings."
+    },
+    "config/market.json": {
+      "kind": "patch",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "upstreamSha256": "20875479e40160dfd97ead0b35320e9b25b972c1cedd8ff953f9e56db6c29486",
+      "reason": "Empty-shell configuration: no preloaded catalog, parser or service settings."
+    },
+    "config/parses.conf": {
+      "kind": "patch",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "upstreamSha256": "90535b6472bdb7ce4638409914c2c7711e552252d90fb966432dd622e7d7dfe8",
+      "reason": "Empty-shell configuration: no preloaded catalog, parser or service settings."
+    },
+    "config/player.json": {
+      "kind": "patch",
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "upstreamSha256": "07c12a66dc383c8ce5ac45d9cc3c685bbeb76d5797901c96181cfb5ec96c0fe4",
+      "reason": "Empty-shell configuration: no preloaded catalog, parser or service settings."
+    },
+    "controllers/fastlogger.js": {
+      "kind": "patch",
+      "sha256": "9d95d52a3c1b95baf12d5e820a8fb6be4d85d89319cffc94104e043d22bec4c9",
+      "upstreamSha256": "4dda98532847153ad679ca266ea7c3121b3d6e06f18a81be302e934318fcc221",
+      "reason": "Coke host logger and source-scoped secret redaction; no second Fastify server."
+    },
+    "controllers/ftp-proxy.js": {
+      "kind": "patch",
+      "sha256": "3bb043baf23657777841d6aa9f43f997e563c1b139dbf0cda1794c429e8971d8",
+      "upstreamSha256": "961d3977dd8a5389b80d2ff3349f4a65437730c8cf47604769d1f4aa52f587c9",
+      "reason": "Host authentication, HEAD/Range resource cleanup and existing controller fixes."
+    },
+    "controllers/webdav-proxy.js": {
+      "kind": "patch",
+      "sha256": "378446b0ab254ae541a4f04fc85525f6b9a6b0fc9a2f4067502773858e180bdc",
+      "upstreamSha256": "19e5ebd7a267b3f9a29a62c26fcc8bcb0975a339ea08e0865a4a89cdde9898d3",
+      "reason": "Host authentication and existing health response compatibility fixes."
+    },
+    "data/.gitkeep": {
+      "kind": "host",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "upstreamSha256": null,
+      "reason": "Empty-shell directory placeholder."
+    },
+    "json/.gitkeep": {
+      "kind": "host",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "upstreamSha256": null,
+      "reason": "Empty-shell directory placeholder."
+    },
+    "jx/.gitkeep": {
+      "kind": "host",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "upstreamSha256": null,
+      "reason": "Empty-shell directory placeholder."
+    },
+    "libs/catvod.js": {
+      "kind": "patch",
+      "sha256": "db34b21169d319437a3cd8fc916c3c8b86c09a64ec30d868df10dfdf6933756a",
+      "upstreamSha256": "bf15f3af28d0a7aa3797393713bc8f685987bf715125c6758e1202eb64d6c674",
+      "reason": "Per-instance module/cache scope and administrator-managed custom parameters."
+    },
+    "libs/drpyS.js": {
+      "kind": "patch",
+      "sha256": "302931a94ef441b7b2d0e3cf9f704452d333e7e76f20e2f323841c85172d1909",
+      "upstreamSha256": "427fb0f9f2ebc432bb3a6ce49eb6b599f3232e167df9c51df7a4d753953e4464",
+      "reason": "Per-instance ENV/cache scope, custom parameters and authenticated IPv4 loopback."
+    },
+    "libs/drpysParser.js": {
+      "kind": "upstream",
+      "sha256": "ef55238f03f20952ab6bb066fa23ea07dc5d1fc91c4fadd0884f2458cfccec12",
+      "upstreamSha256": "ef55238f03f20952ab6bb066fa23ea07dc5d1fc91c4fadd0884f2458cfccec12"
+    },
+    "libs/hipy.js": {
+      "kind": "patch",
+      "sha256": "21068958bb79c0ac57f88d38cd8789c51757975e71560d908a2fbd4bc7871f7f",
+      "upstreamSha256": "65cf5822983cc3b68ebdf0fe91790e711f41c8c2705dcc9da3ffd6ce190b79e5",
+      "reason": "Per-instance cache/custom parameters and explicit ungzip dependency."
+    },
+    "libs/php.js": {
+      "kind": "patch",
+      "sha256": "bafbd710a51183a296d647cb4fcb8db8d8378ac5c36a33822495f6a622955695",
+      "upstreamSha256": "2d67aaa86779faf6f2a86f5b8c14a96888634a8f242648c326bb38213f1b172a",
+      "reason": "Original streaming/memory budget with host secret-redacted errors, instance cache and proxy alias compatibility."
+    },
+    "libs/xbpq.js": {
+      "kind": "upstream",
+      "sha256": "97d1b5da27b513a109a8771fda96ba90632e28dd5e2044b563b1b8d55d48902a",
+      "upstreamSha256": "97d1b5da27b513a109a8771fda96ba90632e28dd5e2044b563b1b8d55d48902a"
+    },
+    "libs_drpy/_dist/gb18030.js": {
+      "kind": "upstream",
+      "sha256": "ce0a46dd19be1ea41a18faca46f1b5a42b9da23b612b0d9e55e0b2a36b0635b1",
+      "upstreamSha256": "ce0a46dd19be1ea41a18faca46f1b5a42b9da23b612b0d9e55e0b2a36b0635b1"
+    },
+    "libs_drpy/_dist/gbk.js": {
+      "kind": "upstream",
+      "sha256": "9253bac11123a6ac1b513348d3ff523cf8aa707c3f38eaa8fa4fb7ccac38c99e",
+      "upstreamSha256": "9253bac11123a6ac1b513348d3ff523cf8aa707c3f38eaa8fa4fb7ccac38c99e"
+    },
+    "libs_drpy/_dist/json5.js": {
+      "kind": "upstream",
+      "sha256": "e0c0d4cca8bc1ee39687f39e9d09cbac9ec95476ced0a7d9025d3f82c0a74844",
+      "upstreamSha256": "e0c0d4cca8bc1ee39687f39e9d09cbac9ec95476ced0a7d9025d3f82c0a74844"
+    },
+    "libs_drpy/_dist/node-rsa.js": {
+      "kind": "upstream",
+      "sha256": "b668b56052b558269bedb92fc105211b54624aa2909dedd99e6e356f53a5f0dd",
+      "upstreamSha256": "b668b56052b558269bedb92fc105211b54624aa2909dedd99e6e356f53a5f0dd"
+    },
+    "libs_drpy/_dist/qjs-wasm.js": {
+      "kind": "upstream",
+      "sha256": "1dbf35a59f0ab0f4235a6f30640b55d12680aaf4b14695a5da6ebce355a58a44",
+      "upstreamSha256": "1dbf35a59f0ab0f4235a6f30640b55d12680aaf4b14695a5da6ebce355a58a44"
+    },
+    "libs_drpy/_dist/sortName.js": {
+      "kind": "upstream",
+      "sha256": "7022ab2db55403a51806767ae61b03a0a1d21b112cca3f384e57e455c911517c",
+      "upstreamSha256": "7022ab2db55403a51806767ae61b03a0a1d21b112cca3f384e57e455c911517c"
+    },
+    "libs_drpy/abba.js": {
+      "kind": "upstream",
+      "sha256": "6c6398d5390f3a3a1f616249ef7369c7f0d4a6820244fad0c3cc511ed020fe11",
+      "upstreamSha256": "6c6398d5390f3a3a1f616249ef7369c7f0d4a6820244fad0c3cc511ed020fe11"
+    },
+    "libs_drpy/axios.min.js": {
+      "kind": "upstream",
+      "sha256": "6b8d7ede7ca6aa0dcb6a2b9b49921cbd205cfc4ad7f515d252e2eab1dfa9615e",
+      "upstreamSha256": "6b8d7ede7ca6aa0dcb6a2b9b49921cbd205cfc4ad7f515d252e2eab1dfa9615e"
+    },
+    "libs_drpy/batchExecute.js": {
+      "kind": "upstream",
+      "sha256": "51c5626302528fc43fb3651da594c66735e8f0c63dc85d580a45157ae94acdd6",
+      "upstreamSha256": "51c5626302528fc43fb3651da594c66735e8f0c63dc85d580a45157ae94acdd6"
+    },
+    "libs_drpy/crypto-js-wasm.js": {
+      "kind": "upstream",
+      "sha256": "6517c131407bafcc080d67453f0dd1163f0881da2f2a14c78792bcc448aded5e",
+      "upstreamSha256": "6517c131407bafcc080d67453f0dd1163f0881da2f2a14c78792bcc448aded5e"
+    },
+    "libs_drpy/crypto-js.js": {
+      "kind": "upstream",
+      "sha256": "e888d4276fa167121c6fca26dbc9821a8a79b66ae9b192e5a33c6a5bb2056e53",
+      "upstreamSha256": "e888d4276fa167121c6fca26dbc9821a8a79b66ae9b192e5a33c6a5bb2056e53"
+    },
+    "libs_drpy/crypto-util.js": {
+      "kind": "upstream",
+      "sha256": "28abeed0e872540544bde73b99c923133900aea959fd0e66146cae6083bb4012",
+      "upstreamSha256": "28abeed0e872540544bde73b99c923133900aea959fd0e66146cae6083bb4012"
+    },
+    "libs_drpy/drpyCustom.js": {
+      "kind": "patch",
+      "sha256": "d85502551afc6d6854b7b464a5f0806e1a2e241274991f70843a2ed17addc552",
+      "upstreamSha256": "4659b81ce29f4777a02488d482371199091d29af65a9da8654700ddf12f9f0d9",
+      "reason": "Explicit log import fixes existing helper logging without changing script API."
+    },
+    "libs_drpy/drpyInject.js": {
+      "kind": "patch",
+      "sha256": "dd55231ecee9921abf39d59700764081fe498786a5c6d060be419f0acb4caa33",
+      "upstreamSha256": "91596baa33fe220c54e3518ff4334e356a4d3be8018574fec9785ec741ee4706",
+      "reason": "Authenticated self-request loopback for private host resources."
+    },
+    "libs_drpy/drpyRsa.js": {
+      "kind": "upstream",
+      "sha256": "962bee17939974ed15606d70d7f64580e87a0c379f7757c1676de91d38c574b5",
+      "upstreamSha256": "962bee17939974ed15606d70d7f64580e87a0c379f7757c1676de91d38c574b5"
+    },
+    "libs_drpy/es6-extend.js": {
+      "kind": "upstream",
+      "sha256": "0f6826685e2e9beae8c6d4c6342cfb9410d3b5370721999ea670f07e0e4acd8c",
+      "upstreamSha256": "0f6826685e2e9beae8c6d4c6342cfb9410d3b5370721999ea670f07e0e4acd8c"
+    },
+    "libs_drpy/fetchAxios.js": {
+      "kind": "upstream",
+      "sha256": "f002a0c9a22135014d776e58825bb0abc540e1dfaa9700dc3574c13020136c4f",
+      "upstreamSha256": "f002a0c9a22135014d776e58825bb0abc540e1dfaa9700dc3574c13020136c4f"
+    },
+    "libs_drpy/hikerBatchFetch.js": {
+      "kind": "upstream",
+      "sha256": "3d4969693d585e2cf5079c058b267b64ba5125a6eda4620d999f4fa2341cbaf1",
+      "upstreamSha256": "3d4969693d585e2cf5079c058b267b64ba5125a6eda4620d999f4fa2341cbaf1"
+    },
+    "libs_drpy/hls-parser.js": {
+      "kind": "upstream",
+      "sha256": "e722a2fbac9e7aa2fccd518ca670b88cb30c44d438ae8c750dbbd0556c9201ee",
+      "upstreamSha256": "e722a2fbac9e7aa2fccd518ca670b88cb30c44d438ae8c750dbbd0556c9201ee"
+    },
+    "libs_drpy/htmlParser.js": {
+      "kind": "upstream",
+      "sha256": "e52ae09db70745dc73b08a2e0289b094006880730b37777a54c3eea3550e628d",
+      "upstreamSha256": "e52ae09db70745dc73b08a2e0289b094006880730b37777a54c3eea3550e628d"
+    },
+    "libs_drpy/jinja.js": {
+      "kind": "upstream",
+      "sha256": "1787f9d6b0562170faca907a8ec14816ed43e01f08da1ba232651ed28413f3c7",
+      "upstreamSha256": "1787f9d6b0562170faca907a8ec14816ed43e01f08da1ba232651ed28413f3c7"
+    },
+    "libs_drpy/jsencrypt.js": {
+      "kind": "upstream",
+      "sha256": "37346f465953f9e032ffc4ab2aeedc809023fed97eda8d7ad7c0c05afa37c138",
+      "upstreamSha256": "37346f465953f9e032ffc4ab2aeedc809023fed97eda8d7ad7c0c05afa37c138"
+    },
+    "libs_drpy/jsonpath-adapter.js": {
+      "kind": "upstream",
+      "sha256": "b785a6cceb4b1d0ab9804f7a5b6b11bfe981c4b379795f186e6687d5806d659e",
+      "upstreamSha256": "b785a6cceb4b1d0ab9804f7a5b6b11bfe981c4b379795f186e6687d5806d659e"
+    },
+    "libs_drpy/jsonpathplus.min.js": {
+      "kind": "upstream",
+      "sha256": "f6ed124c5ae9126499176a2a523dfb2acc9aacfa7521ae15f5ca8f0fff0aa3a3",
+      "upstreamSha256": "f6ed124c5ae9126499176a2a523dfb2acc9aacfa7521ae15f5ca8f0fff0aa3a3"
+    },
+    "libs_drpy/mod.js": {
+      "kind": "upstream",
+      "sha256": "a2012ee174cf8dc630c095ddad46ad6528e517e89f764dc68d7f425ff9f2a839",
+      "upstreamSha256": "a2012ee174cf8dc630c095ddad46ad6528e517e89f764dc68d7f425ff9f2a839"
+    },
+    "libs_drpy/moduleLoader.js": {
+      "kind": "upstream",
+      "sha256": "df6eaeafee835174e03e80340b91085b04fa525533d9930db137efdffdf11673",
+      "upstreamSha256": "df6eaeafee835174e03e80340b91085b04fa525533d9930db137efdffdf11673"
+    },
+    "libs_drpy/pako.min.js": {
+      "kind": "upstream",
+      "sha256": "988778d9429a189cabe5ac0e22ff0ecb9c025973ddbe9cd516b9e9c83c79ad0f",
+      "upstreamSha256": "988778d9429a189cabe5ac0e22ff0ecb9c025973ddbe9cd516b9e9c83c79ad0f"
+    },
+    "libs_drpy/req-extend.js": {
+      "kind": "patch",
+      "sha256": "a9baea3cb3a6385668ec62e92d4df8435c79183ab5fede4dd0edad0222af6762",
+      "upstreamSha256": "8027b81b6df6bd5e56be8bae6227964de73eef42f1cf288e79de1601c5654d62",
+      "reason": "Authenticated self-request loopback for private host resources."
+    },
+    "libs_drpy/template.js": {
+      "kind": "upstream",
+      "sha256": "03c41525e34e8ff54c7544a70249f8376c3269d2a143887fbbffedfaa8542b94",
+      "upstreamSha256": "03c41525e34e8ff54c7544a70249f8376c3269d2a143887fbbffedfaa8542b94"
+    },
+    "libs_drpy/underscore-esm.js": {
+      "kind": "upstream",
+      "sha256": "362d10de56abdafb71c69a8744d32c321aba48f8cdab0f9676b7da8feadbb7f4",
+      "upstreamSha256": "362d10de56abdafb71c69a8744d32c321aba48f8cdab0f9676b7da8feadbb7f4"
+    },
+    "libs_drpy/underscore-esm.min.js": {
+      "kind": "upstream",
+      "sha256": "9522087c4ab16f083ecb61740cc0f6f2c0789399d157d86fd992433e459e0092",
+      "upstreamSha256": "9522087c4ab16f083ecb61740cc0f6f2c0789399d157d86fd992433e459e0092"
+    },
+    "spider/catLib/cat.js": {
+      "kind": "upstream",
+      "sha256": "49bcc6c6ade5fcbfce98875f51bafc010ebb015f7e8db2a9fc2e22a4575ac046",
+      "upstreamSha256": "49bcc6c6ade5fcbfce98875f51bafc010ebb015f7e8db2a9fc2e22a4575ac046"
+    },
+    "spider/catLib/cheerio.min.js": {
+      "kind": "upstream",
+      "sha256": "10cf39856c496ed2c681c00b6a245b2306a119041591c35d1e31b6bf0a9e6901",
+      "upstreamSha256": "10cf39856c496ed2c681c00b6a245b2306a119041591c35d1e31b6bf0a9e6901"
+    },
+    "spider/catLib/crypto-js.js": {
+      "kind": "upstream",
+      "sha256": "e888d4276fa167121c6fca26dbc9821a8a79b66ae9b192e5a33c6a5bb2056e53",
+      "upstreamSha256": "e888d4276fa167121c6fca26dbc9821a8a79b66ae9b192e5a33c6a5bb2056e53"
+    },
+    "spider/catLib/http.js": {
+      "kind": "upstream",
+      "sha256": "571ab51445a240c1e1fb34c5d1e36f8f7559c27cda657421409b499036b40031",
+      "upstreamSha256": "571ab51445a240c1e1fb34c5d1e36f8f7559c27cda657421409b499036b40031"
+    },
+    "spider/catLib/mod.js": {
+      "kind": "upstream",
+      "sha256": "facaa97cad7d7eed0e09509c7d90bd9adbcf979ed87d78cdb865de13c6b275d7",
+      "upstreamSha256": "facaa97cad7d7eed0e09509c7d90bd9adbcf979ed87d78cdb865de13c6b275d7"
+    },
+    "spider/catLib/similarity.js": {
+      "kind": "upstream",
+      "sha256": "921218b6b6c6794714c284975ba9f87220c57b40fc4f4c78e21741dc96b747be",
+      "upstreamSha256": "921218b6b6c6794714c284975ba9f87220c57b40fc4f4c78e21741dc96b747be"
+    },
+    "spider/catLib/sortName.js": {
+      "kind": "upstream",
+      "sha256": "0a63129bd27861a1e48faa4525187c2a47d8298a94bd0b4de79e6a45a58f4378",
+      "upstreamSha256": "0a63129bd27861a1e48faa4525187c2a47d8298a94bd0b4de79e6a45a58f4378"
+    },
+    "spider/catLib/spider.js": {
+      "kind": "upstream",
+      "sha256": "b9a12ce376fb233155dff066e1b39d66af4e63f7d05a55030315bc14fe8a624a",
+      "upstreamSha256": "b9a12ce376fb233155dff066e1b39d66af4e63f7d05a55030315bc14fe8a624a"
+    },
+    "spider/catvod/_dsutil.js": {
+      "kind": "upstream",
+      "sha256": "1aa760dc1d008c278f206abc2a6691a2b9b441971af90ff9844f09569e10ea77",
+      "upstreamSha256": "1aa760dc1d008c278f206abc2a6691a2b9b441971af90ff9844f09569e10ea77"
+    },
+    "spider/js/_lib.action.js": {
+      "kind": "upstream",
+      "sha256": "ac0914aa47fde6785c80b89300b1c85a49bb199b4dd813f36261e8198ce720c1",
+      "upstreamSha256": "ac0914aa47fde6785c80b89300b1c85a49bb199b4dd813f36261e8198ce720c1"
+    },
+    "spider/js/_lib.cntv-urlparse.cjs": {
+      "kind": "upstream",
+      "sha256": "5b8aa745068847fc5a4d5d4639f81ffea8c270ca84294e616a37aa295ea1f3f5",
+      "upstreamSha256": "5b8aa745068847fc5a4d5d4639f81ffea8c270ca84294e616a37aa295ea1f3f5"
+    },
+    "spider/js/_lib.cntv-wasm.cjs": {
+      "kind": "upstream",
+      "sha256": "ecc46b8bf0a07a85cbbeb313c5d1aa176c48df1287b1a2e8326be0644123d646",
+      "upstreamSha256": "ecc46b8bf0a07a85cbbeb313c5d1aa176c48df1287b1a2e8326be0644123d646"
+    },
+    "spider/js/_lib.cntv.js": {
+      "kind": "upstream",
+      "sha256": "f4133b6bd96e17362c69d1b1e5d9d53654036a872f2bd7005e5519e26cc312cd",
+      "upstreamSha256": "f4133b6bd96e17362c69d1b1e5d9d53654036a872f2bd7005e5519e26cc312cd"
+    },
+    "spider/js/_lib.cntv.live.js": {
+      "kind": "upstream",
+      "sha256": "d32bc71273426a8d05629bc304c365af6070c9cc49c1e3f386e3530090f49917",
+      "upstreamSha256": "d32bc71273426a8d05629bc304c365af6070c9cc49c1e3f386e3530090f49917"
+    },
+    "spider/js/_lib.cntv2026.cjs": {
+      "kind": "upstream",
+      "sha256": "5d27bff189041aecec831aaab201da6b4ef6b04f48bc1355bbb8cc3f88903c5b",
+      "upstreamSha256": "5d27bff189041aecec831aaab201da6b4ef6b04f48bc1355bbb8cc3f88903c5b"
+    },
+    "spider/js/_lib.douyin_pb.cjs": {
+      "kind": "upstream",
+      "sha256": "7c96b9735f9aff5d7ebba1dce49132b7b7ae8524afc2fd70ee0d50ad9ffabcc4",
+      "upstreamSha256": "7c96b9735f9aff5d7ebba1dce49132b7b7ae8524afc2fd70ee0d50ad9ffabcc4"
+    },
+    "spider/js/_lib.douyin_sign.cjs": {
+      "kind": "upstream",
+      "sha256": "ed218c5d558e4dfa405c8f595e629e938a8edf0a1e539fe8bbc86e1438d5983f",
+      "upstreamSha256": "ed218c5d558e4dfa405c8f595e629e938a8edf0a1e539fe8bbc86e1438d5983f"
+    },
+    "spider/js/_lib.douyu.cjs": {
+      "kind": "upstream",
+      "sha256": "d07c6e39ffca0757c00c3a62659703949d95f1c560a4cd0f3304ee57de953c64",
+      "upstreamSha256": "d07c6e39ffca0757c00c3a62659703949d95f1c560a4cd0f3304ee57de953c64"
+    },
+    "spider/js/_lib.random.js": {
+      "kind": "upstream",
+      "sha256": "527cdbb4b9c6c1c09c8e5b51e8e68508903f9ecdcabde75efc99da3eba580106",
+      "upstreamSha256": "527cdbb4b9c6c1c09c8e5b51e8e68508903f9ecdcabde75efc99da3eba580106"
+    },
+    "spider/js/_lib.request.cjs": {
+      "kind": "upstream",
+      "sha256": "9549241002bccbfb9e8c575d47582ec91ef7250578577c04df556d9dcc5a9d5d",
+      "upstreamSha256": "9549241002bccbfb9e8c575d47582ec91ef7250578577c04df556d9dcc5a9d5d"
+    },
+    "spider/js/_lib.request.js": {
+      "kind": "upstream",
+      "sha256": "e03d996319915c8918388462992cf8b8ba5c2cf2d7750e11657c98c01f30424f",
+      "upstreamSha256": "e03d996319915c8918388462992cf8b8ba5c2cf2d7750e11657c98c01f30424f"
+    },
+    "spider/js/_lib.scan.js": {
+      "kind": "upstream",
+      "sha256": "c11240f71b74a82b9c531a5ff82afaed460d3f05258497527659ad860f9847dd",
+      "upstreamSha256": "c11240f71b74a82b9c531a5ff82afaed460d3f05258497527659ad860f9847dd"
+    },
+    "spider/js/_lib.tingyou.js": {
+      "kind": "upstream",
+      "sha256": "65a37855de25c3fcef9450f936fb3a96536bbb51c230eebd31213bdd4c78ded8",
+      "upstreamSha256": "65a37855de25c3fcef9450f936fb3a96536bbb51c230eebd31213bdd4c78ded8"
+    },
+    "spider/js/_lib.waf.js": {
+      "kind": "upstream",
+      "sha256": "bf91fb711c384818c9b3981ebe620050a824b7484d4a25bd47544596970bb4f9",
+      "upstreamSha256": "bf91fb711c384818c9b3981ebe620050a824b7484d4a25bd47544596970bb4f9"
+    },
+    "spider/js_dr2/.gitkeep": {
+      "kind": "host",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "upstreamSha256": null,
+      "reason": "Empty-shell directory placeholder."
+    },
+    "spider/php/_bridge.php": {
+      "kind": "patch",
+      "sha256": "a68e785ee126fd36765ca88ba114e7fbb8bde73324e9a56a78c2649fd18bf69b",
+      "upstreamSha256": "65c7c7b29b8daa036f283c86eab9fe12f4f4726867bf4338719258ed71bc1bfa",
+      "reason": "Original setEnv lifecycle plus warning/output separation and derived proxy alias resolution."
+    },
+    "spider/php/lib/HtmlParser.php": {
+      "kind": "patch",
+      "sha256": "8d5903d21bbbd8e5878d66844fa73c3c34617eaab1b9656b3da2f584436ee9c4",
+      "upstreamSha256": "1a8e359d28f3fbddc33b320f616b9b67fb5b8b1e696ceb5ddd8b670b0ca28c26",
+      "reason": "Preserve UTF-8 DOM handling without introducing extra text nodes."
+    },
+    "spider/php/lib/spider.php": {
+      "kind": "patch",
+      "sha256": "7a1fdf39da28d51bda0b774373383278a3155e4fbea46c7d1e9a820dc9f5b0f0",
+      "upstreamSha256": "08de73eb9fe7367b3665251089481b440251c10ad06bbce1d560d418e84104d7",
+      "reason": "Original proxy context/direct PHP routing plus existing TLS verification, diagnostics and proxy alias."
+    },
+    "spider/py/_bridge.py": {
+      "kind": "upstream",
+      "sha256": "ce72496127abb6e35ab1ed5b90bb66a6c0c915758e1dff700a44f9a570597806",
+      "upstreamSha256": "ce72496127abb6e35ab1ed5b90bb66a6c0c915758e1dff700a44f9a570597806"
+    },
+    "spider/py/base/htmlParser.py": {
+      "kind": "upstream",
+      "sha256": "13f2f1ae152fcaf46fb290383b10ddc887f9c380d038d407f02baecb361d935c",
+      "upstreamSha256": "13f2f1ae152fcaf46fb290383b10ddc887f9c380d038d407f02baecb361d935c"
+    },
+    "spider/py/base/requirements.txt": {
+      "kind": "upstream",
+      "sha256": "1ce1d1ed42e2568ecb662be9645078a8a76046472659686c25d8f98a24167622",
+      "upstreamSha256": "1ce1d1ed42e2568ecb662be9645078a8a76046472659686c25d8f98a24167622"
+    },
+    "spider/py/base/spider.py": {
+      "kind": "patch",
+      "sha256": "1f06c24e31bb73ec50a096590bafc0bef01c9e1f6fc0951f41979cc6fc7497c0",
+      "upstreamSha256": "57c693f19d281fe0fc8c847285a886682ec53a6f8eaa2f0d2ce25ebf4a455fbe",
+      "reason": "Original 2.0.6 base API; preserve percent-encoding for media proxy Base64 query values."
+    },
+    "spider/py/core/bridge.js": {
+      "kind": "patch",
+      "sha256": "0f1cbc222a462b5544242ebdfc9f05acf16decff2794ba80b566e7c1627b2e58",
+      "upstreamSha256": "c29a38b7bef04ac49807c32793976d275bb598a53825c3123f885dfcdc637001",
+      "reason": "Dynamic worker port and matched 32MiB packet limit."
+    },
+    "spider/py/core/bridge.py": {
+      "kind": "patch",
+      "sha256": "a143bbed4cdcea9cce17331079839483cc4974f594dc51c99f0a729aee89a74b",
+      "upstreamSha256": "af65845b31ba8c5c2c2f4329459c549bbd68c96e2e7f2eaee77cc383d5e96a74",
+      "reason": "JSON-only IPC; rejects unsafe legacy pickle input."
+    },
+    "spider/py/core/t4_daemon.py": {
+      "kind": "patch",
+      "sha256": "dbaa44868016e63d0c72f789d338e4a8c71581006c7822e5d613f62a2df072a5",
+      "upstreamSha256": "a5becd9caec740a6fa8b045218b04001e0fefc7f4d1c7932812d9489ce858289",
+      "reason": "Dynamic worker port, matched packet/time budgets, JSON-only input and safe shutdown."
+    },
+    "spider/py/core/t4_daemon_lite.py": {
+      "kind": "patch",
+      "sha256": "78ecf1d686d8bc4c16f02bb31bf45f339b7ebb664d6e49fb52eeedb19c17dad3",
+      "upstreamSha256": "bfe974569061dcc3912196cdac4bde2c1823fcfb7ff12e93ddeb3db3e7614fe4",
+      "reason": "Dynamic worker port, matched budgets and JSON-only legacy bridge."
+    },
+    "spider/xbpq/test.json": {
+      "kind": "upstream",
+      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "upstreamSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    "utils/admin/logReader.js": {
+      "kind": "upstream",
+      "sha256": "a4001d24119c72cc3dae2d5b46eb2f496e7b445c09641d6bdba48fc93dbfefa6",
+      "upstreamSha256": "a4001d24119c72cc3dae2d5b46eb2f496e7b445c09641d6bdba48fc93dbfefa6"
+    },
+    "utils/ai/DeepSeek.js": {
+      "kind": "upstream",
+      "sha256": "51dcd31879b47eb841a638648f5675e32117f7d7ad58f431b846792e37c7214a",
+      "upstreamSha256": "51dcd31879b47eb841a638648f5675e32117f7d7ad58f431b846792e37c7214a"
+    },
+    "utils/ai/Kimi.js": {
+      "kind": "upstream",
+      "sha256": "d54040043ae8f2ac93b18ebae1738bb9398da00647fffe7278edfcfd66d68d9b",
+      "upstreamSha256": "d54040043ae8f2ac93b18ebae1738bb9398da00647fffe7278edfcfd66d68d9b"
+    },
+    "utils/ai/SparkAI.js": {
+      "kind": "upstream",
+      "sha256": "5a09dd2ce37f9e4e7b946b8014904581baebdaef66605d85a8bba82a83cd782d",
+      "upstreamSha256": "5a09dd2ce37f9e4e7b946b8014904581baebdaef66605d85a8bba82a83cd782d"
+    },
+    "utils/ai/SparkAIBot.js": {
+      "kind": "upstream",
+      "sha256": "527d2ae26e69b29ac234398be38fd8601266f72db3eb15cc4823ed92a79ff03f",
+      "upstreamSha256": "527d2ae26e69b29ac234398be38fd8601266f72db3eb15cc4823ed92a79ff03f"
+    },
+    "utils/ai/base-chat.js": {
+      "kind": "upstream",
+      "sha256": "bb26bcd9b23325b9186b4567862fc5f94b5c85a4a5c7798f62142515027b2d56",
+      "upstreamSha256": "bb26bcd9b23325b9186b4567862fc5f94b5c85a4a5c7798f62142515027b2d56"
+    },
+    "utils/ais.js": {
+      "kind": "upstream",
+      "sha256": "c2feca7c0a5b2a2c1b92039da0436803e39d7c2e45252bbd3c567b7400d19f4b",
+      "upstreamSha256": "c2feca7c0a5b2a2c1b92039da0436803e39d7c2e45252bbd3c567b7400d19f4b"
+    },
+    "utils/api_helper.js": {
+      "kind": "upstream",
+      "sha256": "71d164855a09e59bae250de8077f9f98d969f5cbd2f74b5723b16dfa7b191578",
+      "upstreamSha256": "71d164855a09e59bae250de8077f9f98d969f5cbd2f74b5723b16dfa7b191578"
+    },
+    "utils/api_validate.js": {
+      "kind": "upstream",
+      "sha256": "5846b8cfcae42c95696ce6366e324b06b1c53fc0d6a96295187c7141a7412abe",
+      "upstreamSha256": "5846b8cfcae42c95696ce6366e324b06b1c53fc0d6a96295187c7141a7412abe"
+    },
+    "utils/binHelper.js": {
+      "kind": "upstream",
+      "sha256": "973931c37ddcd7706646bfac7eb093e2708c3b964e53d2c6e40b868518fb9fac",
+      "upstreamSha256": "973931c37ddcd7706646bfac7eb093e2708c3b964e53d2c6e40b868518fb9fac"
+    },
+    "utils/bounded-cache.js": {
+      "kind": "upstream",
+      "sha256": "0d9baeb3bc17c1a66aad28c72d23c44ae9c1562cb5c5fb91ac3011208a5a4ee4",
+      "upstreamSha256": "0d9baeb3bc17c1a66aad28c72d23c44ae9c1562cb5c5fb91ac3011208a5a4ee4"
+    },
+    "utils/changelogParser.js": {
+      "kind": "upstream",
+      "sha256": "ab1bb48bf46ffb4b6dee374064805686284268db87fa73975374fa144bb4d4b0",
+      "upstreamSha256": "ab1bb48bf46ffb4b6dee374064805686284268db87fa73975374fa144bb4d4b0"
+    },
+    "utils/chunk.js": {
+      "kind": "upstream",
+      "sha256": "91c0aa8cea652d67ee9bd88ef0e22748a5e5867328cc912d485ecccc4015c9b2",
+      "upstreamSha256": "91c0aa8cea652d67ee9bd88ef0e22748a5e5867328cc912d485ecccc4015c9b2"
+    },
+    "utils/cookieManager.js": {
+      "kind": "upstream",
+      "sha256": "d2ebf81eae4477363e0a4f888207b14ec097dba27e0630720cf927970a18f105",
+      "upstreamSha256": "d2ebf81eae4477363e0a4f888207b14ec097dba27e0630720cf927970a18f105"
+    },
+    "utils/createAxiosAgent.js": {
+      "kind": "upstream",
+      "sha256": "34c874cd8ab674b595929a213199f1cac83e5f8d475743f5b7e19086629cfe75",
+      "upstreamSha256": "34c874cd8ab674b595929a213199f1cac83e5f8d475743f5b7e19086629cfe75"
+    },
+    "utils/daemonManager.js": {
+      "kind": "upstream",
+      "sha256": "bbdac34b69dd9fc9b2dff0f30de791ee46d1b61844755477c3f9e1efde034b28",
+      "upstreamSha256": "bbdac34b69dd9fc9b2dff0f30de791ee46d1b61844755477c3f9e1efde034b28"
+    },
+    "utils/database.js": {
+      "kind": "upstream",
+      "sha256": "e773936bc2a705d37c399d4c6da302cdbb78b18b978933ebe8c803bab3484a7e",
+      "upstreamSha256": "e773936bc2a705d37c399d4c6da302cdbb78b18b978933ebe8c803bab3484a7e"
+    },
+    "utils/datetime-format.js": {
+      "kind": "upstream",
+      "sha256": "e5b36e16b90f7fdbfb1037968983ba5c0940278c4e51f6b8f30b621a50b39e20",
+      "upstreamSha256": "e5b36e16b90f7fdbfb1037968983ba5c0940278c4e51f6b8f30b621a50b39e20"
+    },
+    "utils/dns_doh.js": {
+      "kind": "upstream",
+      "sha256": "78803c6c3d7f0b9534e94960760cbd260c80e04786cee024867715d7ac2662af",
+      "upstreamSha256": "78803c6c3d7f0b9534e94960760cbd260c80e04786cee024867715d7ac2662af"
+    },
+    "utils/env.js": {
+      "kind": "patch",
+      "sha256": "842b5e94fe4156068b22c70cb86d78925180bbd0cbb6d9083bdd0c8f3ea1d5a8",
+      "upstreamSha256": "b856bbffc89f2ecf03cacae94a7a46def804cd9a5da36e04062860b7fbcd8b6a",
+      "reason": "Per-instance ENV and atomic private-0600 writes."
+    },
+    "utils/esm-loader.mjs": {
+      "kind": "upstream",
+      "sha256": "3c426dcb1037df868f85407fdd1ec8163275a84020818cad8be5679a096e6789",
+      "upstreamSha256": "3c426dcb1037df868f85407fdd1ec8163275a84020818cad8be5679a096e6789"
+    },
+    "utils/esm-register.mjs": {
+      "kind": "upstream",
+      "sha256": "3279614ccf4eec4e12b32b12b5a36438eabd04a21f46fcdb1bd498e36e0c2118",
+      "upstreamSha256": "3279614ccf4eec4e12b32b12b5a36438eabd04a21f46fcdb1bd498e36e0c2118"
+    },
+    "utils/file.js": {
+      "kind": "patch",
+      "sha256": "6e8444560fa220a4416f21492b36f0cc2d4ef48aa62ed34d7fd03a60d427c8a7",
+      "upstreamSha256": "9d354d41afa9696ccb45d9fbc370020025bba98cbce48e33c702e0d20c07c624",
+      "reason": "Reject same-prefix sibling paths in data helpers."
+    },
+    "utils/fileHeaderManager.js": {
+      "kind": "upstream",
+      "sha256": "0fa74f490555e4292858981d59a461d027a04fdbf499ce86f4e90109fdae78a0",
+      "upstreamSha256": "0fa74f490555e4292858981d59a461d027a04fdbf499ce86f4e90109fdae78a0"
+    },
+    "utils/filePolicy.js": {
+      "kind": "upstream",
+      "sha256": "3748a3be18a5cb5e3731239e0a5d6195197c2066748d76e9382a23ba9e4807d2",
+      "upstreamSha256": "3748a3be18a5cb5e3731239e0a5d6195197c2066748d76e9382a23ba9e4807d2"
+    },
+    "utils/fsWrapper.js": {
+      "kind": "upstream",
+      "sha256": "f227528cf544c0ea43887ea925170ccd66d463f62cc0ae851c8f852f5b1a50e0",
+      "upstreamSha256": "f227528cf544c0ea43887ea925170ccd66d463f62cc0ae851c8f852f5b1a50e0"
+    },
+    "utils/ftp.js": {
+      "kind": "upstream",
+      "sha256": "f1bd2de8fb2fd79dba24fa5b949c648a373f80e3d9df76078ce9d54064a65d00",
+      "upstreamSha256": "f1bd2de8fb2fd79dba24fa5b949c648a373f80e3d9df76078ce9d54064a65d00"
+    },
+    "utils/headless-util.js": {
+      "kind": "patch",
+      "sha256": "e4d34e1dc2ee37ca7f5493bfc69b54294d38a870073046a555025ecd821f3c97",
+      "upstreamSha256": "70b97e0265be65ed6b9a579df5cec9834016887250ca8e718febd333e76286a7",
+      "reason": "Configured external browser via puppeteer-core; browser installation remains optional."
+    },
+    "utils/imageManager.js": {
+      "kind": "upstream",
+      "sha256": "0cebfcd4bef9a2e11edbf547e046af6f50bb3a860e3e8a9edacea96441a41995",
+      "upstreamSha256": "0cebfcd4bef9a2e11edbf547e046af6f50bb3a860e3e8a9edacea96441a41995"
+    },
+    "utils/log.js": {
+      "kind": "upstream",
+      "sha256": "4ffefd48d16d4c55e879ccc1e524bc7c4650aa0e2940962ab5377115c2055342",
+      "upstreamSha256": "4ffefd48d16d4c55e879ccc1e524bc7c4650aa0e2940962ab5377115c2055342"
+    },
+    "utils/marked.min.js": {
+      "kind": "upstream",
+      "sha256": "53693a51a6903c1c1abc7802813688638c8922eb8c99278f9c125b07eb7633cf",
+      "upstreamSha256": "53693a51a6903c1c1abc7802813688638c8922eb8c99278f9c125b07eb7633cf"
+    },
+    "utils/message_sender.js": {
+      "kind": "upstream",
+      "sha256": "dff123159e56519090e7fb5df31fbdcbc9fa9de2ea38eedbf226eb2f171dddde",
+      "upstreamSha256": "dff123159e56519090e7fb5df31fbdcbc9fa9de2ea38eedbf226eb2f171dddde"
+    },
+    "utils/mime-type.js": {
+      "kind": "upstream",
+      "sha256": "fc623d5bbe495d833927053b57a11d7f1df574d4a2c0900666344cfa5446f6e4",
+      "upstreamSha256": "fc623d5bbe495d833927053b57a11d7f1df574d4a2c0900666344cfa5446f6e4"
+    },
+    "utils/misc.js": {
+      "kind": "upstream",
+      "sha256": "9d2c8d24867512f1cdccfaced10d0c003df0cd7db81b5c4b313c613a615d6182",
+      "upstreamSha256": "9d2c8d24867512f1cdccfaced10d0c003df0cd7db81b5c4b313c613a615d6182"
+    },
+    "utils/natsort.js": {
+      "kind": "upstream",
+      "sha256": "1f2551d629e88d669d55a18ad30c410475d529420864f0fba74af105a3c74678",
+      "upstreamSha256": "1f2551d629e88d669d55a18ad30c410475d529420864f0fba74af105a3c74678"
+    },
+    "utils/pan/ali.js": {
+      "kind": "upstream",
+      "sha256": "462cc643913b54c3b806c95b3dbf4cc628ee35e8bddaa2fe741fb2bf9285a27d",
+      "upstreamSha256": "462cc643913b54c3b806c95b3dbf4cc628ee35e8bddaa2fe741fb2bf9285a27d"
+    },
+    "utils/pan/baidu.js": {
+      "kind": "upstream",
+      "sha256": "2129861feb51eccd502a6849be08b50ceac36123e78585a50339bea73a0cbec5",
+      "upstreamSha256": "2129861feb51eccd502a6849be08b50ceac36123e78585a50339bea73a0cbec5"
+    },
+    "utils/pan/baidu2.js": {
+      "kind": "upstream",
+      "sha256": "d30f0ca085afe292c5d8bbd9d73fc51456146c5e1db8da5989059cc395eb5203",
+      "upstreamSha256": "d30f0ca085afe292c5d8bbd9d73fc51456146c5e1db8da5989059cc395eb5203"
+    },
+    "utils/pan/cloud.js": {
+      "kind": "upstream",
+      "sha256": "7bf6598318c3cc316e9c59fcbabf8928fed1bc2921ec5d7e4e853fc5aeb0f42a",
+      "upstreamSha256": "7bf6598318c3cc316e9c59fcbabf8928fed1bc2921ec5d7e4e853fc5aeb0f42a"
+    },
+    "utils/pan/pan123.js": {
+      "kind": "upstream",
+      "sha256": "020689dd0d2311f8f90a36e464488fed49ae30de4c3a4d373fa6539c1a97ec8b",
+      "upstreamSha256": "020689dd0d2311f8f90a36e464488fed49ae30de4c3a4d373fa6539c1a97ec8b"
+    },
+    "utils/pan/quark.js": {
+      "kind": "upstream",
+      "sha256": "dcedcabe0b62ccde3b4bab6a0d79f4a08113250bd8d941e6bcabcadad440d4e9",
+      "upstreamSha256": "dcedcabe0b62ccde3b4bab6a0d79f4a08113250bd8d941e6bcabcadad440d4e9"
+    },
+    "utils/pan/uc.js": {
+      "kind": "upstream",
+      "sha256": "50a42419e38d4ac13ad4d53d0c5c109fdf1e49c465d734e377b0e1706f02f5c7",
+      "upstreamSha256": "50a42419e38d4ac13ad4d53d0c5c109fdf1e49c465d734e377b0e1706f02f5c7"
+    },
+    "utils/pan/xun.js": {
+      "kind": "upstream",
+      "sha256": "f1c94e4a3959d3016ef8da0c38c3b96b8a08efd48019251df277e0aec8f59367",
+      "upstreamSha256": "f1c94e4a3959d3016ef8da0c38c3b96b8a08efd48019251df277e0aec8f59367"
+    },
+    "utils/pan/yun.js": {
+      "kind": "upstream",
+      "sha256": "229d043271104f9f6fd648a90b7773f32511b94979224e6808798d6db48f5da3",
+      "upstreamSha256": "229d043271104f9f6fd648a90b7773f32511b94979224e6808798d6db48f5da3"
+    },
+    "utils/pans.js": {
+      "kind": "upstream",
+      "sha256": "d90dd748b636c7b10d30e8926ccad4f48daf7adc4be5cc33d07b498beb120aab",
+      "upstreamSha256": "d90dd748b636c7b10d30e8926ccad4f48daf7adc4be5cc33d07b498beb120aab"
+    },
+    "utils/pathGuard.js": {
+      "kind": "upstream",
+      "sha256": "040ddc7bcea69984b6b2b781c8fb2fc71d34bdfc59d9cf6f3fa7bad1310714f1",
+      "upstreamSha256": "040ddc7bcea69984b6b2b781c8fb2fc71d34bdfc59d9cf6f3fa7bad1310714f1"
+    },
+    "utils/pathHelper.js": {
+      "kind": "upstream",
+      "sha256": "53fa95927815f5139d7a5c8a81500c74fec4254ad45f87ecae755f5031378e59",
+      "upstreamSha256": "53fa95927815f5139d7a5c8a81500c74fec4254ad45f87ecae755f5031378e59"
+    },
+    "utils/phpEnv.js": {
+      "kind": "upstream",
+      "sha256": "97a04a1688bd615e816c8ce1da8efa338df0390b4c6b9dce842b4d7f6fcb39aa",
+      "upstreamSha256": "97a04a1688bd615e816c8ce1da8efa338df0390b4c6b9dce842b4d7f6fcb39aa"
+    },
+    "utils/pinyin-tool.js": {
+      "kind": "upstream",
+      "sha256": "0b3d302cff34d0d5c8b2d19b889b3c4a0eea3a8a745f0c4eff0893afa7edbe49",
+      "upstreamSha256": "0b3d302cff34d0d5c8b2d19b889b3c4a0eea3a8a745f0c4eff0893afa7edbe49"
+    },
+    "utils/pluginManager.js": {
+      "kind": "upstream",
+      "sha256": "44190f56bb165eddfd4646e165d5afca8d3b3b10bc1cc72dd22a4c9c454076af",
+      "upstreamSha256": "44190f56bb165eddfd4646e165d5afca8d3b3b10bc1cc72dd22a4c9c454076af"
+    },
+    "utils/pluginMarket.js": {
+      "kind": "upstream",
+      "sha256": "49b70df513ce346362d704859e0d5273939a394c7dc215b93d678821dd9d0bbe",
+      "upstreamSha256": "49b70df513ce346362d704859e0d5273939a394c7dc215b93d678821dd9d0bbe"
+    },
+    "utils/pluginMethodManager.js": {
+      "kind": "upstream",
+      "sha256": "44b5de76c46ef3cbe5c83de62c9d1cdc8633f371100bccbc873072a4fdfb41be",
+      "upstreamSha256": "44b5de76c46ef3cbe5c83de62c9d1cdc8633f371100bccbc873072a4fdfb41be"
+    },
+    "utils/pluginRegistry.js": {
+      "kind": "upstream",
+      "sha256": "9ba99c1ac3b4664ef267280ed747561b2b8bb934dfa8efed762a11a3c86dab73",
+      "upstreamSha256": "9ba99c1ac3b4664ef267280ed747561b2b8bb934dfa8efed762a11a3c86dab73"
+    },
+    "utils/pluginsConfigFile.js": {
+      "kind": "upstream",
+      "sha256": "5e2452c5cb42d4fde702ab8ab11540d000bab71edc06622f4c6d3d1d24d64a90",
+      "upstreamSha256": "5e2452c5cb42d4fde702ab8ab11540d000bab71edc06622f4c6d3d1d24d64a90"
+    },
+    "utils/proxy-common.js": {
+      "kind": "upstream",
+      "sha256": "6761f9b41dcfd45c9f35a5b985a4e491de304c091b0121cee15f908cbd0e4507",
+      "upstreamSha256": "6761f9b41dcfd45c9f35a5b985a4e491de304c091b0121cee15f908cbd0e4507"
+    },
+    "utils/proxy-util.js": {
+      "kind": "upstream",
+      "sha256": "15f88d4a5428e11c0a4ad8f35ea980c9f5c8cef382847ea83754e6c203ef904a",
+      "upstreamSha256": "15f88d4a5428e11c0a4ad8f35ea980c9f5c8cef382847ea83754e6c203ef904a"
+    },
+    "utils/python.js": {
+      "kind": "upstream",
+      "sha256": "bccadf52d997f4ca0132f824d215864e612940d698650269dfeb7014587d00c3",
+      "upstreamSha256": "bccadf52d997f4ca0132f824d215864e612940d698650269dfeb7014587d00c3"
+    },
+    "utils/random-http-ua.js": {
+      "kind": "upstream",
+      "sha256": "ee2e37590becd84b6ee60018202828b07a336bbacba8ea81867325b8b4383b40",
+      "upstreamSha256": "ee2e37590becd84b6ee60018202828b07a336bbacba8ea81867325b8b4383b40"
+    },
+    "utils/req.js": {
+      "kind": "upstream",
+      "sha256": "f8320397f3435bed52fc3972e50cc3f658a530baba78766ffd6fab6fcd1ab84e",
+      "upstreamSha256": "f8320397f3435bed52fc3972e50cc3f658a530baba78766ffd6fab6fcd1ab84e"
+    },
+    "utils/rule-env.js": {
+      "kind": "upstream",
+      "sha256": "f6ea55033db0cfbc445178b6d573719a6573afef0a0d77f7103c56e8d140c8b1",
+      "upstreamSha256": "f6ea55033db0cfbc445178b6d573719a6573afef0a0d77f7103c56e8d140c8b1"
+    },
+    "utils/semver.js": {
+      "kind": "upstream",
+      "sha256": "c24f69cc89cb5820e002c4324379152ec12e4eff81479dcdcc310fb3049588fe",
+      "upstreamSha256": "c24f69cc89cb5820e002c4324379152ec12e4eff81479dcdcc310fb3049588fe"
+    },
+    "utils/sites-map.js": {
+      "kind": "upstream",
+      "sha256": "d867983f4b9d61fb5f5ae4f69303d8d8f0f07753a37e17cb98694ab1caebc2be",
+      "upstreamSha256": "d867983f4b9d61fb5f5ae4f69303d8d8f0f07753a37e17cb98694ab1caebc2be"
+    },
+    "utils/source-env.js": {
+      "kind": "host",
+      "sha256": "109d1572298c3c72f57ff6e5bf61845ae248df84739f5feb66ec23b5059702c0",
+      "upstreamSha256": null,
+      "reason": "Coke source execution context and secret redaction."
+    },
+    "utils/sourceState.js": {
+      "kind": "upstream",
+      "sha256": "09b972d2d1c5da4b77849872ed2681207dfad35eeaf60def6f6ce56c7bf404c5",
+      "upstreamSha256": "09b972d2d1c5da4b77849872ed2681207dfad35eeaf60def6f6ce56c7bf404c5"
+    },
+    "utils/sourceVerify.js": {
+      "kind": "upstream",
+      "sha256": "681d30d68b3ddd2edbd7a0dfc3440bf4d3e8f2cddeff4818e047ad0314f5629c",
+      "upstreamSha256": "681d30d68b3ddd2edbd7a0dfc3440bf4d3e8f2cddeff4818e047ad0314f5629c"
+    },
+    "utils/tvbox-cms.js": {
+      "kind": "host",
+      "sha256": "d684a0fbba719b93f9b2d0ae06a11771bc8633c4e57ebe4ac2e9f2910fa6be24",
+      "upstreamSha256": null,
+      "reason": "Coke JSON/XML collection API adapter."
+    },
+    "utils/utils.js": {
+      "kind": "upstream",
+      "sha256": "0bc7d4c2c229658fec0a271ec9a3be56e99c7fd3b811db9979e8eb3d323eec92",
+      "upstreamSha256": "0bc7d4c2c229658fec0a271ec9a3be56e99c7fd3b811db9979e8eb3d323eec92"
+    },
+    "utils/webdav.js": {
+      "kind": "upstream",
+      "sha256": "f4ccabb84dfe3df6ade54f7a77bce2b4b545b3b44c57922ffbdeec9630aa6e10",
+      "upstreamSha256": "f4ccabb84dfe3df6ade54f7a77bce2b4b545b3b44c57922ffbdeec9630aa6e10"
+    },
+    "utils/with-timeout.js": {
+      "kind": "upstream",
+      "sha256": "c72e62dedab6336968a8f878eac641716c27d9c2d166f6959fbf00c8b2324625",
+      "upstreamSha256": "c72e62dedab6336968a8f878eac641716c27d9c2d166f6959fbf00c8b2324625"
+    }
+  }
+}

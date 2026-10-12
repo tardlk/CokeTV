@@ -2,8 +2,7 @@ import {logError} from '../utils/log.js';
 import path from "path";
 import {readFile} from "fs/promises";
 import {fileURLToPath} from 'url';
-import {execFile} from 'child_process';
-import {promisify} from 'util';
+import {spawn} from 'child_process';
 import {LRUCache} from 'lru-cache';
 import {computeHash, deepCopy, getNowTime} from "../utils/utils.js";
 import {prepareBinary} from "../utils/binHelper.js";
@@ -11,7 +10,6 @@ import {md5} from "../libs_drpy/crypto-util.js";
 import {fastify} from "../controllers/fastlogger.js";
 import {redactSourceSecrets, sourceEnvironment} from '../utils/source-env.js';
 
-const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const _bridge_path = path.join(__dirname, '../spider/php/_bridge.php');
 
@@ -64,17 +62,30 @@ const callPhpMethod = async (filePath, methodName, env, ...args) => {
         const validPath = prepareBinary(phpPath);
         if (!validPath) { diagnostic('解释器不存在或不可用'); throw failure(); }
         phpPath = validPath;
-        const cliArgs = [_bridge_path, filePath, phpMethodName, JSON.stringify(env), ...args.map(stringify)];
-        const {stdout, stderr} = await execFileAsync(phpPath, cliArgs, {
-            encoding: 'utf8',
-            maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-            // 超时后 execFile 回收 PHP 子进程；保留原 API_TIMEOUT + 5s 预算。
-            timeout: (parseInt(process.env.API_TIMEOUT || '20') + 5) * 1000,
-            killSignal: 'SIGTERM',
-            env: {
-                ...process.env,
-                // Add any PHP specific env vars if needed
-            }
+        const cliArgs = ['-d', `memory_limit=${process.env.PHP_MEMORY_LIMIT || '512M'}`,
+            _bridge_path, filePath, phpMethodName, JSON.stringify(env), ...args.map(stringify)];
+        // Match the original streaming collector: real catalogs may exceed 10MB.
+        // Keep failures free of the command/arguments, which contain source ENV.
+        const {stdout, stderr} = await new Promise((resolve, reject) => {
+            const child = spawn(phpPath, cliArgs, {env: {...process.env}});
+            const chunks = [], errors = [];
+            let settled = false;
+            const finish = (error, result) => {
+                if (settled) return;
+                settled = true; clearTimeout(timer);
+                if (error) reject(error); else resolve(result);
+            };
+            const timer = setTimeout(() => {
+                child.kill('SIGTERM');
+                finish(Object.assign(new Error('PHP process timeout'), {killed: true}));
+            }, (parseInt(process.env.API_TIMEOUT || '20') + 5) * 1000);
+            child.stdout.on('data', bytes => chunks.push(bytes));
+            child.stderr.on('data', bytes => errors.push(bytes));
+            child.on('error', error => finish(error));
+            child.on('close', code => {
+                const result = {stdout: Buffer.concat(chunks).toString('utf8'), stderr: Buffer.concat(errors).toString('utf8')};
+                finish(code === 0 ? null : Object.assign(new Error('PHP bridge exited'), result), result);
+            });
         });
 
         if (stderr) logError(redact(`PHP stderr: ${stderr}`));
@@ -90,7 +101,7 @@ const callPhpMethod = async (filePath, methodName, env, ...args) => {
 
     } catch (error) {
         if (error.code === 'PHP_SOURCE_FAILED') throw error;
-        // execFile rejects on a bridge exit(1). Parse its stdout error envelope;
+        // The bridge exits(1) on failure. Parse its stdout error envelope;
         // never log/throw the raw Error, whose message/cmd contain all CLI args.
         let bridge;
         try { bridge = JSON.parse(String(error.stdout || '').trim()); } catch {}

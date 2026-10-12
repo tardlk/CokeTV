@@ -11,7 +11,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,3 +33,17 @@ jobs:
         env:
           TEST_PYTHON: python
           TEST_PHP: php
+      - name: Compare against pinned original drpy-node
+        run: npm run test:parity
+        env:
+          TEST_PYTHON: python
+          TEST_PHP: php
+          SOURCE_PARITY_REPORT_DIR: ${{ runner.temp }}/source-parity
+      - name: Source compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-parity-${{ github.sha }}
+          path: ${{ runner.temp }}/source-parity/
+          if-no-files-found: warn
+          retention-days: 7

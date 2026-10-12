@@ -1,6 +1,6 @@
 # 来源说明
 
-- **drpy-node 2.0.4**：兼容执行内核和辅助库保留在 `engine/`，预置站点脚本、解析脚本和站点资源已移除。内核调整、宿主和管理页面由 CokeTV 组织。原 LICENSE 保留在 engine 根目录，项目根目录保留相同 GPL-3.0 文本。
+- **drpy-node**：最初从2.0.4提取，当前执行兼容基线已按2.0.6固定镜像逐文件核对和同步，来源、原版/Coke哈希及保留补丁登记于 `engine/UPSTREAM.json`。兼容执行内核和辅助库保留在 `engine/`，预置站点脚本、解析脚本和站点资源已移除。宿主和管理页面由CokeTV组织。原LICENSE保留在engine根目录，项目根目录保留相同GPL-3.0文本。
 - **shadcn-vue / Reka UI**：管理控件使用 shadcn-vue 官方组件源码和 Reka UI。组件源码在 `web/components/ui/`，依赖按各自许可证分发。
 - **Monaco Editor**：源代码编辑器，使用 Microsoft Monaco 的白底主题、行号与代码缩略图。
 - **Lucide / DM Sans**：图标和字体由 npm 包提供，保留包内许可。
@@ -39,3 +39,5 @@
 许可口径以各 bundle 文件内保留的版权声明为准。`engine/utils/api_validate.js` 生成的版权头曾标注 "LGPL3 (github.com/hjdhnx/drpy-node)"，与本仓库 GPL-3.0-only 声明不一致；以根 `LICENSE` 与实际文件头的作者声明为准，冲突时以上游仓库为准并在此登记。
 
 `engine/spider/js/_lib.*` 是供用户源经 `$.require('./_lib.x.js')` 引用的兼容辅助库（含央视/抖音/斗鱼等站点专用逻辑与扫码登录端点），保留以维持兼容；它们不是可独立播放的成品源，上游来源与版权按原库说明。
+
+`engine/client/drpy/drpy2.min.js`及`engine/client/dist/drpy-core-lite.min.js`原样来自固定2.0.6镜像的`public/drpy/`、`public/dist/`，原版哈希在UPSTREAM清单，随附许可声明保留。两文件为DR2客户端执行内核及打包依赖，不含预置站点清单；通过受订阅鉴权的路径提供给客户端，配套相对import路径保持不变。源码载荷合计782215字节，不代表Docker压缩层增量。

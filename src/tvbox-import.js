@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {createHash, randomBytes} from 'node:crypto';
 import {builtinModules} from 'node:module';
-import {detectSourceEngine, decodeSource, syntaxCheck} from './sources.js';
+import {detectSourceEngine, decodeSource, syntaxCheck, isCatVodSource} from './sources.js';
 import {EXTENSIONS, ROOT} from './paths.js';
 import {cmsScript, parseCmsResponse} from '../engine/utils/tvbox-cms.js';
 
@@ -103,7 +103,7 @@ async function classify(store, site, index, base, budget) {
             if (engine === 'py' && !/class\s+Spider\b/.test(resource.code)) throw fail('Python 文件没有 Spider 入口');
             if (engine === 'php' && !/class\s+Spider\b/.test(resource.code)) throw fail('PHP 文件没有 Spider 入口');
             const decoded = suffix === 'js' ? await decodeSource('js', resource.code) : resource.code;
-            if (suffix === 'js' && !/\b(?:var|let|const)\s+rule\s*=|__jsEvalReturn/.test(decoded)) throw fail('JS 文件没有兼容的 rule 或 CatVod 入口');
+            if (suffix === 'js' && !/\b(?:var|let|const)\s+rule\s*=/.test(decoded) && !isCatVodSource(decoded)) throw fail('JS 文件没有兼容的 rule 或 CatVod 入口');
             const filename = `tvbox-${digest(ref.url)}.${suffix}`;
             await syntaxCheck(engine || 'js', filename, resource.code, store.state.settings);
             const dependencies = engine === 'cat' ? await stageCatDependencies(store, resource, budget) : {code: resource.code, dependencies: []};

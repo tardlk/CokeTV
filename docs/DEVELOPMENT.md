@@ -138,3 +138,28 @@ CONTAINER_REPORT_DIR=/tmp/coketv-container-report node scripts/container-matrix.
 不要在正式 data 上验收。报告记录平台、UID、Node/Python/PHP、源码 SHA、镜像 ID、清单与零跳过 TAP；首次设密验收直接提交密码和确认密码，日志产物不记录管理密码。`.github/workflows/image-verify.yml` 匿名拉取给定固定 SHA/digest 后复用完整矩阵，产物保存到工作流。旧 `latest` 可供手动选择，但不能用它证明本次源码已发布。
 
 本机是 macOS arm64，兼容运行 Docker 镜像不能冒充原生 amd64 验收。已核对的源码提交、固定镜像 digest 与发布前后验收统一见 [当前接手入口](AI_HANDOFF.md#0-当前接手入口先看本节)及该入口指向的发行记录；历史镜像只代表对应版本，本地门禁通过不代表新版本已经发布。
+
+
+## 原版脚本兼容基线
+
+同一脚本、同一配置，以固定原版镜像实际行为验收。执行基线已统一至作者drpy-node2.0.6，OCI index sha256:2edbbdd6608590eb821809d6c871bf3ed19e86dc61ede2aed7a6ff49fc2ebe24，revision c466cb162fbf9522570722449ca6706ced01cb2b；amd64/arm64 manifest与逐文件身份见engine/UPSTREAM.json。最初从2.0.4提取；此次同步Python基类、PHP代理上下文/流式大响应及路径/文件头辅助更新，并逐项登记Coke宿主补丁。不能将旧版本标签直接当作所有文件都有版本差异，也不能无审查覆盖鉴权、ENV隔离和脱敏补丁。
+
+src/sources.js的isCatVodSource由文件/ZIP与TVBox导入共用，认可原版模块导出形态，明文ESM入口保留正文。src/worker.js按原版传递省略flag/flags、quick、filter和数字pg；无效分类筛选退回空对象，空homeVod保留home自身list。异步req和init({stype,skey,sourceKey,ext})保持原有内核实现。鉴权、源参数和本源ENV管理继续由CokeTV宿主处理。
+
+回归在tests/source-compatibility.test.js与tests/tvbox-import.test.js，前者纳入容器矩阵。覆盖默认导出/别名、原版纯命名导出的实际失败、文件/ZIP/TVBox相对依赖、请求默认值、首页合并、req/local及ext包装。不要凭加载器里出现某个分支就声称该模块写法运行正常：原版2.0.6纯命名导出经过cloneDeep后确实报moduleObject.home is not a function，验收保留了这个结果。
+
+本机忽略目录.tools/drpy-parity-20261012记录原版与CokeTV逐项对照，50个案例结果匹配：五引擎25个主接口请求，加CatVod模块/参数及运行接口25个请求；错误只比较来源脚本的错误语义，宿主错误前缀可不同。新增脚本兼容差异先建立可失败用例，再按同一版本原版实测修正。固定样本覆盖不等于任意外站脚本已全部实测，也不把原版已失败的TVBox同步req或直接ext写法作为CokeTV自动适配目标。
+
+真实内置源应补充冷启动对照：每个源测试前重建worker，不能先运行JS源再据此判断CatVod独立可用。原版API控制器启动即导入drpyS，其共享初始化包括String.parseX、strExtract、lrcToSrt、DataBase和JsonBig。CokeTV首次加载CatVod时同样导入drpyS；仅导入drpyInject/moduleLoader会漏掉这些接口，BaseSpider.fetch().data因此可能在源自己的catch中被吞为列表为空。此修复没有执行额外JS站点或预置源。
+
+2026-10-12固定原版2.0.6和本地候选镜像，在同一arm64 Linux VM网络以相同脚本及依赖/配置抽测47个真实内置源（JS27、CatVod8、HIPY6、PHP6）及2个原版控制源。修复后196组真实源请求、9组控制请求未发现原版有内容而Coke单独失败/丢失内容的回退；37个真实源至少在一项请求返回非空作品或播放协议内容，其余不能计为源可用通过。西饭/星芽推荐及听了么歌词另以同一批上游响应重放，两边输出逐字段一致。该抽测不覆盖所有302个目录候选、全部筛选分页、付费/登录内容或客户端解码；DR2客户端脚本及空XBPQ样例未计入通过。原版PHP缺DOMDocument而Coke提供该扩展，也不能称整个运行环境逐字相同。本机脱敏证据在.tools/builtin-parity-20261012，全量282项及17项独立源回归通过；发布状态见AI_HANDOFF第0节。
+
+### 持续兼容门禁
+
+`npm run check`中的check-engine校验158个执行文件及36项依赖声明，新增/修改文件必须更新原版来源或明确补丁理由。125文件与固定原版相同，27文件保留已登记宿主补丁，6文件为Coke适配/空目录占位；运行时生成的pycache不计入发行身份。对照样本和冻结响应也受哈希约束，禁止直接用Coke输出更新原版快照。
+
+`npm test`中的runtime-parity使用46组离线固定输入与真实原版HTTP响应比较，覆盖CatVod冷启动、默认参数、Python部分实现/URL/十六进制/HLS/RSA/标量参数、PHP init前代理注入及11MiB输出、跨规则缺失/目标代理/方法返回、refresh重新初始化及首页/动作超时预算。刷新响应在Coke仍为确认信息，避免下发原版完整规则/配置；测试检查后续源状态，显式记录这项宿主边界，不冒充刷新响应逐字段相同。错误脱敏、JSON-only IPC、TLS默认校验及订阅范围继续保留。
+
+`npm run test:parity`需要已有Docker：启动固定原版临时容器，无宿主数据挂载，先检查revision和清单中原版文件哈希，再让原版和Coke执行同一批42输入，与冻结响应三方比较。首页与推荐分别拥有单步预算，runner在收到推荐阶段消息后只重新计时一次；任一阶段阻塞仍会回收worker。动作超时按实际分支选择，不依赖ac字面值是否为action。结束删除临时容器；本轮新拉取的参考镜像也删除，已有共享参考镜像保留。可用SOURCE_PARITY_REPORT_DIR指定小体积JSON报告目录。Verify及Docker候选工作流均设置此门禁；新增工作流须实际运行后才可报告远端通过，配置完成不等于已发布。
+
+DR2用原版type3客户端下发协议；原版两份运行库原样提供，受订阅Token保护的相对路径保留配套import。dr2-delivery回归检查下载鉴权、源范围/停用/Token撤销及实际客户端内核固定分类。旧dr2→drpyS服务端尝试保留，不能作为原版存在独立DR2服务端API的证据。原版XBPQ的test.json在实际API中返回rule.init is not a function，保留占位源码而不新增可用引擎声明。

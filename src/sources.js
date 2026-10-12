@@ -8,12 +8,17 @@ import {ENGINE_DIRS, EXTENSIONS, ROOT} from './paths.js';
 import {pathToFileURL} from 'url';
 const exec = promisify(execFile);
 export const requireImportEngine = () => Object.assign(new Error('无法确定 JS 源的运行格式，请选择对应引擎'), {statusCode: 422, importCode: 'IMPORT_ENGINE_REQUIRED'});
+// CatVod loads __jsEvalReturn(), a default object, or the module namespace.
+// Import routes must accept the same module shapes as that loader.
+export function isCatVodSource(code) {
+    return /\bexport\s+default\b|\bexport\s+(?:(?:async\s+)?function|const|let|var)\s+(?:__jsEvalReturn|init|home|homeVod|category|detail|detailContent|search|play|proxy|action)\b|\bexport\s*\{[^}]*\b(?:default|__jsEvalReturn|init|home|homeVod|category|detail|detailContent|search|play|proxy|action)\b[^}]*\}|\bexport\s*\*\s+from\b/.test(code);
+}
 export async function detectSourceEngine(name, code) {
     if (/\.py$/i.test(name)) return 'py';
     if (/\.php$/i.test(name)) return 'php';
     if (!/\.js$/i.test(name)) throw Object.assign(new Error('文件类型不支持'), {statusCode: 400});
     const decoded = await decodeSource('js', code);
-    if (/\bexport\s+(?:async\s+)?function\s+__jsEvalReturn\b|\bexport\s*\{[^}]*\b__jsEvalReturn\b/.test(decoded)) return 'cat';
+    if (isCatVodSource(decoded)) return 'cat';
     const lang = decoded.match(/\blang\s*:\s*['"]([^'"]+)['"]/)?.[1]?.toLowerCase();
     if (['cat', 'catvod'].includes(lang)) return 'cat';
     if (['dr2', 'drpy2'].includes(lang)) return 'dr2';
@@ -22,6 +27,7 @@ export async function detectSourceEngine(name, code) {
 }
 export async function decodeSource(engine, code) {
     if (!['js', 'dr2'].includes(engine)) return code;
+    if (isCatVodSource(code)) return code;
     const {getOriginalJs} = await import(pathToFileURL(path.join(ROOT, 'engine/libs_drpy/drpyCustom.js')).href);
     return getOriginalJs(code);
 }

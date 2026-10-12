@@ -51,6 +51,20 @@ jobs:
           TEST_PYTHON: python
           TEST_PHP: php
       - uses: docker/setup-buildx-action@v3
+      - name: Compare source execution against pinned original
+        run: npm run test:parity
+        env:
+          TEST_PYTHON: python
+          TEST_PHP: php
+          SOURCE_PARITY_REPORT_DIR: ${{ runner.temp }}/source-parity
+      - name: Source compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-source-parity-${{ github.sha }}
+          path: ${{ runner.temp }}/source-parity/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Build candidate once on native amd64
         uses: docker/build-push-action@v6
         with:

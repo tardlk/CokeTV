@@ -148,3 +148,15 @@ test('同时提交同一预览只允许一次，不能并发重复写入', async
     const responses = await Promise.all([1, 2].map(() => app.inject({url: '/admin/import/tvbox', method: 'POST', headers: {authorization}, payload: {previewId: preview.previewId, ids: ['0'], engines: {'0': 'js'}}})));
     assert.deepEqual(responses.map(item => item.statusCode).sort(), [200, 409]);
 });
+
+test('TVBox预览和导入认可原版default/namespace/re-export模块并下载相对依赖',async()=>{
+    const body=`import {suffix} from './lib.js';let ext;async function init(config){ext=config.ext;}async function home(){return {class:[],list:[{vod_id:'one',vod_name:suffix+ext}]};}async function homeVod(){return {list:[]};}`;
+    payloads.set('/config/default-object.js',body+'export default {init,home,homeVod};');
+    payloads.set('/config/namespace-object.js',body+'export {init,home,homeVod};');
+    payloads.set('/config/re-export.js',"export {default} from './default-object.js';");
+    payloads.set('/cat-exports.json',JSON.stringify({sites:['default-object','namespace-object','re-export'].map((name,index)=>({key:name,name:'模块兼容'+index,type:3,api:'./config/'+name+'.js',ext:'-参数'}))}));
+    const preview=await call('/admin/import/tvbox/preview',{url:base+'/cat-exports.json'});
+    assert.equal(preview.ready,3,JSON.stringify(preview.entries));assert.ok(preview.entries.every(e=>e.engine==='cat'&&e.dependencyCount>=1));
+    const result=await call('/admin/import/tvbox',{previewId:preview.previewId,ids:preview.entries.map(e=>e.id)});assert.equal(result.imported,3);
+    for(const instance of app.store.state.instances.filter(i=>i.name.startsWith('模块兼容'))){const home=await app.inject({url:'/api/'+instance.id,headers:{authorization}});if(instance.name==='模块兼容1'){assert.equal(home.statusCode,500);assert.match(home.json().error,/moduleObject.home is not a function/);}else{assert.equal(home.statusCode,200,home.body);assert.equal(home.json().list[0].vod_name,'依赖成功-参数');}}
+});

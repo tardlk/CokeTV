@@ -276,13 +276,18 @@ test('源的同源 HTTP 能力、WebDAV/FTP 辅助服务按需启动', async () 
         app.store.state.settings.publicUrl = '';
     } finally { await new Promise(resolve => upstream.close(resolve)); }
 });
-test('同步死循环可回收，管理服务和后续源调用继续工作', async () => {
-    const script = await app.store.saveScript('js', '超时样本.js', "var rule = {title: '超时样本', host: 'https://example.invalid', class_parse: async function () { while (true) {} }};");
+test('首页及推荐阶段的同步死循环均可回收，管理服务和后续源调用继续工作', async () => {
     app.store.state.settings.timeout = 1200;
-    const result = await app.inject({url: `/api/${script.id}`, headers: {authorization}});
-    assert.equal(result.statusCode, 500);
-    assert.match(result.json().error, /已回收运行进程/);
-    assert.equal((await app.inject('/health')).statusCode, 200);
+    for(const [phase,code]of [
+        ['home', "var rule = {title:'超时样本',host:'https://example.invalid',class_parse:async()=>{while(true){}}};"],
+        ['homeVod', "var rule = {title:'超时样本',host:'https://example.invalid',class_parse:async()=>({class:[]}),推荐:async()=>{while(true){}}};"],
+    ]){
+        const script=await app.store.saveScript('js','超时样本-'+phase+'.js',code);
+        const result = await app.inject({url: `/api/${script.id}`, headers: {authorization}});
+        assert.equal(result.statusCode, 500, phase);
+        assert.match(result.json().error, /已回收运行进程/);
+        assert.equal((await app.inject('/health')).statusCode, 200);
+    }
     app.store.state.settings.timeout = 30000;
     const healthy = await call(`/api/${ids.js}`); assert.equal(healthy.class[0].type_id, 'movie');
 });

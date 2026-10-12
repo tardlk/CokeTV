@@ -76,6 +76,11 @@ try {
     // 3. Instantiate Spider
     $spider = new Spider();
 
+    // Original BaseSpider proxy context must exist before source init().
+    if (method_exists($spider, 'setEnv')) {
+        $spider->setEnv($env);
+    }
+
     // 方法名兼容：映射值可能是候选列表（如 "localProxy|proxy"）。
     // 比较完整继承链上的声明距离：只排除 BaseSpider 仍会把远祖的
     // localProxy() 放在子类 proxy() 前面。同层保留候选顺序的优先级。

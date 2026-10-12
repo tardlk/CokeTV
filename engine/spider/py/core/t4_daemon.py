@@ -683,13 +683,10 @@ class SpiderManager:
             if isinstance(a, (dict, list, int, float, bool, type(None))):
                 parsed_args.append(a)
             elif isinstance(a, str):
-                # 只对看起来像 JSON 的参数做解析，避免数字型 tid/wd 被转成 int 造成跨引擎行为不一致。
-                if a[:1] in ("{", "["):
-                    try:
-                        parsed_args.append(json.loads(a))
-                    except Exception:
-                        parsed_args.append(a)
-                else:
+                # Preserve the original bridge's JSON scalar conversion too.
+                try:
+                    parsed_args.append(json.loads(a))
+                except Exception:
                     parsed_args.append(a)
             else:
                 parsed_args.append(a)

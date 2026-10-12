@@ -47,7 +47,7 @@ const wait = async name => {
 };
 const inject = name => {
     run(['cp',path.join(root,'tests'),name+':/app/tests']);
-    for (const script of ['container-smoke.mjs','image-verify.mjs']) run(['cp',path.join(root,'scripts',script),name+':/app/scripts/'+script]);
+    for (const script of ['container-smoke.mjs','image-verify.mjs','source-parity-probe.mjs']) run(['cp',path.join(root,'scripts',script),name+':/app/scripts/'+script]);
 };
 try {
     const clean = create('clean'); await wait(clean);
@@ -65,7 +65,7 @@ try {
 
     // Every regression creates its own temporary data; no test mutates /app/data.
     const regressions = create('regressions'); await wait(regressions); inject(regressions);
-    const files = ['emby','emby-engines','emby-storage','core','access','subscription-tokens','integration','tvbox-import','cat-subscriptions','cat-client','netdisk-115','netdisk-cipher','netdisk-integration','netdisk-direct','netdisk-guangya','review-regressions','shell','runtime-upgrade','bridge','private-data','source-env','playback-capabilities','playback','outbound','ssrf','proxy-headers','rate-limit','security','verify-cli'];
+    const files = ['runtime-parity','dr2-delivery','source-compatibility','emby','emby-engines','emby-storage','core','access','subscription-tokens','integration','tvbox-import','cat-subscriptions','cat-client','netdisk-115','netdisk-cipher','netdisk-integration','netdisk-direct','netdisk-guangya','review-regressions','shell','runtime-upgrade','bridge','private-data','source-env','playback-capabilities','playback','outbound','ssrf','proxy-headers','rate-limit','security','verify-cli'];
     let tap;
     try { tap = inside(regressions,['env','TEST_PYTHON=/opt/python/bin/python3','TEST_PHP=php','node','--test','--test-reporter=tap',...files.map(file=>'tests/'+file+'.test.js')]); }
     catch (error) { await fs.writeFile(path.join(output,'regressions.tap'),error.output || error.message); throw error; }

@@ -14,6 +14,7 @@ import {Runner} from './runner.js';
 import {ROOT, ENGINE_DIRS, EXTENSIONS, inside, validFilename} from './paths.js';
 import {createAuth} from './auth.js';
 import {buildSubscription, authorizedSubscription, uniqueSubscriptionByToken} from './subscriptions.js';
+import {registerDr2Routes} from './dr2.js';
 import {buildContext} from './context.js';
 import {localToken, rewritePlaylist, streamMedia} from './media.js';
 import {syntaxCheck, importBundle, decodeSource, detectSourceEngine} from './sources.js';
@@ -509,6 +510,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         return buildSubscription(store.state, sub, baseUrl(request));
     };
     app.get('/tvbox/:credential', shortSubscriptionHandler);
+    registerDr2Routes(app, store);
     app.get('/s/:credential', shortSubscriptionHandler);
     app.get('/config', subscriptionHandler); app.get('/config/1', subscriptionHandler);
     app.route({method: ['GET', 'POST'], url: '/api/:module', handler: async request => {

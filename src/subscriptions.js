@@ -5,6 +5,15 @@ export function buildSubscription(state, subscription, baseUrl) {
         const instance = state.instances.find(s => s.id === id && s.enabled);
         const script = instance && state.scripts.find(s => s.id === instance.scriptId);
         if (!script) return [];
+        if (script.engine === 'dr2') {
+            const root = `${base}/tvbox/${encodeURIComponent(subscription.token)}`;
+            const ext = new URL(`${root}/source/${encodeURIComponent(instance.id)}.js`);
+            if (instance.params) ext.searchParams.set('params', instance.params);
+            return [{key: `lite_${instance.id}`, name: instance.name, type: 3,
+                api: `${root}/runtime/drpy/drpy2.min.js`, ext: ext.href,
+                searchable: instance.searchable ? 1 : 0, quickSearch: 0,
+                filterable: instance.filterable ? 1 : 0, engine: script.engine}];
+        }
         const api = new URL(`${base}/api/${instance.id}`);
         api.searchParams.set('token', subscription.token);
         return [{key: `lite_${instance.id}`, name: instance.name, type: 4, api: api.href,

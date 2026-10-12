@@ -11,7 +11,7 @@
 if (!headers_sent()) {
     header('Content-Type: application/json; charset=utf-8');
 }
-// 屏蔽一般警告/提示，避免污染 stdout 的 JSON 输出（错误经 _bridge.php 的错误处理器走 stderr）。
+// 屏蔽一般警告，避免污染 JSON 输出
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
 
@@ -31,8 +31,34 @@ abstract class BaseSpider {
      */
     protected $htmlParser;
 
+    /**
+     * 服务层注入的环境（drpyS 桥 setEnv：proxyUrl/getProxyUrl 等；php -S 直跑时
+     * run() 自感知填充 proxyUrl=自身脚本回调端点）。源内经 getProxyUrl() 消费。
+     * @var array
+     */
+    protected $env = [];
+
     public function __construct() {
         $this->htmlParser = new HtmlParser();
+    }
+
+    /**
+     * 注入服务层环境（_bridge.php 调用，须在 init 之前）
+     * @param array $env
+     */
+    public function setEnv(array $env) {
+        $this->env = $env;
+    }
+
+    /**
+     * 本源代理回调基址（与其他引擎源 getProxyUrl 语义统一）：
+     * - drpyS 桥通道：服务层注入的 `<protocol>://<host>/proxy/<module>/?do=ds&extend=`（局域网/外网可达）
+     * - php -S 直跑通道：自身脚本 `?do=proxy&`（localProxy 钩子即回调端点，run() 自感知）
+     * 未注入返回空串（调用方自行降级），禁止写死端口/地址
+     * @return string
+     */
+    public function getProxyUrl() {
+        return $this->env['proxyUrl'] ?? '';
     }
 
     /**
@@ -117,6 +143,38 @@ abstract class BaseSpider {
      */
     public function localProxy($params) {
         return [404, 'text/plain', 'not found'];
+    }
+
+    /**
+     * localProxy 五元组 [status, mime, content, headers?, toBytes?] HTTP 直出
+     *（仅 php -S 通道 run() 分发调用；toBytes 口径对齐 drpyS 网关：
+     * 1=base64 转字节，2/3=302 跳转——本通道无网关 mediaProxy，直跳原地址，
+     * 缺省=直接回写；null/不足三位按 502 处理）
+     * @param mixed $resp
+     */
+    private function emitProxyResponse($resp) {
+        if (!is_array($resp) || count($resp) < 3) {
+            http_response_code(502);
+            echo 'proxy returned nothing';
+            return;
+        }
+        http_response_code((int)$resp[0]);
+        header('Content-Type: ' . ((string)$resp[1] ?: 'application/octet-stream'));
+        foreach ((($resp[3] ?? null) ?: []) as $hk => $hv) {
+            header("$hk: $hv");
+        }
+        $content = $resp[2];
+        $toBytes = $resp[4] ?? null;
+        if ($toBytes == 1 && is_string($content)) {
+            echo base64_decode($content);
+        } elseif (($toBytes == 2 || $toBytes == 3) && is_string($content)
+            && strncmp($content, 'http', 4) === 0) {
+            header('Location: ' . $content);
+        } elseif (is_string($content)) {
+            echo $content;
+        } else {
+            echo json_encode($content, JSON_UNESCAPED_UNICODE);
+        }
     }
 
     /**
@@ -284,7 +342,6 @@ abstract class BaseSpider {
         $defaultOptions = [
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
-            // 默认开启 TLS 校验；源若确需关闭（自签证书等），在 $options 里显式覆盖并发由用户知情。
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_FOLLOWLOCATION => true,
@@ -314,9 +371,7 @@ abstract class BaseSpider {
 
         curl_setopt_array($ch, $defaultOptions);
         $result = curl_exec($ch);
-
         if ($result === false) {
-            // 记录到 stderr，不改变返回语义（保持老源的兼容行为）。
             fwrite(STDERR, sprintf("[BaseSpider] curl failed (%d): %s | url: %s\n", curl_errno($ch), curl_error($ch), $url));
         }
 
@@ -348,6 +403,21 @@ abstract class BaseSpider {
      */
     public function run() {
         if (defined('DRPY_BRIDGE')) {
+            return;
+        }
+        // php -S 直跑通道自感知：getProxyUrl() 以自身脚本为代理回调端点
+        //（桥通道的 proxyUrl 由 _bridge.php setEnv 注入，此处 env 为空才填）
+        if (empty($this->env)) {
+            $isHttps = (isset($_SERVER['HTTPS']) && ($_SERVER['HTTPS'] === 'on' || $_SERVER['HTTPS'] == 1))
+                || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+            $scheme = $isHttps ? 'https://' : 'http://';
+            $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_ADDR'] ?? '127.0.0.1';
+            $this->env = ['proxyUrl' => $scheme . $host . ($_SERVER['SCRIPT_NAME'] ?? '') . '?do=proxy&'];
+        }
+        // 本地代理回调分发（getProxyUrl() 产出的 ?do=proxy 即进 localProxy，
+        // 五元组契约直出，对齐 drpyS 网关 /proxy/:module 的解析口径）
+        if (($_GET['do'] ?? '') === 'proxy') {
+            $this->emitProxyResponse($this->localProxy($_GET));
             return;
         }
         $ac = $_GET['ac'] ?? '';
