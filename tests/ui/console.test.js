@@ -42,6 +42,14 @@ beforeEach(()=>{
 afterEach(()=>{wrapper?.unmount();document.body.innerHTML='';sessionStorage.clear();history.replaceState({},'','/');vi.unstubAllGlobals();});
 
 describe('shadcn 控制台绑定',()=>{
+    it('无独立Emby侧栏，订阅链接提供TVBox/猫影视/Emby并使用同一对外地址',async()=>{
+        state.subscriptions=[{id:'sub',name:'客厅',token:'Sub-token',enabled:true,instances:['a']}];state.settings.publicUrl='https://coketv.example.test/';
+        await start();expect(button('Emby服务')).toBeUndefined();await button('订阅管理').trigger('click');await wrapper.find('[aria-label="订阅链接"]').trigger('click');await flushPromises();
+        const tabs=[...document.querySelectorAll('[role="tab"]')];expect(tabs.map(t=>t.textContent.trim())).toEqual(['TVBox','猫影视','Emby']);
+        tabs.find(t=>t.textContent.trim()==='Emby').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await flushPromises();
+        expect(document.querySelector('[aria-label="Emby服务器地址"]').value).toBe('https://coketv.example.test');expect(document.querySelector('[aria-label="Emby用户名"]').value).toBe('coke');expect(document.querySelector('[aria-label="Emby密码"]').value).toBe('Sub-token');
+        expect(requests.some(r=>r.url==='/admin/subscriptions/sub/emby/prepare'&&r.method==='POST')).toBe(true);expect(requests.some(r=>r.url==='/admin/emby')).toBe(false);
+    });
     it('新建订阅可以填写自定义令牌，并用于两个订阅链接',async()=>{
         await start();await button('订阅管理').trigger('click');await button('新建订阅').trigger('click');await flushPromises();
         const input=document.querySelector('#subscription-token');

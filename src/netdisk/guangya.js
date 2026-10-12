@@ -65,6 +65,7 @@ export class Guangya {
         if(status!==200||!value.sub)throw fail('光鸭登录信息无效，请重新登录',401);
     }
     async startLogin(){
+        const accountGeneration=this.accounts.generation;
         for(const [key,s] of this.sessions)if(s.expiresAt<=this.now())this.sessions.delete(key);
         if(this.sessions.size>=8)throw fail('登录二维码过多，请稍后重试',429);
         const credentials={clientId:CLIENT,deviceId:randomBytes(16).toString('hex')};
@@ -72,7 +73,7 @@ export class Guangya {
         if(status!==200||typeof value.device_code!=='string'||!value.device_code||value.device_code.length>4096)throw fail('光鸭没有返回有效二维码',502);
         let url;try{url=new URL(value.verification_uri_complete||value.verification_url);}catch{throw fail('光鸭二维码地址无效',502);}
         if(url.protocol!=='https:'||!['www.guangyapan.com','account.guangyapan.com','guangyapan.com'].includes(url.hostname)||url.port||url.username||url.password)throw fail('光鸭二维码地址无效',502);
-        const session={...credentials,deviceCode:value.device_code,expiresAt:this.now()+Math.max(30,Math.min(Number(value.expires_in)||120,600))*1000,interval:Math.max(2000,Math.min(Number(value.interval)||3,15)*1000),lastPoll:-Infinity,status:'waiting',image:await QRCode.toDataURL(url.href,{width:256,margin:2})};
+        const session={...credentials,accountGeneration,deviceCode:value.device_code,expiresAt:this.now()+Math.max(30,Math.min(Number(value.expires_in)||120,600))*1000,interval:Math.max(2000,Math.min(Number(value.interval)||3,15)*1000),lastPoll:-Infinity,status:'waiting',image:await QRCode.toDataURL(url.href,{width:256,margin:2})};
         const key=randomBytes(24).toString('base64url');this.sessions.set(key,session);return {id:key,expiresAt:session.expiresAt};
     }
     async qrImage(key){const s=this.sessions.get(key);if(!s||s.expiresAt<=this.now())throw fail('二维码不存在或已过期',410);return s.image;}
@@ -86,7 +87,7 @@ export class Guangya {
         s.lastPoll=this.now();
         const pending=(async()=>{
             const {status,value}=await this.accountCall('/v1/auth/token',{client_id:s.clientId,grant_type:'urn:ietf:params:oauth:grant-type:device_code',device_code:s.deviceCode},s);
-            if(status===200&&value.access_token){await this.accounts.save({accessToken:value.access_token,refreshToken:value.refresh_token,expiresAt:this.expires(value),clientId:s.clientId,deviceId:s.deviceId});s.status='confirmed';s.deviceCode='';s.image='';}
+            if(status===200&&value.access_token){await this.accounts.save({accessToken:value.access_token,refreshToken:value.refresh_token,expiresAt:this.expires(value),clientId:s.clientId,deviceId:s.deviceId},s.accountGeneration);s.status='confirmed';s.deviceCode='';s.image='';}
             else if(value.error==='slow_down')s.interval=Math.min(15000,s.interval+5000);
             else if(value.error==='expired_token')s.status='expired';
             else if(value.error==='access_denied')s.status='canceled';

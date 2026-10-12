@@ -86,3 +86,41 @@ test('兼容代理模式：网盘账号只在后台管理；源详情自动展�
         await fs.rm(directory, {recursive: true, force: true});
     }
 });
+
+for(const provider of ['115','guangya'])test(`${provider}移除本机授权持久化且撤销旧引用、待确认扫码，不触碰另一网盘`,async()=>{
+    const directory=await fs.mkdtemp(path.join(os.tmpdir(),'coketv-remove-account-'));let app,release;
+    const gate=new Promise(resolve=>{release=resolve;});let entered;const waiting=new Promise(resolve=>{entered=resolve;});const calls=[];
+    try{
+        const request=async options=>{
+            calls.push(options.url);
+            if(options.url.endsWith('/1.0/token'))return {status:200,data:{state:true,data:{uid:'fixture-uid',sign:'fixture-sign',time:1}}};
+            if(options.url.endsWith('/device/code'))return {status:200,data:{device_code:'fixture-code',verification_uri_complete:'https://www.guangyapan.com/#/oauth?code=fixture',expires_in:120,interval:3}};
+            if(options.url.includes('/get/status/')||options.url.endsWith('/auth/token')){entered();await gate;return {status:200,data:provider==='115'?{state:true,data:{status:2}}:{access_token:'late-access',refresh_token:'late-refresh',expires_in:3600}};}
+            if(options.url.includes('/login/qrcode'))return {status:200,data:{state:true,data:{cookie:{UID:'123',CID:'fixture',SEID:'late-cookie'}}}};
+            throw Error('Unexpected platform request');
+        };
+        app=await createApp({directory,seed:false,netdiskRequest:request,guangyaRequest:request});
+        await app.inject({method:'POST',url:'/admin/access/setup',payload:{password:'fixture-remove',confirmPassword:'fixture-remove'}});
+        const authorization='Basic '+Buffer.from(':fixture-remove').toString('base64');
+        await app.netdisk.accounts.save115('UID=123; CID=fixture; SEID=fixture-secret','web');
+        await app.netdisk.guangyaAccounts.save({accessToken:'fixture-access',refreshToken:'fixture-refresh',clientId:'fixture-client',deviceId:'a'.repeat(32)});
+        const store=provider==='115'?app.netdisk.accounts:app.netdisk.guangyaAccounts,pan=provider==='115'?app.netdisk.pan:app.netdisk.guangya;
+        const revision=store.status().revision,otherRevision=(provider==='115'?app.netdisk.guangyaAccounts:app.netdisk.accounts).status().revision;
+        const url=`/admin/netdisk/${provider}/account/remove`;
+        assert.equal((await app.inject({method:'POST',url})).statusCode,401);
+        assert.equal((await app.inject({method:'POST',url:url.replace('/admin','/%61dmin')})).statusCode,401);
+        assert.equal((await app.inject({method:'POST',url,headers:{authorization,origin:'https://foreign.invalid'},payload:{revision}})).statusCode,403);
+        assert.equal((await app.inject({method:'POST',url,headers:{authorization},payload:{revision:'stale'}})).statusCode,409);
+        assert.equal(app.netdisk.current(revision),true);
+        const session=await pan.startLogin(),polling=pan.pollLogin(session.id);await waiting;
+        const removed=await app.inject({method:'POST',url,headers:{authorization},payload:{revision}});
+        assert.equal(removed.statusCode,200,removed.body);assert.equal(removed.json().account.connected,false);assert.equal(removed.body.includes('fixture-secret'),false);
+        assert.equal(app.netdisk.current(revision),false);assert.equal(app.netdisk.current(otherRevision),true);assert.equal(pan.sessions.size,0);
+        release();await assert.rejects(polling,/已取消/);assert.equal(store.status().connected,false);
+        await assert.rejects(fs.stat(store.file),{code:'ENOENT'});
+        assert.ok(calls.every(url=>!/(delete|remove|trash|restore|upload)/.test(new URL(url).pathname)));
+        await app.close();app=await createApp({directory,seed:false});
+        assert.equal((provider==='115'?app.netdisk.accounts:app.netdisk.guangyaAccounts).status().connected,false);
+        assert.equal((provider==='115'?app.netdisk.guangyaAccounts:app.netdisk.accounts).status().connected,true);
+    }finally{release();await app?.close();await fs.rm(directory,{recursive:true,force:true});}
+});

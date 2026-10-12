@@ -17,7 +17,7 @@ export function validate115Cookie(cookie) {
 // Separate from source ENV: refreshing a shared account must not fork its
 // credentials into each source. This is private storage, not a source sandbox.
 export class NetdiskAccountStore {
-    constructor(directory) { this.directory = path.join(directory, 'netdisk'); this.file = path.join(this.directory, '115.json'); this.account = null; this.pending = Promise.resolve(); }
+    constructor(directory) { this.directory = path.join(directory, 'netdisk'); this.file = path.join(this.directory, '115.json'); this.account = null; this.pending = Promise.resolve(); this.generation = 0; }
     async init() {
         await fs.mkdir(this.directory, {recursive: true, mode: 0o700});
         if ((await fs.lstat(this.directory)).isSymbolicLink()) throw fail('网盘凭据目录不能是符号链接');
@@ -34,9 +34,10 @@ export class NetdiskAccountStore {
     }
     status() { return this.account ? {provider: '115', connected: true, revision: this.account.revision, device: this.account.device, savedAt: this.account.savedAt} : {provider: '115', connected: false}; }
     cookie() { return this.account?.cookie || ''; }
-    async save115(cookie, device) {
+    async save115(cookie, device, generation = this.generation) {
         validate115Cookie(cookie);
         const work = this.pending.then(async () => {
+            if (generation !== this.generation) throw Object.assign(fail('授权操作已取消，请重新登录'), {statusCode: 409});
             const value = {version: 1, revision: randomBytes(16).toString('hex'), device, savedAt: Date.now(), cookie};
             const temporary = this.file + '.' + randomBytes(8).toString('hex') + '.tmp';
             try {
@@ -46,6 +47,15 @@ export class NetdiskAccountStore {
                 this.account = value;
             } finally { await fs.rm(temporary, {force: true}); }
             return this.status();
+        });
+        this.pending = work.catch(() => {}); return work;
+    }
+    remove(revision) {
+        if (this.account && this.account.revision !== revision) throw Object.assign(fail('授权已更新，请刷新后重试'), {statusCode: 409});
+        this.generation++;
+        const work = this.pending.then(async () => {
+            if (this.account && this.account.revision !== revision) throw Object.assign(fail('授权已更新，请刷新后重试'), {statusCode: 409});
+            await fs.rm(this.file, {force: true}); this.account = null; return this.status();
         });
         this.pending = work.catch(() => {}); return work;
     }

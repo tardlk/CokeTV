@@ -20,6 +20,10 @@
 
 新增npm运行依赖 `qrcode` 1.5.4（MIT）在服务器生成登录二维码，不依赖外部二维码服务；其许可证及传递依赖许可随npm包保留。
 
+### go-emby 协议适配
+
+`src/emby/` 的客户端登录格式、PascalCase DTO、媒体库/季集与经鉴权的播放入口，以及 Infuse/播放器回归场景，按项目所有者授权从 [sd87671067/go-emby](https://github.com/sd87671067/go-emby/tree/75e68aa7d1834cd9f04fcfac686cf67917c5df70) 的 `main.go`、`compat.go`、`browsing.go`、`login_compat.go` 和相关测试适配为 Node.js。CokeTV 自行实现源目录映射、SQLite 事务、观看令牌和网盘桥接；未引入 Go 二进制、PostgreSQL、STRM 扫描器或其联网运行授权 SDK。上游运行授权模块与本次源码移植授权是不同事项，第三方依赖继续遵守其随附声明。
+
 ## 随附 bundle
 
 `engine/libs_drpy/**` 与 `engine/spider/catLib/**` 是随内核一同分发的第三方 bundle，均随上游 drpy-node 2.0.4 引入，来源为 `https://github.com/hjdhnx/drpy-node`（版权归其作者）：

@@ -78,7 +78,7 @@ TVBox 链接导入位于 `src/tvbox-import.js`；生成的采集脚本调用 `en
 
 设置 `NETDISK_TEST_DIR`（独立临时目录）、`NETDISK_TEST_PASSWORD`（该目录首次创建管理密码时使用）、可选 `NETDISK_TEST_PORT`，运行 `node scripts/netdisk-verify.mjs`。仅监听 127.0.0.1，默认端口 54061，网页包含登录、扫码、读取分享和选集验证。已经创建的管理密码继续从独立目录读取。二维码默认绑定支付宝小程序设备，可以选择其他受支持设备；同类设备重复登录可能影响已有会话。
 
-此入口是独立验证工具，不是生产依赖；正式入口为后台“网盘管理”。`src/netdisk/service.js` 将标准详情分享链接展开为按实例/账号绑定的随机分集引用，源执行与网页/TVBox/猫影视共用该服务，媒体继续使用原票据和订阅范围。账号不进入源状态或导出。不要用正式 data 作为独立验证目录。扫描确认需要用户本人操作；固定样本通过不等于所有真实账号和分享均可用。验证过程不使用转存、上传或删除接口。
+此入口是独立验证工具，不是生产依赖；正式入口为后台“网盘管理”的平台卡片与授权弹窗，UI使用NetdiskManager/Pan115Account/GuangyaAccount。两平台共用已有账号文件，无多账号迁移；扫码/已有授权分标签，卸载组件停止轮询并丢弃迟到回包。POST /admin/netdisk/:provider/account/remove检查当前revision，存储generation防止旧扫码或正在验证的导入在移除后写回；仅删除本机凭据，原revision媒体引用自动失效。UI回归在对应tests/ui文件，后台移除/待确认扫码/重启保护在netdisk-integration.test.js。`src/netdisk/service.js` 将标准详情分享链接展开为按实例/账号绑定的随机分集引用，源执行与网页/TVBox/猫影视共用该服务，媒体继续使用原票据和订阅范围。账号不进入源状态或导出。不要用正式 data 作为独立验证目录。扫描确认需要用户本人操作；固定样本通过不等于所有真实账号和分享均可用。验证过程不使用转存、上传或删除接口。
 
 `tests/netdisk-integration.test.js` 覆盖正式后台鉴权、详情展开、网页/TVBox/猫影视、实例/订阅范围、账号更新/源停用后的媒体引用失效；`tests/ui/netdisk-manager.test.js` 覆盖扫码界面与离开页面停止轮询。`tests/netdisk-115.test.js` 覆盖链接校验、私密持久化、扫码状态/超时/并发兑换、分页/文件夹/长 ID/边界与媒体头；`tests/netdisk-verification.test.js` 使用临时目录及本地样本验证鉴权、跨站拒绝、媒体范围、HLS、换账号失效和重启恢复。
 
@@ -103,6 +103,14 @@ HTTP 服务启动时不初始化源引擎。执行子进程按需启动，可超
 源编辑工作区与 Monaco 代码编辑器独立按需加载。管理列表打开时不加载代码编辑器。
 
 `WatchApp.vue`、`WebPlayer.vue` 与 mpegts.js 同样按需加载，管理列表不加载播放器。公开源列表在 `/watch/sources`，网页播放 API 在 `/watch/sources/:id`；原 `/admin/watch/:id` 保留鉴权兼容入口。媒体凭证在 `src/playback.js`；不复用会写入 `lastCheck` 的接口验证入口。
+
+## Emby module
+
+`src/emby/` 以固定coke+订阅Token派生稳定观看身份，提供订阅鉴权、DTO、有限目录同步、SQLite持久状态及播放器接口；`src/content.js` 是网页、猫影视和Emby共用的源查询/播放interface，不通过伪造request调用另一协议handler。统一网盘内部 `identity()` 只用于稳定文件映射，不进入公开源结果；每次Emby播放重新读取详情，把稳定定位信息转换为当前内存分集引用。
+
+Emby通过订阅链接弹窗提供三项连接信息，不设独立页面/全局开关。未使用且无旧数据库时启动不创建数据库；协议首次访问按需打开。有效目录访问或管理员POST订阅prepare才排队查询源，匿名发现和错误登录不执行源。自动目录串行准备，Mixed物理缓存投影为Movie/Series标准库，稳定视图ID与单一缓存避免重复查询。复用 `node-sqlite3-wasm`，单连接短事务，关闭等待自动/同步队列；所有路由别名共用观看授权，后台写入拒绝跨站请求。保留旧内部目录管理API以兼容已有数据，不重新提供独立产品入口。
+
+`tests/emby.test.js` 覆盖授权、Infuse字段、收藏/续播/NextUp、版本、快照及私密媒体范围；`emby-engines.test.js` 以真实五引擎和固定平台样本验证 Range/HEAD、网盘重启后重新取链及服务端零媒体下载；`emby-storage.test.js` 覆盖并发初始化、回滚、重启、权限与坏文件保护。UI 回归在 `tests/ui/subscription-emby.test.js` 与 `tests/ui/console.test.js`；后端文件纳入容器矩阵。客户端真实请求检出的 VirtualFolders / DisplayPreferences 也纳入回归；本地生成样片/客户端账号不入发行。
 
 ## Git 约定
 

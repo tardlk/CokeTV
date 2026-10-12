@@ -10,7 +10,7 @@ export function validateGuangyaCredentials(value) {
 }
 const validate=validateGuangyaCredentials;
 export class GuangyaAccountStore {
-    constructor(directory){this.directory=path.join(directory,'netdisk');this.file=path.join(this.directory,'guangya.json');this.account=null;this.pending=Promise.resolve();}
+    constructor(directory){this.directory=path.join(directory,'netdisk');this.file=path.join(this.directory,'guangya.json');this.account=null;this.pending=Promise.resolve();this.generation=0;}
     async init(){
         await fs.mkdir(this.directory,{recursive:true,mode:0o700});
         if((await fs.lstat(this.directory)).isSymbolicLink())throw Error('网盘凭据目录不能是符号链接');
@@ -32,9 +32,9 @@ export class GuangyaAccountStore {
         return this.status();
     }
     transact(work){const result=this.pending.then(work);this.pending=result.catch(()=>{});return result;}
-    save(credentials){
+    save(credentials,generation=this.generation){
         validate(credentials);
-        return this.transact(()=>this.write({...credentials,allowTransfer:credentials.allowTransfer??this.account?.allowTransfer??false,expiresAt:Number(credentials.expiresAt)||Date.now()+3600000,version:1,revision:'guangya:'+randomBytes(16).toString('hex'),savedAt:Date.now()}));
+        return this.transact(()=>{if(generation!==this.generation)throw Object.assign(Error('授权操作已取消，请重新登录'),{statusCode:409});return this.write({...credentials,allowTransfer:credentials.allowTransfer??this.account?.allowTransfer??false,expiresAt:Number(credentials.expiresAt)||Date.now()+3600000,version:1,revision:'guangya:'+randomBytes(16).toString('hex'),savedAt:Date.now()});});
     }
     updateTokens(revision,credentials){
         return this.transact(()=>{
@@ -45,5 +45,13 @@ export class GuangyaAccountStore {
     setTransferAllowed(value){
         if(typeof value!=='boolean')throw Error('光鸭转存选项无效');
         return this.transact(()=>{if(!this.account)throw Error('请先登录光鸭');return this.write({...this.account,allowTransfer:value});});
+    }
+    remove(revision){
+        if(this.account&&this.account.revision!==revision)throw Object.assign(Error('授权已更新，请刷新后重试'),{statusCode:409});
+        this.generation++;
+        return this.transact(async()=>{
+            if(this.account&&this.account.revision!==revision)throw Object.assign(Error('授权已更新，请刷新后重试'),{statusCode:409});
+            await fs.rm(this.file,{force:true});this.account=null;return this.status();
+        });
     }
 }

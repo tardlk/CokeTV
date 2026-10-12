@@ -68,6 +68,13 @@ export class NetdiskService {
         this.inflight.set(key, pending);
         try { return await pending; } finally { this.inflight.delete(key); }
     }
+    // Internal stable locator only; never serialize it into public source responses.
+    identity(reference, source) {
+        const match = typeof reference === 'string' && reference.match(/^coketv-netdisk:(115|guangya):([A-Za-z0-9_-]{43})$/);
+        const entry = match && this.refs.get(match[2]);
+        if (!entry || entry.source !== source || entry.provider !== match[1] || !this.current(entry.revision)) throw fail('网盘分集引用已过期，请刷新详情', 403);
+        return JSON.stringify([entry.provider, entry.file.shareCode || entry.file.shareId, String(entry.file.fileId)]);
+    }
     async resolve(reference, source, options = {}) {
         const match = typeof reference === 'string' && reference.match(/^coketv-netdisk:(115|guangya):([A-Za-z0-9_-]{43})$/);
         const id = match ? match[2] : '';
@@ -116,9 +123,17 @@ export class NetdiskService {
         app.get('/admin/netdisk/guangya/login/:id/image', async req => ({image: await this.guangya.qrImage(req.params.id)}));
         app.post('/admin/netdisk/guangya/login/:id/poll', async req => this.safely(() => this.guangya.pollLogin(req.params.id), '光鸭'));
         app.post('/admin/netdisk/guangya/account', async req => {
+            const generation = this.guangyaAccounts.generation;
             await this.guangya.validateCredentials(req.body);
-            return {account: await this.guangyaAccounts.save(req.body)};
+            return {account: await this.guangyaAccounts.save(req.body, generation)};
         });
+        for (const [id, accounts, provider] of [['115', this.accounts, this.pan], ['guangya', this.guangyaAccounts, this.guangya]]) {
+            app.post(`/admin/netdisk/${id}/account/remove`, async req => {
+                const result = accounts.remove(req.body?.revision);
+                provider.sessions.clear();
+                return {account: await result};
+            });
+        }
         app.post('/admin/netdisk/guangya/options', async req => ({account: await this.guangyaAccounts.setTransferAllowed(req.body?.allowTransfer)}));
         app.post('/admin/netdisk/115/login', async req => this.safely(() => this.pan.startLogin(req.body?.device || 'alipaymini')));
         app.get('/admin/netdisk/115/login/:id/image', async req => ({image: 'data:image/png;base64,' + (await this.pan.qrImage(req.params.id)).toString('base64')}));

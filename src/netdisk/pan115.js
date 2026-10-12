@@ -74,13 +74,14 @@ export class Pan115 {
     }
     async startLogin(device = 'alipaymini') {
         if (!LOGIN_DEVICES.includes(device)) throw fail('不支持这个登录设备');
+        const accountGeneration = this.accounts.generation;
         const now = this.now();
         for (const [id, session] of this.sessions) if (session.expiresAt <= now) this.sessions.delete(id);
         if (this.sessions.size >= 8) throw fail('登录二维码过多，请稍后重试', 429);
         const value = await this.call('https://qrcodeapi.115.com/api/1.0/web/1.0/token');
         if (!value?.uid || !value.sign || !Number.isFinite(Number(value.time))) throw fail('115 没有返回有效二维码', 502);
         const id = randomBytes(24).toString('base64url'), expiresAt = now + 180000;
-        this.sessions.set(id, {uid: String(value.uid), sign: String(value.sign), time: Number(value.time), device, expiresAt, status: 'waiting', lastPoll: -Infinity});
+        this.sessions.set(id, {accountGeneration, uid: String(value.uid), sign: String(value.sign), time: Number(value.time), device, expiresAt, status: 'waiting', lastPoll: -Infinity});
         return {id, expiresAt, device};
     }
     session(id) {
@@ -121,7 +122,7 @@ export class Pan115 {
                     if (typeof value[key] !== 'string' || /[;\r\n]/.test(value[key])) throw fail('115 登录信息格式异常', 502);
                     return `${key}=${value[key]}`;
                 }).join('; ');
-                await this.accounts.save115(cookie, session.device); session.status = 'confirmed';
+                await this.accounts.save115(cookie, session.device, session.accountGeneration); session.status = 'confirmed';
             } else if (status === -1) session.status = 'expired';
             else if (status === -2) session.status = 'canceled';
             else if (status === 1) session.status = 'scanned';
