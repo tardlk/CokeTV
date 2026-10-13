@@ -12,9 +12,9 @@
 
 ## 0. 当前接手入口（先看本节）
 
-**当前工作区新增改动（2026-10-13，未提交/推送/发布）**：用户选择 NAS 部署时“启动自动处理 data 权限，然后以普通账号运行”，并要求增加可配置 PUID/PGID（实际 NAS 为1000:10）。Docker 入口、Compose、部署说明及容器门禁已更新，默认1000:1000；本机290项、17独立源和原生arm64容器211项回归及完整矩阵通过，真实Compose1000:10运行验证通过，详见7.58–7.59。当前 GHCR latest/sha-cbcd7dd 仍是以下已发布版本，没有自动权限初始化或PUID/PGID支持；新功能需新镜像与配套 Compose 一起更新。后续不要将工作区验收称为已发布或原生 amd64 验收。
+**最新交付：2026-10-13，NAS 自动权限初始化与可配置 PUID/PGID 已提交推送并发布。** 功能提交 [cf02ddd](https://github.com/tardlk/CokeTV/commit/cf02ddd914279090d16a0706fb98eb69565f1c9c) 已在main；[Verify38336557899](https://github.com/tardlk/CokeTV/actions/runs/38336557899)、[Docker38336557896](https://github.com/tardlk/CokeTV/actions/runs/38336557896)均success。`ghcr.io/tardlk/coketv:latest` / `sha-cf02ddd` 同为 `sha256:e390d5c20b3e9b3dfeb44431792a663610aef22b06f95aa7b0310755cb219b0d`，匿名核对 config 与已验收候选image ID相同。部署继续使用latest；需要同时更新完整Compose，可设置PUID=1000/PGID=10，默认1000:1000。详细提交/发布记录见7.60，部署实现见7.58–7.59；随后交接纯文档skip ci，不重复发布。
 
-**最新交付：2026-10-12，drpy-node兼容基线与持续对照门禁已提交推送并发布。** 功能提交 [cbcd7dd](https://github.com/tardlk/CokeTV/commit/cbcd7ddaafebfa7fbddc5cb59eeedd5e7da8387f) 已在main；[Verify38255541113](https://github.com/tardlk/CokeTV/actions/runs/38255541113)、[Docker38255540891](https://github.com/tardlk/CokeTV/actions/runs/38255540891)均success。GHCR latest/sha-cbcd7dd为同一已验收镜像，详情见7.57。随后纯文档交接提交使用skip ci，不重复发布镜像。
+**上一交付：2026-10-12，drpy-node兼容基线与持续对照门禁已提交推送并发布。** 功能提交 [cbcd7dd](https://github.com/tardlk/CokeTV/commit/cbcd7ddaafebfa7fbddc5cb59eeedd5e7da8387f) 已在main；[Verify38255541113](https://github.com/tardlk/CokeTV/actions/runs/38255541113)、[Docker38255540891](https://github.com/tardlk/CokeTV/actions/runs/38255540891)均success。GHCR latest/sha-cbcd7dd为同一已验收镜像，详情见7.57。随后纯文档交接提交使用skip ci，不重复发布镜像。
 
 Emby在每条订阅的链接弹窗提供根地址、coke和订阅Token；自动准备有限电影/剧集目录，无独立页面/开关/账号创建。115/光鸭网盘管理改为平台卡片与授权弹窗，支持扫码/已有授权及确认移除本机授权。新增依赖/系统包/常驻服务0，发行仍零预置源。最新界面与规则见7.50–7.51；7.47–7.49为历史阶段，独立账号/默认关闭/独立Emby页面描述不再代表当前行为。
 
@@ -24,27 +24,27 @@ Emby在每条订阅的链接弹窗提供根地址、coke和订阅Token；自动�
 
 **上一发行快照：2026-10-11，已提交推送并发布。** 功能提交 `fee3f9c29b1f9574c96c210db37b06515fc2cdba` 已在origin/main，Verify与Docker amd64均success，发布前178项容器回归及完整矩阵通过；GHCR latest/sha-fee3f9c已匿名核对同一digest，详见7.46。其后的纯文档交接提交不重复发布。本机继续源码运行，两个独立站点源与凭据仅保存在本机；发行仍零预置源。
 
-接手先 `git status` → 根 `AGENTS.md` → 本节 → 7.56–7.57。7.57是最新提交发布记录，7.50–7.51是当前界面/行为；7.54–7.56记录兼容修复的过程，执行文件基线以7.56和engine/UPSTREAM.json为准。不得用旧镜像覆盖本机data，也不要按历史描述重复安装环境、恢复临时服务或重复发表评论。
+接手先 `git status` → 根 `AGENTS.md` → 本节 → 7.60。7.60是最新提交发布记录，7.58–7.59是NAS部署及PUID/PGID行为；7.50–7.51是当前界面/行为，7.54–7.56记录兼容修复过程，执行文件基线以7.56和engine/UPSTREAM.json为准。不得用旧镜像覆盖本机data，也不要按历史描述重复安装环境、恢复临时服务或重复发表评论。
 
 ### 当前状态
 
 | 项目 | 当前结论 |
 | --- | --- |
-| Git/发行 | main功能SHAcbcd7dd；[Verify38255541113](https://github.com/tardlk/CokeTV/actions/runs/38255541113)、[Docker38255540891](https://github.com/tardlk/CokeTV/actions/runs/38255540891)均success，candidate/publish成功；后续纯文档提交领先功能发行SHA属于预期 |
-| 当前已核对镜像 | `ghcr.io/tardlk/coketv:latest` / `sha-cbcd7dd`：`sha256:13e7e53b5e67729865eefed3ab2dad54fe965b3e4113fd547cf8cd7cfe3544bb`，linux/amd64、User=node、OCI revisioncbcd7dd；config digest与已验收候选image ID一致 |
+| Git/发行 | main功能SHAcf02ddd；Verify38336557899/Docker38336557896均success，candidate/publish成功；随后交接纯文档SHA领先功能镜像SHA属于预期 |
+| 当前已核对镜像 | `ghcr.io/tardlk/coketv:latest` / `sha-cf02ddd`：`sha256:e390d5c20b3e9b3dfeb44431792a663610aef22b06f95aa7b0310755cb219b0d`，linux/amd64、OCI revisioncf02ddd；Config.User=root仅用于固定入口权限初始化，服务按PUID/PGID普通账号运行并清除全部能力；config与已验收候选image ID一致 |
 | 统一网盘 | 115和光鸭三端默认客户端直连，NAS只负责目录/API转存/取地址，失败不自动回退中转；普通源及显式delivery=proxy仍兼容原媒体权限 |
 | 光鸭授权/转存 | 后台二维码/已有授权导入、原子0600保存、自动刷新；转存默认关闭。本机获明确批准已开启，仅新增所选视频到CokeTV专用目录并复用，不移动/删除/覆盖，副本不自动清理 |
 | 本机运行数据 | 2脚本/2源（蜗牛4K、光鸭臻影社），1默认订阅且成员0，0解析器。管理密码、网站Cookie与两网盘账号私有保留；不重置、不删除、不随Git推送 |
 | 独立源位置 | 忽略的.tools/woniu4k/与.tools/guangya-source/，各含JS/说明/测试；通过后台导入到本机data，源和凭据不在发行树。源码克隆不会自动得到这两个源 |
 | 网站权限 | 光鸭臻影社源v1.0.1，仅取账号可见资源；未回复文章服务端不下发链接，正常回复需滑块。用户手动完成一次回复后已读取14集，未实现无人值守回复。同篇文章不需逐集回复，先刷新详情；会话失效再更新Cookie/对应UA |
-| 已执行验证 | 本机及远端check/build、212后端+73UI=285通过，本机独立源17项。两远端门禁分别完成amd64原版46组实际对照；原生amd64候选206回归与完整矩阵通过，发布身份核对见7.57。本机原生arm64与扩大实源见7.56；Infuse样片仍为7.50的实测 |
+| 已执行验证 | 本机及远端check/build、217后端+73UI=290通过，本机独立源17项；两远端门禁分别完成amd64原版46组实际对照。原生amd64候选211回归、完整矩阵及自定义ID/旧数据/媒体/重启通过，身份见7.60。本机原生arm64及Compose1000:10见7.59，扩大实源仍按7.56、Infuse按7.50，不扩大范围 |
 | 尚未验收 | 发布后拉取容器完整复验未执行；异地公网IP、真实TVBox/猫影视新网盘解码、人工听音/整片、完整光鸭App扫码确认未实测。二维码生成/已有授权真实验证通过，扫码确认/刷新有固定样本 |
 | 服务/环境 | 仅本机54058源码服务及按需worker，无自动启动项；54059–54063临时服务均已清理。既有Node22.23.3/npm10.9.9、Python3.12.14、PHP8.4.23、项目依赖与dist约777MiB保留，新增qrcode约3MiB已计入 |
 | 私有资料 | 真实PID/绝对路径/日志见忽略的HANDOFF.md、.tools/ENVIRONMENT.md、.tools/run/service.json。网站/网盘账号与订阅Token不得复制进公开文档 |
 
 ### 下一对话的工作边界
 
-2026-10-12 已按用户授权完成Emby/网盘管理（7.52）及原版脚本兼容基线（7.57）的提交和发布。当前兼容修复及持续门禁已在main，后续新工作仍以用户指令为准，不自动部署PanSou。
+2026-10-13 已按用户授权完成NAS自动权限初始化/PUID/PGID（7.60）的提交和latest发布；Emby/网盘管理（7.52）及原版脚本兼容基线（7.57）保持。当前兼容修复及持续门禁已在main，后续新工作仍以用户指令为准，不自动部署PanSou。
 
 PanSou已完成只读研究（7.45）：建议可选HTTP聚合源，先返回光鸭/115分享，再由现有模块展开和直连；需要另行决定后端部署。没有安装/运行PanSou、移植Go插件或改变CokeTV搜索。它的光鸭分类不等于光鸭臻影社适配，未找到该站或自动回复代码，不能用它保证绕过网站回复/滑块。
 
@@ -62,7 +62,7 @@ npm test
 node --test .tools/woniu4k/verify.mjs .tools/guangya-source/verify.mjs
 ```
 
-独立源测试只在这台机器的忽略目录，GitHub CI不含站点脚本；框架回归在tests/。默认构建/测试可用，不需要旧机器native loader参数。源码门禁不替代镜像实跑；镜像身份与后续复验以7.46为准。
+独立源测试只在这台机器的忽略目录，GitHub CI不含站点脚本；框架回归在tests/。默认构建/测试可用，不需要旧机器native loader参数。源码门禁不替代镜像实跑；镜像身份与后续复验以7.60为准。
 
 共享Codex运行时及原有约3.3GiB Lima缓存未修改，不得当作本项目临时文件删除。OmniBox研究容器/VM/下载工具已清理；当前本机没有因此长期保留Docker环境。光鸭测试云盘约5.9GiB副本保留，重复取链核对仅1份，由用户自行管理，不自动删除。
 
@@ -134,13 +134,15 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 - 干净克隆必须先 `npm run build` 再 `npm test`；不能依赖被忽略的本机 `dist/`。CI 已按此顺序。
 - Python 新建模板必须接受 HIPY 守护进程的 `t4_api` 构造参数；创建模板测试除语法检查外实际执行首页，容器验收也覆盖这条路径。
-- 当前发行的原生 amd64 发布前验收来自GitHub（7.39）；7.12–7.13、7.15分别保留此前发行与本机兼容运行记录。Mac 为 arm64，不能把本机兼容测试说成原生 amd64 验收。
+- 当前发行的原生 amd64 发布前验收来自GitHub（7.60）；7.12–7.13、7.15分别保留此前发行与本机兼容运行记录。Mac 为 arm64，不能把本机兼容测试说成原生 amd64 验收。
 - 未运行原 drpy-node-coder CLI，不宣称使用过。协议样本不代表所有第三方站点、解析器或编码可播。
 - 测试数量与文件数以脚本实际输出为准；`docs/DEVELOPMENT.md` 已移除固定计数，并由回归用例防止重新写入。
 
 ## 5. 发布现状
 
-**最新已核对发行（2026-10-11）**：功能源码 `fee3f9c29b1f9574c96c210db37b06515fc2cdba` 的 [Verify38144563167](https://github.com/tardlk/CokeTV/actions/runs/38144563167)、[Docker amd6438144563137](https://github.com/tardlk/CokeTV/actions/runs/38144563137)均success；源码249项与原生amd64发布前178回归及完整容器矩阵通过。`latest` 与 `sha-fee3f9c` 同为 `sha256:2cce107abd6c5b5cf8325c0f015cbf8676945c5d50f9653c5a5f5ec8e51beaa7`，匿名manifest/config核对平台、User=node、revision和候选image ID一致。新增统一网盘默认直连与光鸭授权/分享/按需转存能力，仍零预置源。本机继续运行源码，data保持。**发布后拉取容器完整复验未执行**；证据见7.46。
+**最新已核对发行（2026-10-13）**：功能源码 `cf02ddd914279090d16a0706fb98eb69565f1c9c`，Verify38336557899/Docker38336557896均success，290项源码测试、两份原版46组实际对照、原生amd64候选211项回归及完整矩阵通过。`latest` / `sha-cf02ddd` 同为 `sha256:e390d5c20b3e9b3dfeb44431792a663610aef22b06f95aa7b0310755cb219b0d`，匿名manifest/config核对与候选身份相同。新增NAS自动data权限初始化及PUID/PGID（默认1000:1000）；Config.User=root仅用于固定入口，服务按配置的普通身份运行、空附加组、全部能力清零及NoNewPrivs=1。部署说明和完整Compose已同步，发行仍零预置源。发布后完整拉取容器复验未执行；详细证据见7.60。
+
+**历史已核对发行（2026-10-11）**：功能源码 `fee3f9c29b1f9574c96c210db37b06515fc2cdba` 的 [Verify38144563167](https://github.com/tardlk/CokeTV/actions/runs/38144563167)、[Docker amd6438144563137](https://github.com/tardlk/CokeTV/actions/runs/38144563137)均success；源码249项与原生amd64发布前178回归及完整容器矩阵通过。`latest` 与 `sha-fee3f9c` 同为 `sha256:2cce107abd6c5b5cf8325c0f015cbf8676945c5d50f9653c5a5f5ec8e51beaa7`，匿名manifest/config核对平台、User=node、revision和候选image ID一致。新增统一网盘默认直连与光鸭授权/分享/按需转存能力，仍零预置源。本机继续运行源码，data保持。**发布后拉取容器完整复验未执行**；证据见7.46。
 
 **上一发行（2026-10-10）**：8cec6c2源码235项/发布前容器168回归，digest54a3b18a…，完整身份及证据留在7.39，不能用它证明光鸭新能力。
 
@@ -156,8 +158,8 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - **历史 CI / 镜像状态（当时已核对）**：[Verify 37429832617](https://github.com/tardlk/CokeTV/actions/runs/37429832617) 与 [Docker amd64 37429832738](https://github.com/tardlk/CokeTV/actions/runs/37429832738) 均成功；后者的源码检查、发布前空容器验收、镜像发布三个步骤分别为 success。已发布 `ghcr.io/tardlk/coketv:sha-984ccf0` 与 `:latest`，两者 digest 相同：`sha256:8329ad339a36d81e6bfc7771104f0a9d106a8e08a210c5bbbbad9e8e255488f0`。匿名读取 manifest/config 确认 `linux/amd64`、`User=node`、revision 为 `984ccf0ff2ed2d0f63c96f2f5b7b2098cba023d3`。
 - 上述历史 984ccf0 发布没有本机 Docker 或发布后五引擎/重启拉取复验，也未修复 R1–R10。本轮 c2a1f21 已通过完整发布前/后矩阵；发布当时本机无 Docker，这两组证据来自 GitHub 原生 amd64。随后新增的本机兼容运行部署见 7.15。
 - 发布链路：Verify 工作流跑语法/空壳/测试/构建；Docker amd64 工作流在 main/tag 发布事件上做源码验证 → 原生 amd64 单次构建 → 完整临时容器矩阵 → artifact 保存/身份校验 → GHCR 发布；PR 和默认手动 dry-run 只读验收，使用仓库 `GITHUB_TOKEN` 的 packages 权限，不提交发布密钥。`latest` 对应 main，`sha-*` 固定提交，`v*` 发布版本。
-- `compose.yaml` 用 GHCR 镜像并挂载 `./data:/app/data`，容器以非 root `node` 运行；挂载旧版本（root 属主）数据目录需先 `chown -R 1000:1000 data`（README 有命令）。
-- `.github/workflows/image-verify.yml` + `scripts/image-verify.mjs` 可手动验证已发布镜像（五引擎、重启持久化、非 root 断言）；只在临时容器创建样本，不能用于正式数据目录。
+- `compose.yaml` 使用GHCR latest并挂载专用 `./data:/app/data`；入口自动准备权限后按PUID/PGID运行（默认1000:1000）。需要完整Compose中的初始化能力配置；旧版sha-cbcd7dd及更早镜像仍按README手动修正属主。
+- `.github/workflows/image-verify.yml` 通过 `scripts/container-matrix.mjs` 可手动验证已发布镜像（五引擎、重启持久化、非 root 断言）；只在临时容器创建样本，不能用于正式数据目录。
 
 ## 6. 安全修复历史（两轮，原用例已验证）
 
@@ -878,4 +880,13 @@ GitHub 的 work/media-release-gates-20261006 已通过分支页 Delete branch �
 - **授权与行为**：用户 NAS 的 UID1000/GID10，希望以环境变量自定义运行身份。入口分别读取 PUID/PGID，未设置时各自默认1000；两项均严格要求1–2147483647的十进制整数，拒绝0、空值、用户名、负数、小数和越界值，验证先于data修改。规范化数字同时用于data属主和setpriv切换身份，附加组/全部能力清零与NoNewPrivs保持。显式Docker user跳过root初始化并优先决定身份，不应用PUID/PGID；源码运行不使用两项。HOME仍为镜像/home/node，不自动创建同名用户或更改NAS用户账号。
 - **配置与测试**：Compose显式传入两项，支持同目录.env/shell和直接改environment；使用无冒号默认插值，显式空值交给入口拒绝。README、CONFIGURATION、SECURITY、DEVELOPMENT与.env.example同步。增加默认/单项/1000:10/不同UID/前导零/边界/非法值测试；容器门禁按对应身份exec并检查真实PID1身份。真实Dockerfile原生arm64候选，1000:10和1201:1202分别完成空壳首装/五入口媒体/正式CLI/重启，再同卷迁移为1301:13并核对私密文件内容、0600、账号、订阅、源ENV、源脚本与旧票据行为；非法值容器逐项确认data属主/权限/字节均未改。真实Compose1000:10健康，PID1 UID1000/GID10、空附加组、五类能力全0及NoNewPrivs=1，data与state属主1000:10且state0600。
 - **验收边界**：check/build、217后端+73UI=290、17独立源及原生arm64容器211回归通过，零失败/跳过；7.58矩阵全部重跑通过。正式amd64断言保留，任务临时副本只替换平台/架构标记；新改动未做原生amd64或真实用户NAS实机验收。引擎基线保持2.0.6及零预置源，未新增产品运行依赖，没有重新运行固定原版46组联网容器对照，不扩大脚本兼容性结论。
-- **环境与清理**：本机原PID83910/54058服务未重启，167个正式data文件hash逐项一致。检查无既有Docker/Lima可复用后，再次校验官方Lima2.2.1并临时建立独立VZ arm64/3CPU/4GiB/20GiB VM，无主机挂载/主机SSH公钥加载/自启；Docker29.9.0/Compose5.6.0仅在VM，runner复用候选Node。完成后任务容器/卷/镜像/构建缓存清零、Compose网络删除、VM与工具/安装包/上下文归档删除；保留忽略目录.tools/nas-identity-20261013的小体积测试报告/身份/清理及data散列用于复核。原约777MiB维护环境、约3.29GiB共享Lima缓存和其他项目工具保留，无新长期工具或自启。未提交、推送、发布，当前线上镜像不支持这两个变量。
+- **环境与清理**：本机原54058服务未重启，167个正式data文件hash逐项一致。检查无既有Docker/Lima可复用后，再次校验官方Lima2.2.1并临时建立独立VZ arm64/3CPU/4GiB/20GiB VM，无主机挂载/主机SSH公钥加载/自启；Docker29.9.0/Compose5.6.0仅在VM，runner复用候选Node。完成后任务容器/卷/镜像/构建缓存清零、Compose网络删除、VM与工具/安装包/上下文归档删除；保留忽略目录.tools/nas-identity-20261013的小体积测试报告/身份/清理及data散列用于复核。原约777MiB维护环境、约3.29GiB共享Lima缓存和其他项目工具保留，无新长期工具或自启。未提交、推送、发布，当前线上镜像不支持这两个变量。
+
+### 7.60 NAS部署改进提交、latest发布与匿名核验（2026-10-13）
+
+- **授权与提交**：用户要求推送GitHub并使用Docker latest。7.58–7.59的最终13文件改动321新增/31删除，以功能提交cf02ddd914279090d16a0706fb98eb69565f1c9c正常快进推main，无强推。提交前核对运行数据/工具/本机历史未被Git跟踪，真实私密值未匹配待提交文件；零预置源和2.0.6执行文件基线检查通过。Compose保持ghcr.io/tardlk/coketv:latest，不要求用户固定SHA标签；SHA标签同时发布用于审计。
+- **本机门禁**：提交前再次执行check/build、217后端+73UI=290和17独立源回归，零失败/跳过。167个正式data文件hash逐项相同，原54058源码服务未重启。没有重新安装工具或启动Docker/VM，本机自定义ID/Compose/arm64证据沿用7.59。
+- **远端门禁**：[Verify38336557899](https://github.com/tardlk/CokeTV/actions/runs/38336557899)、[Docker38336557896](https://github.com/tardlk/CokeTV/actions/runs/38336557896)均success，candidate/publish成功；两门禁分别实际运行固定原版amd64的46组对照，Coke/原版/冻结响应一致。原生amd64候选211项回归、空壳/首装/CLI/五入口真实媒体/同卷重启/旧票据、损坏state与ENV保留、旧root卷与NAS bind自动修正、只读失败、显式user、自定义1000:10和1201:1202及同卷改1301:13全部通过。真实PID1身份、空附加组、五类能力全0及NoNewPrivs=1由矩阵断言，非法PUID/PGID在data变动前拒绝。
+- **发行身份**：匿名核对latest/sha-cf02ddd同一digest `sha256:e390d5c20b3e9b3dfeb44431792a663610aef22b06f95aa7b0310755cb219b0d`，linux/amd64、OCI revision `cf02ddd914279090d16a0706fb98eb69565f1c9c`，Config.User=root、固定入口/usr/local/bin/coketv-entrypoint。config digest `sha256:297acb4404893bb8922f3fb58b9f6e6c3bc8e7f60ff69f5c53619760163fb8fe` 与验收报告imageId相同；发布作业校验并加载同一候选tar后推送，没有二次构建。root仅为入口初始化身份，不代表应用或源以root运行。
+- **体积与证据**：Registry压缩层合计364634818字节，上一cbcd7dd为364637739字节，本次减少2921字节；未新增npm/Python产品依赖或常驻服务。容器证据artifact11784889175为19304字节，ZIP SHA256 f809a5a68801b788bd00ee00a6b04043d7709725c668771691422b0db231ba0f与API digest一致；两份46组对照artifact11785442031/11784938306也核对ZIP摘要。只保留报告/TAP/散列，不下载候选image.tar；证据ZIP仅在内存解压，不保留压缩包。
+- **交接与边界**：忽略目录.tools/github-release-20261013保留本机/CI门禁、隐私/data散列、匿名registry身份及小体积证据；真实PID/路径在.tools/ENVIRONMENT.md与service.json。本轮新增工具/长期环境/自启0，原约777MiB维护环境、约3.29GiB共享Lima缓存与其他项目工具保留。随后纯文档交接skip ci，不重复发布镜像。发布后没有再次完整拉取镜像跑容器；相同候选/config身份已核对。真实用户NAS ACL/NFS/用户映射、外站/账号/公网出口/播放器解码等仍需按各自范围验证，不因此次发布扩大兼容结论。
