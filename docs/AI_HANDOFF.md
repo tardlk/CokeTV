@@ -1,6 +1,6 @@
 # CokeTV AI 接手文档
 
-更新：2026-10-12。**这是本项目唯一的接手文档**：原有的《审查报告》《完善计划》《修复验收报告》《第二轮验收报告》四份过程文件已全部并入本文件并删除，不要再去找它们。
+更新：2026-10-13。**这是本项目唯一的接手文档**：原有的《审查报告》《完善计划》《修复验收报告》《第二轮验收报告》四份过程文件已全部并入本文件并删除，不要再去找它们。
 
 公开交接文件，不含凭据、本机绝对路径或私密地址。第0–5节说明当前入口、规范和发行；第6–7节保留分阶段历史，其中7.2维护长期待办，最新实际结果以第0节指向的记录为准。旧阶段中的环境、计数和“未完成”不能覆盖后续记录。接手请按顺序读：
 
@@ -11,6 +11,8 @@
 ---
 
 ## 0. 当前接手入口（先看本节）
+
+**当前工作区新增改动（2026-10-13，未提交/推送/发布）**：用户选择 NAS 部署时“启动自动处理 data 权限，然后以普通账号运行”，并要求增加可配置 PUID/PGID（实际 NAS 为1000:10）。Docker 入口、Compose、部署说明及容器门禁已更新，默认1000:1000；本机290项、17独立源和原生arm64容器211项回归及完整矩阵通过，真实Compose1000:10运行验证通过，详见7.58–7.59。当前 GHCR latest/sha-cbcd7dd 仍是以下已发布版本，没有自动权限初始化或PUID/PGID支持；新功能需新镜像与配套 Compose 一起更新。后续不要将工作区验收称为已发布或原生 amd64 验收。
 
 **最新交付：2026-10-12，drpy-node兼容基线与持续对照门禁已提交推送并发布。** 功能提交 [cbcd7dd](https://github.com/tardlk/CokeTV/commit/cbcd7ddaafebfa7fbddc5cb59eeedd5e7da8387f) 已在main；[Verify38255541113](https://github.com/tardlk/CokeTV/actions/runs/38255541113)、[Docker38255540891](https://github.com/tardlk/CokeTV/actions/runs/38255540891)均success。GHCR latest/sha-cbcd7dd为同一已验收镜像，详情见7.57。随后纯文档交接提交使用skip ci，不重复发布镜像。
 
@@ -861,3 +863,19 @@ GitHub 的 work/media-release-gates-20261006 已通过分支页 Delete branch �
 - **发行身份**：匿名读取GHCR验证latest与sha-cbcd7dd同一digest sha256:13e7e53b5e67729865eefed3ab2dad54fe965b3e4113fd547cf8cd7cfe3544bb，linux/amd64、User=node、OCI revision cbcd7ddaafebfa7fbddc5cb59eeedd5e7da8387f。config digest sha256:e2e499046ba774cc282aea7b4265e7d40bde479b79c5d944c88fe95c1abfdd16与验收报告imageId一致；发布作业加载同一验收tar后推送，未二次构建。
 - **体积与证据**：压缩层合计364637739字节，上一081db7d为364406886字节，实际增加230853字节（约225KiB）；没有增加运行依赖或常驻服务。容器证据artifact11749838365为15758字节，ZIP SHA256与API digest df904ccb6ea9887f0bf470b11fbb9a94cec5ec5514341aa5fb145209810f90e7一致。只保留小体积报告/TAP/散列，不下载候选image.tar，验证后的ZIP已删。
 - **本机/交接**：仍仅本项目54058源码服务及按需worker，无新自启；既有约777MiB维护环境、共享Lima缓存和其他项目工具保留。忽略目录.tools/github-push-20261012保留本轮本机/远端门禁、隐私/data hash、registry身份和小体积证据；真实PID在.tools/ENVIRONMENT.md。本节后纯文档提交使用skip ci，main文档SHA领先功能镜像SHA属于预期，不重复发布。未在发布后拉取完整镜像再次跑容器；原生候选与已发布config身份相同已验证。外站/账号/客户端解码等范围仍按7.56记录，不因发布扩大验收结论。
+
+### 7.58 NAS data 权限自动初始化（2026-10-12，本机未提交/推送/发布）
+
+- **授权与原因**：用户提供 NAS 日志，普通账号在创建 `/app/data/runtime` 时 EACCES，要求学习 OmniBox 部署方式，并明确选择“启动时自动处理 data 权限，然后以普通账号运行”。沿用数据持久化的部署方式，未采用源与服务长期以 root 运行。既有 OmniBox latest 的本机镜像 inspect 无 User，作为默认 root 启动的配置证据；没有为研究重新部署 OmniBox。
+- **实现**：固定入口先以 root 准备 CokeTV 专用 data 的属主/必要属主读写权限，随后 setpriv 切换为 1000:1000，清除附加组和全部 inheritable/permitted/effective/bounding/ambient 能力，启用 no-new-privileges 并 exec 服务。初始化不加载源或用户配置，不修改文件内容，不跟随符号链接；Linux 按已打开目录的 fd 遍历，拒绝硬链接、跨文件系统挂载/特殊文件及广泛系统路径。失败退出，不回退 root 服务；NAS ACL、只读、NFS root squash、用户映射仍需实际排查。
+- **部署与门禁**：Compose 保留 cap_drop=ALL/no-new-privileges，并仅为初始化加 CHOWN/DAC_OVERRIDE/FOWNER/SETUID/SETGID/SETPCAP，应用启动时能力全部清零。镜像 Config.User 为 root，仅表示入口身份；门禁改为检查真实 `/proc/1/status`。Docker exec 测试及日常命令需明确 `--user 1000:1000`；显式 user 部署跳过初始化，需要可写数据。util-linux 已在所用 Node Debian 基础镜像内，显式声明并检查 setpriv，没有新增 npm/Python 产品依赖。README/SECURITY/DEVELOPMENT 与发行门禁测试同步；发行继续零预置源。
+- **验收**：check/build、215后端+73UI=288以及本机17独立源通过，零失败/跳过。真实 Dockerfile 原生 arm64 候选209项回归及完整矩阵通过：空数据/首装/CLI/五入口实际媒体/同卷重启/旧票据/损坏 state 与 ENV 保留；旧 root 属主卷自动修正且 state 字节不变。NAS root 属主 bind 目录先用旧直接普通账号启动复现 exact EACCES mkdir runtime，再以新入口正常启动，私密样本内容与0600保留、目录外链接不修改、重启正常；只读挂载拒绝初始化。实际 Compose 也启动健康，真实服务 UID/GID1000、空附加组、五类能力全0、NoNewPrivs=1。正式容器矩阵的原生 amd64 断言保持，本机临时副本只替换架构断言/平台标签，不能称新版本已做原生 amd64 或真实用户 NAS 验收。
+- **本机与清理**：正式167个data文件hash逐项不变，原54058源码服务未重启。先检查未发现可复用Docker/Lima，再校验官方Lima2.2.1包，在忽略任务目录内建独立VZ arm64/3CPU/4GiB/20GiB VM（无主机目录挂载、无主机SSH公钥载入、无自启），Docker29.9.0仅在VM；测试 runner 复用候选镜像的Node22.23.3。临时容器/卷/镜像/构建缓存及Compose网络已清理，VM/Lima/下载包/上下文归档删除，仅保留忽略目录.tools/nas-deployment-20261012的小体积测试/清理/身份和data散列证据。原约777MiB维护环境及约3.29GiB共享Lima缓存保留；本轮Lima使用已有缓存，没有清理其他项目工具。未提交、推送或发布，新方式尚不在GHCR镜像内。
+
+
+### 7.59 可配置 PUID/PGID（2026-10-13，本机未提交/推送/发布）
+
+- **授权与行为**：用户 NAS 的 UID1000/GID10，希望以环境变量自定义运行身份。入口分别读取 PUID/PGID，未设置时各自默认1000；两项均严格要求1–2147483647的十进制整数，拒绝0、空值、用户名、负数、小数和越界值，验证先于data修改。规范化数字同时用于data属主和setpriv切换身份，附加组/全部能力清零与NoNewPrivs保持。显式Docker user跳过root初始化并优先决定身份，不应用PUID/PGID；源码运行不使用两项。HOME仍为镜像/home/node，不自动创建同名用户或更改NAS用户账号。
+- **配置与测试**：Compose显式传入两项，支持同目录.env/shell和直接改environment；使用无冒号默认插值，显式空值交给入口拒绝。README、CONFIGURATION、SECURITY、DEVELOPMENT与.env.example同步。增加默认/单项/1000:10/不同UID/前导零/边界/非法值测试；容器门禁按对应身份exec并检查真实PID1身份。真实Dockerfile原生arm64候选，1000:10和1201:1202分别完成空壳首装/五入口媒体/正式CLI/重启，再同卷迁移为1301:13并核对私密文件内容、0600、账号、订阅、源ENV、源脚本与旧票据行为；非法值容器逐项确认data属主/权限/字节均未改。真实Compose1000:10健康，PID1 UID1000/GID10、空附加组、五类能力全0及NoNewPrivs=1，data与state属主1000:10且state0600。
+- **验收边界**：check/build、217后端+73UI=290、17独立源及原生arm64容器211回归通过，零失败/跳过；7.58矩阵全部重跑通过。正式amd64断言保留，任务临时副本只替换平台/架构标记；新改动未做原生amd64或真实用户NAS实机验收。引擎基线保持2.0.6及零预置源，未新增产品运行依赖，没有重新运行固定原版46组联网容器对照，不扩大脚本兼容性结论。
+- **环境与清理**：本机原PID83910/54058服务未重启，167个正式data文件hash逐项一致。检查无既有Docker/Lima可复用后，再次校验官方Lima2.2.1并临时建立独立VZ arm64/3CPU/4GiB/20GiB VM，无主机挂载/主机SSH公钥加载/自启；Docker29.9.0/Compose5.6.0仅在VM，runner复用候选Node。完成后任务容器/卷/镜像/构建缓存清零、Compose网络删除、VM与工具/安装包/上下文归档删除；保留忽略目录.tools/nas-identity-20261013的小体积测试报告/身份/清理及data散列用于复核。原约777MiB维护环境、约3.29GiB共享Lima缓存和其他项目工具保留，无新长期工具或自启。未提交、推送、发布，当前线上镜像不支持这两个变量。

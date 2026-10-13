@@ -41,5 +41,7 @@ test('镜像发行包含正式 verify CLI，测试样本与容器验收脚本只
     assert.ok(copies.some(line=>line.includes('scripts/verify.mjs')),'package verify 的正式入口必须在镜像');
     assert.ok(!copies.some(line=>/container-smoke|image-verify|container-matrix|tests/.test(line)),'测试代码不能预置进发行镜像');
     assert.match(final,/COPY engine \.\/engine/);
-    assert.match(final,/USER node/);
+    assert.match(final,/USER root\nENTRYPOINT \["\/usr\/local\/bin\/coketv-entrypoint"\]/);
+    assert.ok(copies.some(line=>line.includes('scripts/prepare-container-data.mjs')));
+    assert.ok(copies.some(line=>line.includes('scripts/docker-entrypoint.sh')));
 });

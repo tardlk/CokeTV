@@ -9,6 +9,8 @@
 | `HOST` | `0.0.0.0` | 监听地址 |
 | `PORT` | `54058` | 服务端口 |
 | `ADMIN_PASSWORD` | 未设置 | 仅在尚未创建管理密码时预设管理密码；已有 data/admin.json 中的密码优先，不会被该变量重置。未预设时，首次进入后台直接创建密码；观影无需密码 |
+| `PUID` | `1000` | Docker 入口准备 data 属主及运行服务所用 UID；仅容器入口生效，要求 1–2147483647 的十进制整数 |
+| `PGID` | `1000` | Docker 入口准备 data 属组及运行服务所用 GID；例如 NAS 为 1000:10 时填 10；取值要求同 PUID |
 | `DATA_DIR` | 项目 data 目录 | 自定义运行数据位置 |
 | `PYTHON_PATH` | `python3` | 首次初始化的 Python 解释器路径 |
 | `PHP_PATH` | `php` | 首次初始化的 PHP 解释器路径 |
@@ -17,7 +19,9 @@
 
 已有数据时，以 GUI 保存的解释器设置为准。对外地址和执行超时在设置页修改。`.env` 与运行数据不进入仓库。
 
-源码启动时由 dotenv 读取项目 `.env`，已在进程中设置的同名变量优先。Compose 默认仅向容器传入 `TZ`，主机 `.env` 不会自动成为容器环境；需要其他变量时，在服务的 `environment` 中显式声明，或通过 `docker run -e` 提供。容器中的解释器、浏览器和数据路径均指容器内路径。变量传入规则见 [Docker Compose 官方说明](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/)。
+源码启动时由 dotenv 读取项目 `.env`，已在进程中设置的同名变量优先。Compose 显式向容器传入 `TZ`、`PUID` 和 `PGID`，后两项从同目录 `.env` 或启动 Compose 的 shell 读取（未设置时各自默认1000），主机 `.env` 不会自动成为容器环境；需要其他变量时，在服务的 `environment` 中显式声明，或通过 `docker run -e` 提供。容器中的解释器、浏览器和数据路径均指容器内路径。变量传入规则见 [Docker Compose 官方说明](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/)。
+
+PUID/PGID 的非法值（包括0和空值）在初始化 data 前拒绝启动。它们不改变 NAS 用户账号，仅用于专用数据目录属主和容器进程；不要与 Compose `user:` 混用，显式 Docker 用户会跳过 root 初始化并优先决定进程身份。源码运行不使用这两个变量。
 
 通过 `ADMIN_PASSWORD` 初始化时，KDF 结果只保留在服务内存，不会自动把该密码保存成 `admin.json`；重启需继续提供变量。保存变量的 `.env`、Compose 配置或密码管理工具由部署者自行保护。
 

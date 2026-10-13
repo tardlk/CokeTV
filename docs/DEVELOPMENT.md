@@ -124,7 +124,7 @@ Emby通过订阅链接弹窗提供三项连接信息，不设独立页面/全局
 
 `.github/workflows/docker.yml` 的候选任务使用原生 `ubuntu-24.04` amd64 runner，先执行源码门禁，再构建一次镜像并运行 `scripts/container-matrix.mjs`。PR 与手动默认 `dry_run=true` 没有 packages 写权限或 GHCR 登录；main/v* push、或显式关闭 dry-run 的 main/v* 手动运行，才允许在候选任务成功后进入发布任务。
 
-容器矩阵使用独立临时卷与 compose 同等的 `cap_drop=ALL` / `no-new-privileges` 约束，检查非 root、零源、首装、正式 verify CLI、五引擎实际 GET/HEAD/Range/HLS 分片/key、同卷重启/旧票据失效，以及注入的升级/票据/出口/0600/异常/CLI 回归。另建卷验证损坏 state/ENV 拒绝启动且保留内容、旧 root 属主失败后按 README 修正恢复。冻结旧桥接、固定源与测试脚本通过 `docker cp` 注入临时写层，最终镜像只带 `check-shell.mjs` 和正式 `verify.mjs`，不能 commit 测试容器为发行镜像。测试数与解释器版本以容器报告和 TAP 为准，失败或跳过都阻止候选通过。
+容器矩阵使用独立临时卷与 compose 同等的能力裁剪和入口初始化能力配置，直接读取 `/proc/1/status` 检查服务 UID/GID 符合 PUID/PGID（默认1000:1000）、空附加组、五类 Linux 能力全部清零及 NoNewPrivs=1，而非以镜像 Config.User 判断服务身份。容器 exec 测试明确使用对应 PUID:PGID。矩阵包含1000:10、1201:1202、同卷改ID后的私密状态/媒体/CLI/重启，以及非法ID在修改data前退出。检查零源、首装、正式 verify CLI、五引擎实际 GET/HEAD/Range/HLS 分片/key、同卷重启/旧票据失效，以及注入的升级/票据/出口/0600/异常/CLI 回归。另建卷验证损坏 state/ENV 拒绝启动且保留内容；旧 root 属主卷和 root 属主 NAS bind 目录自动准备权限、保留数据内容及跳过目录外符号链接。冻结旧桥接、固定源与测试脚本通过 `docker cp` 注入临时写层，最终镜像只带发行脚本和固定权限初始化入口，不能 commit 测试容器为发行镜像。测试数与解释器版本以容器报告和 TAP 为准，失败或跳过都阻止候选通过。
 
 验收成功后 `docker save` 保存原镜像，记录 tar SHA256、image ID、源码 SHA 与 artifact digest。发布任务只下载该 artifact，校验 tar/image ID/OCI revision/platform 后登录并推送，不重新构建。候选失败、PR、dry-run 与工作分支不能发布；`tests/release-gates.test.js` 覆盖这些门禁。artifact 交接沿用 [GitHub 官方说明](https://docs.github.com/en/actions/tutorials/store-and-share-data)，额外 tar 校验不接受只告警的 digest 不一致。
 

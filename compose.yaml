@@ -8,15 +8,23 @@ services:
       - ./data:/app/data
     environment:
       TZ: Asia/Shanghai
+      PUID: "${PUID-1000}"
+      PGID: "${PGID-1000}"
+      # 可直接改为 NAS 用户的数字 ID，例如 PUID: "1000"、PGID: "10"。
       # 管理密码只在首次进入 /admin 时创建；观影首页无需密码。
       # 尚未创建密码时，可在此显式配置 ADMIN_PASSWORD 预设管理密码；不覆盖已有密码。
       # 主机 .env 的变量不会自动全部传入容器，需要在 environment 中声明。
     restart: unless-stopped
     stop_grace_period: 15s
-    # 容器以非 root（node）运行，并裁剪权限：源脚本与 CokeTV 同权限执行，
-    # 这些开关能显著缩小被恶意源利用后的影响面。
+    # 启动时准备 data 权限，随后服务以 PUID:PGID 运行并清除全部能力。
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    # ffmpeg / chromium 版若需要额外内核能力，请按需在此恢复最小集合。
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+      - SETPCAP

@@ -36,8 +36,6 @@ PHP 源按需要安装 curl、mbstring、xml 等扩展。浏览器、外部插�
 ```sh
 docker pull --platform linux/amd64 ghcr.io/tardlk/coketv:latest
 mkdir -p data
-# 首次部署时，确保绑定目录可由容器 UID/GID 1000 写入。
-docker run --rm -v "$(pwd)/data:/app/data" alpine chown -R 1000:1000 /app/data
 docker compose up -d
 ```
 
@@ -46,19 +44,38 @@ docker compose up -d
 ```sh
 docker run -d --name coketv --platform linux/amd64 \
   -p 54058:54058 -v "$(pwd)/data:/app/data" \
+  -e PUID=1000 -e PGID=1000 \
   --cap-drop=ALL --security-opt=no-new-privileges:true \
+  --cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=FOWNER \
+  --cap-add=SETUID --cap-add=SETGID --cap-add=SETPCAP \
   --restart unless-stopped ghcr.io/tardlk/coketv:latest
 ```
 
 首次使用空数据目录时，源、解析、直播和环境变量均为空；进入 /admin 直接创建管理密码（或通过 `ADMIN_PASSWORD` 预设），再导入 TVBox 链接或自己的脚本。镜像保留 Node.js 22、Python、PHP、ffmpeg 及兼容辅助库。挂载的 data 持久化用户数据，更新镜像不会清空已有源。
 
-镜像以**非 root 用户 `node`（UID/GID 1000）**运行。镜像内的数据目录已设置属主，新建命名卷会继承；`./data:/app/data` 这类主机目录挂载使用主机目录自身的属主，首次部署或旧数据升级都可能需要修正。主机目录挂载与命名卷的区别见 [Docker 官方说明](https://docs.docker.com/engine/storage/bind-mounts/)。若容器无法写入，请先停止正在使用该目录的服务，再确认并修正属主：
+容器入口先以 root 准备 **CokeTV 专用 data 目录**的权限，再切换为 **PUID:PGID（默认 1000:1000）** 运行服务及源脚本，并清除全部 Linux 能力、附加组和权限提升能力。NAS 的 root 属主挂载目录及旧数据通常无需手动 `chown`；启动只调整目录/普通文件的属主和必要的属主读写权限，保留文件内容和已有私密文件的 0600 权限。符号链接不跟随，硬链接、跨文件系统挂载及特殊文件会拒绝初始化。不要将共享文件夹根目录或其他项目目录挂载为 data。
 
-```sh
-docker run --rm -v "$(pwd)/data:/app/data" alpine chown -R 1000:1000 /app/data
+通过环境变量 `PUID` 和 `PGID` 匹配 NAS 用户，均默认 `1000`，支持 1–2147483647 的十进制整数，不接受 root（0）、空值或用户名；无效配置在修改 data 前拒绝启动。例如 NAS 用户为 UID 1000、GID 10，在 Compose 中设置：
+
+```yaml
+environment:
+  TZ: Asia/Shanghai
+  PUID: "1000"
+  PGID: "10"
 ```
 
-现有部署更新前，先停止服务并备份完整 `data/`，再拉取镜像并启动；不要删除数据目录或同时启动两个共享该目录的容器。Compose 默认只传入 `TZ`，不会自动把主机 `.env` 中的所有变量传给容器；需要 `ADMIN_PASSWORD` 等变量时，须在 `compose.yaml` 的 `environment` 中显式配置，或使用 `docker run -e`。
+仓库 Compose 也支持在同目录 `.env` 中写入 `PUID=1000`、`PGID=10`，再重建容器；单独运行时使用 `-e PUID=1000 -e PGID=10`。修改 ID 后入口会更新 data 属主并保留内容，无需在 NAS 创建相同名字的容器用户。自定义 UID 的 HOME 仍为镜像内 `/home/node`，可写业务文件应放在 data。
+
+Compose 的 `cap_add` 仅用于入口初始化与切换身份，请使用当前完整配置；旧版只写 `cap_drop: ALL` 会阻止初始化。显式指定 `user: "1000:1000"` 时跳过权限初始化并使用 Docker 指定的身份，PUID/PGID 不再控制身份，需要提前准备可写目录；`docker exec` 默认账号仍由镜像配置决定，日常命令使用 `docker exec --user <PUID>:<PGID>`（例如 `--user 1000:10`）。主机目录挂载与命名卷的区别见 [Docker 官方说明](https://docs.docker.com/engine/storage/bind-mounts/)。
+
+只读挂载、NAS ACL、NFS root squash 或 Docker 用户映射仍可能拒绝权限调整；失败时容器停止并提示检查，不会回退为 root 运行服务。旧版 `sha-cbcd7dd` 及更早镜像没有自动初始化，仍需停止使用该目录的服务后手动修正：
+
+```sh
+docker run --rm --user 0:0 -v "$(pwd)/data:/app/data" \
+  --entrypoint chown ghcr.io/tardlk/coketv:sha-cbcd7dd -R 1000:1000 /app/data
+```
+
+现有部署更新前，先停止服务并备份完整 `data/`，再拉取镜像并启动；不要删除数据目录或同时启动两个共享该目录的容器。Compose 显式传入 `TZ`、`PUID` 和 `PGID`，不会自动把主机 `.env` 中的所有变量传给容器；需要 `ADMIN_PASSWORD` 等变量时，须在 `compose.yaml` 的 `environment` 中显式配置，或使用 `docker run -e`。
 
 从源码构建 x86 镜像（可选浏览器）：
 

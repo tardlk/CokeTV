@@ -11,7 +11,7 @@ FROM node:22-trixie-slim
 WORKDIR /app
 ARG INSTALL_BROWSER=0
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-venv php-cli php-curl php-mbstring php-xml php-sqlite3 ffmpeg ca-certificates \
+    python3 python3-venv php-cli php-curl php-mbstring php-xml php-sqlite3 ffmpeg ca-certificates util-linux \
     && if [ "$INSTALL_BROWSER" = "1" ]; then apt-get install -y --no-install-recommends chromium; fi \
     && rm -rf /var/lib/apt/lists/*
 COPY engine/spider/py/base/requirements.txt /tmp/python-requirements.txt
@@ -22,13 +22,15 @@ COPY package.json ./
 COPY src ./src
 COPY LICENSES ./LICENSES
 COPY engine ./engine
-COPY scripts/check-shell.mjs scripts/verify.mjs ./scripts/
+COPY scripts/check-shell.mjs scripts/verify.mjs scripts/prepare-container-data.mjs ./scripts/
+COPY scripts/docker-entrypoint.sh /usr/local/bin/coketv-entrypoint
+RUN chmod 755 /usr/local/bin/coketv-entrypoint && command -v setpriv
 RUN node scripts/check-shell.mjs
-# 先建好数据目录并交给 node 用户，再声明 VOLUME 并以非 root 运行：
-# 挂载新卷时会继承这里的属主，否则 node 用户无法创建 admin.json/state.json。
+# Startup fixes only data ownership/modes, then execs the service without root or capabilities.
 RUN mkdir -p /app/data && chown -R node:node /app/data
 ENV NODE_ENV=production TZ=Asia/Shanghai PORT=54058 HOST=0.0.0.0 PYTHON_PATH=/opt/python/bin/python3 PHP_PATH=php HOME=/home/node
-USER node
+USER root
+ENTRYPOINT ["/usr/local/bin/coketv-entrypoint"]
 VOLUME /app/data
 EXPOSE 54058
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
