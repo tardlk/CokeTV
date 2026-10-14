@@ -281,6 +281,30 @@ describe('shadcn 控制台绑定',()=>{
         [...document.querySelectorAll('[role="alertdialog"] button')].find(item=>item.textContent==='取消').click();await flushPromises();
         expect(requests.some(item=>item.method==='DELETE')).toBe(false);expect(wrapper.find('.selection-tools').text()).toContain('已选择 1');
     });
+    it('批量删除默认保留脚本，清理选项须显式勾选且提示共享保护',async()=>{
+        await start();await wrapper.find('[aria-label="选择源A"]').trigger('click');
+        await button('删除',wrapper.find('.selection-tools')).trigger('click');await flushPromises();
+        const dialog=document.querySelector('[role="alertdialog"]');
+        const option=dialog.querySelector('[aria-label="同时清理本源配置、闲置脚本及历史版本"]');
+        expect(option.getAttribute('aria-checked')).toBe('false');
+        expect(dialog.textContent).toContain('仍被其他源使用的脚本会保留');
+        option.click();await flushPromises();
+        [...dialog.querySelectorAll('button')].find(item=>item.textContent==='删除').click();await flushPromises();
+        expect(requests.find(item=>item.method==='DELETE')).toMatchObject({url:'/admin/instances/batch',payload:{ids:['a'],deleteScripts:true}});
+    });
+    it('单源删除也提供显式清理选项，取消后下次打开恢复默认',async()=>{
+        await start();await wrapper.findAll('button').find(item=>item.attributes('title')==='移除站点').trigger('click');await flushPromises();
+        let dialog=document.querySelector('[role="alertdialog"]');
+        dialog.querySelector('[aria-label="同时清理本源配置、闲置脚本及历史版本"]').click();await flushPromises();
+        [...dialog.querySelectorAll('button')].find(item=>item.textContent==='取消').click();await flushPromises();
+        expect(requests.some(item=>item.method==='DELETE')).toBe(false);
+        await wrapper.findAll('button').find(item=>item.attributes('title')==='移除站点').trigger('click');await flushPromises();
+        dialog=document.querySelector('[role="alertdialog"]');
+        expect(dialog.querySelector('[aria-label="同时清理本源配置、闲置脚本及历史版本"]').getAttribute('aria-checked')).toBe('false');
+        dialog.querySelector('[aria-label="同时清理本源配置、闲置脚本及历史版本"]').click();await flushPromises();
+        [...dialog.querySelectorAll('button')].find(item=>item.textContent==='删除').click();await flushPromises();
+        expect(requests.find(item=>item.method==='DELETE')).toMatchObject({url:'/admin/instances/a',payload:{deleteScripts:true}});
+    });
     it('源开关通过实例更新 API 写入，不丢已有参数',async()=>{
         await start();await wrapper.find('[aria-label="启用源B"]').trigger('click');await flushPromises();
         const request=requests.find(request=>request.url==='/admin/instances/b'&&request.method==='PUT');

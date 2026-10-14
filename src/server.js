@@ -379,22 +379,14 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
     app.delete('/admin/instances/batch', async request => {
         const ids = request.body?.ids;
         if (!Array.isArray(ids) || !ids.length || ids.length > 10000 || ids.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(id))) throw fail('请选择需要删除的源');
-        const selected = new Set(ids);
-        const deleted = await store.mutate(state => {
-            const count = state.instances.filter(item => selected.has(item.id)).length;
-            state.instances = state.instances.filter(item => !selected.has(item.id));
-            for (const sub of state.subscriptions) sub.instances = sub.instances.filter(id => !selected.has(id));
-            return count;
-        });
-        if (deleted) runner.reset('所选源已删除');
-        return {ok: true, deleted};
+        const result = await store.deleteInstances(ids, {deleteScripts: request.body?.deleteScripts ?? false});
+        if (result.deleted) runner.reset('所选源已删除');
+        return {ok: true, ...result};
     });
     app.delete('/admin/instances/:id', async request => {
-        await store.mutate(state => {
-            state.instances = state.instances.filter(s => s.id !== request.params.id);
-            for (const sub of state.subscriptions) sub.instances = sub.instances.filter(id => id !== request.params.id);
-        });
-        runner.reset(); return {ok: true};
+        const result = await store.deleteInstances([request.params.id], {deleteScripts: request.body?.deleteScripts ?? false});
+        if (result.deleted) runner.reset('源已删除');
+        return {ok: true, ...result};
     });
     app.post('/admin/verify/:id', async request => {
         const {script, instance, file} = store.resolve(request.params.id);

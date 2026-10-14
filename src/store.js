@@ -94,10 +94,16 @@ export class Store {
             }
             await this.atomic(file, content, options);
         };
+        const remove = async file => {
+            if (files.has(file)) { await fs.rm(file, {recursive: true, force: true}); return; }
+            const backup = `${file}.${randomBytes(8).toString('hex')}.rollback`;
+            try { await fs.rename(file, backup); files.set(file, {backup}); }
+            catch (error) { if (error.code !== 'ENOENT') throw error; }
+        };
         const rollback = async () => {
             const errors = [];
             for (const [file, {backup}] of [...files].reverse()) {
-                try { if (backup) await fs.rename(backup, file); else await fs.rm(file, {force: true}); }
+                try { if (backup) await fs.rename(backup, file); else await fs.rm(file, {recursive: true, force: true}); }
                 catch (error) { errors.push(error); }
             }
             if (errors.length) {
@@ -105,9 +111,9 @@ export class Store {
                 throw new AggregateError(errors, '文件回滚失败，已保留 .rollback 备份，请检查数据目录');
             }
         };
-        try { return await this.mutate(state => fn(state, write), {rollback}); }
+        try { return await this.mutate(state => fn(state, write, remove), {rollback}); }
         finally {
-            if (!rollbackFailed) for (const {backup} of files.values()) if (backup) await fs.rm(backup, {force: true}).catch(() => {});
+            if (!rollbackFailed) for (const {backup} of files.values()) if (backup) await fs.rm(backup, {recursive: true, force: true}).catch(() => {});
         }
     }
     async syncEnvironment() {
@@ -195,15 +201,55 @@ export class Store {
         if (createOnly && (previous !== null || state.scripts.some(script => script.id === id))) throw Object.assign(new Error('同类型的脚本名已存在，请换一个名称'), {statusCode: 409});
         if (previous !== null) await write(path.join(this.directory, 'revisions', id, `${Date.now()}-${randomBytes(3).toString('hex')}.txt`), previous);
         await write(file, code);
+        const script = this.registerScript(state, engine, name, code);
+        script.updatedAt = new Date().toISOString();
+        return script;
+    }
+    registerScript(state, engine, name, code) {
+        const id = stableId(`${engine}:${name}`);
         let script = state.scripts.find(s => s.id === id);
         if (!script) {
             const info = metadata(code, name.slice(0, -EXTENSIONS[engine].length));
-            script = {id, engine, file: name, name: info.title};
+            script = {id, engine, file: name, name: info.title, updatedAt: new Date().toISOString()};
             state.scripts.push(script);
-            state.instances.push({id, scriptId: id, name: info.title, params: '', enabled: true, searchable: info.searchable, filterable: info.filterable});
         }
-        script.updatedAt = new Date().toISOString();
+        if (!state.instances.some(instance => instance.scriptId === id)) {
+            const info = metadata(code, name.slice(0, -EXTENSIONS[engine].length));
+            state.instances.push({id, scriptId: id, name: script.name || info.title, params: '', enabled: true, searchable: info.searchable, filterable: info.filterable});
+        }
         return script;
+    }
+    async deleteInstances(ids, {deleteScripts = false} = {}) {
+        if (!Array.isArray(ids) || !ids.length || ids.length > 10000 || ids.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(id)) || typeof deleteScripts !== 'boolean') throw Object.assign(new Error('删除参数无效'), {statusCode: 400});
+        const selected = new Set(ids);
+        return this.mutateFiles(async (state, write, remove) => {
+            const instances = state.instances.filter(item => selected.has(item.id));
+            const scriptIds = new Set(instances.map(item => item.scriptId));
+            const remaining = state.instances.filter(item => !selected.has(item.id));
+            const remainingScriptIds = new Set(remaining.map(item => item.scriptId));
+            const scripts = state.scripts.filter(script => scriptIds.has(script.id));
+            const unused = deleteScripts ? scripts.filter(script => !remainingScriptIds.has(script.id)) : [];
+            const root = await fs.realpath(this.directory);
+            const removeOwned = async file => {
+                let parent;
+                try { parent = await fs.realpath(path.dirname(file)); }
+                catch (error) { if (error.code === 'ENOENT') return; throw error; }
+                const relative = path.relative(root, parent);
+                if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error('拒绝删除数据目录之外的文件');
+                await remove(file);
+            };
+            if (deleteScripts) for (const instance of instances) await removeOwned(inside(this.runtime, `config/source-env/${instance.id}.json`));
+            for (const script of unused) {
+                validFilename(script.engine, script.file);
+                await removeOwned(this.scriptPath(script));
+                await removeOwned(inside(this.directory, `revisions/${script.id}`));
+            }
+            const removedScripts = new Set(unused.map(script => script.id));
+            state.instances = remaining;
+            state.scripts = state.scripts.filter(script => !removedScripts.has(script.id));
+            for (const sub of state.subscriptions) sub.instances = sub.instances.filter(id => !selected.has(id));
+            return {deleted: instances.length, deletedScripts: unused.length, retainedScripts: scripts.length - unused.length};
+        });
     }
     async importBundle(entries) {
         return this.mutateFiles(async (state, write) => {
@@ -219,7 +265,10 @@ export class Store {
             }
             const before = state.instances.length;
             for (const [file, entry] of planned) {
-                if (entry.exists) continue;
+                if (entry.exists) {
+                    if (entry.engine) this.registerScript(state, entry.engine, path.basename(file), entry.code);
+                    continue;
+                }
                 if (entry.engine) await this.writeScript(state, write, entry.engine, path.basename(file), entry.code);
                 else await write(file, entry.code);
             }

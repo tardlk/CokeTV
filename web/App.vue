@@ -124,10 +124,11 @@ export default {
         function removeSelected() {
             const ids = [...selected.value];
             if (!ids.length || busy.value) return;
-            confirm('删除所选源', `将删除选中的 ${ids.length} 个源实例，并移除所有订阅中的引用。脚本文件保留，可重新创建实例。`, async () => {
-                await api('/admin/instances/batch', {ids}, 'DELETE');
+            confirm('删除所选源', `将删除选中的 ${ids.length} 个源实例，并移除所有订阅中的引用。默认脚本文件保留，可重新导入或创建实例。`, async deleteScripts => {
+                await api('/admin/instances/batch', {ids, ...(deleteScripts ? {deleteScripts: true} : {})}, 'DELETE');
                 selected.value = []; await load();
             }, '删除');
+            confirming.value.deleteScripts = false;
         }
         function editInstance() { form.value = {name: '', scriptId: state.value.scripts[0]?.id || '', params: '', enabled: true, searchable: true, filterable: false}; modal.value = 'instance'; }
         function renameSource(source) { form.value = {id: source.id, name: source.name}; modal.value = 'rename'; }
@@ -176,8 +177,13 @@ export default {
             importFile.value=file;await action(()=>importSelected());
         }
         function confirm(title, message, callback, actionLabel = '确认操作') { confirming.value = {title, message, callback, actionLabel}; }
-        async function acceptConfirm() { const item = confirming.value; if (!item || busy.value) return; confirming.value = null; await action(item.callback, '操作已完成'); }
-        function removeSource(source) { confirm('移除站点实例', `将“${source.name}”从所有订阅中移除。对应脚本仍保留，可重新创建实例。`, async () => { await api(`/admin/instances/${source.id}`, undefined, 'DELETE'); await load(); }); }
+        async function acceptConfirm() { const item = confirming.value; if (!item || busy.value) return; confirming.value = null; await action(() => item.callback(item.deleteScripts === true), '操作已完成'); }
+        function removeSource(source) {
+            confirm('删除源', `将删除“${source.name}”的源实例，并移除所有订阅中的引用。默认脚本文件保留，可重新导入或创建实例。`, async deleteScripts => {
+                await api(`/admin/instances/${source.id}`, deleteScripts ? {deleteScripts: true} : undefined, 'DELETE'); await load();
+            }, '删除');
+            confirming.value.deleteScripts = false;
+        }
         function openLinks(sub) { form.value={...sub}; modal.value='links'; }
         async function switchCapability(source,key) {await api(`/admin/instances/${source.id}`, {...source,[key]:!source[key]},'PUT');await load();}
         function openSubscription(sub) { form.value = sub ? {...sub, instances: [...sub.instances]} : {name: '', description:'',token:'',enabled: true, instances: []}; modal.value = 'subscription'; }
@@ -291,5 +297,5 @@ export default {
     </div>
     <div v-else-if="modal==='text'"><pre class="result-code">{{form.content}}</pre><DialogFooter class="mt-4"><Button variant="outline" @click="copy(form.content)">复制内容</Button><Button @click="modal=null">完成</Button></DialogFooter></div>
   </div><DialogFooter v-if="modal==='subscription'"><span class="dialog-footer-note">已选择 {{form.instances.length}} 个源</span><Button type="button" variant="outline" @click="modal=null">取消</Button><Button type="submit" form="subscription-form" :disabled="busy">保存订阅</Button></DialogFooter></DialogContent></Dialog>
-  <AlertDialog :open="!!confirming" @update:open="!$event&&(confirming=null)"><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{{confirming?.title}}</AlertDialogTitle><AlertDialogDescription>{{confirming?.message}}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel @click="confirming=null">取消</AlertDialogCancel><AlertDialogAction as-child><Button :variant="confirming?.actionLabel==='删除'?'destructive':'default'" @click.capture="acceptConfirm">{{confirming?.actionLabel||'确认操作'}}</Button></AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+  <AlertDialog :open="!!confirming" @update:open="!$event&&(confirming=null)"><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{{confirming?.title}}</AlertDialogTitle><AlertDialogDescription>{{confirming?.message}}</AlertDialogDescription></AlertDialogHeader><div v-if="confirming&&'deleteScripts' in confirming" class="space-y-2"><Field orientation="horizontal"><Checkbox id="delete-source-scripts" v-model="confirming.deleteScripts" aria-label="同时清理本源配置、闲置脚本及历史版本" /><FieldLabel for="delete-source-scripts">同时清理本源配置、闲置脚本及历史版本</FieldLabel></Field><p class="text-sm text-muted-foreground">仍被其他源使用的脚本会保留。勾选后清理的文件无法在后台恢复。</p></div><AlertDialogFooter><AlertDialogCancel @click="confirming=null">取消</AlertDialogCancel><AlertDialogAction as-child><Button :variant="confirming?.actionLabel==='删除'?'destructive':'default'" @click.capture="acceptConfirm">{{confirming?.actionLabel||'确认操作'}}</Button></AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
 </template>
