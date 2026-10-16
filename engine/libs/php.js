@@ -136,7 +136,10 @@ const init = async function (filePath, env = {}, refresh) {
 
         if (moduleCache.has(hashMd5) && !refresh) {
             const cached = moduleCache.get(hashMd5);
-            if (cached.hash === fileHash) {
+            // 与 hipy.js 对齐：除文件 hash 外还必须保证 proxyUrl 实时相等。
+            // spiderProxy 的每个方法都闭包捕获了 init 时的 env，缓存键又不含 proxyUrl，
+            // 若只比 hash，代理地址变更后会继续用旧闭包里的 env 执行（陈旧代理）。
+            if (cached.hash === fileHash && cached.proxyUrl === env.proxyUrl) {
                 return cached.moduleObject;
             }
         }
@@ -154,7 +157,7 @@ const init = async function (filePath, env = {}, refresh) {
         const moduleObject = deepCopy(rule);
         moduleObject.cost = t2 - t1;
 
-        moduleCache.set(hashMd5, {moduleObject, hash: fileHash});
+        moduleCache.set(hashMd5, {moduleObject, hash: fileHash, proxyUrl: env.proxyUrl});
         return {...moduleObject, ...initValue};
 
     } catch (error) {
