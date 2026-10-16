@@ -96,13 +96,25 @@ try {
         assert.equal((await call(api+'?ac=list&t=movie&pg=1')).list[0].vod_name,'movie-1-container-persist-param');
         assert.equal((await call(api+'?wd=matrix')).list[0].vod_name,'matrix');
         assert.ok((await call(api+'?ac=detail&ids=one')).list[0].vod_play_url);
-        const media = await call(api+'/play',{play:upstreamUrl+'/video.mp4',flag:'测试'});
+        // 匿名播放铸造的是**公开出口**能力票据：不得访问回环/内网上游
+        // （egress 修复，见 SECURITY.md「出站信任边界」）。fixture 只能跑在回环上，
+        // 因此这里先用匿名身份确认该路径被拒。
+        const anonymous = await fetch(base+api+'/play',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({play:upstreamUrl+'/video.mp4',flag:'测试'})});
+        assert.equal(anonymous.status,200);
+        const anonymousTicket = (await anonymous.json()).url;
+        assert.match(anonymousTicket,/^\/watch\/media\//);
+        const blocked = await fetch(base+anonymousTicket);
+        assert.equal(blocked.status,403,'匿名公开票据不得访问内网上游');
+        assert.equal((await blocked.json()).error,'内网地址已在设置中禁止访问');
+        // LAN 媒体能力由可信出口承担：同一回环上游改用管理员身份播放，
+        // 验证 GET/HEAD/Range 与 HLS 主子列表/分片/key 的既有行为不回归。
+        const media = await call('/admin/watch/'+id+'/play',{play:upstreamUrl+'/video.mp4',flag:'测试'},true);
         assert.match(media.url,/^\/watch\/media\//); expected.oldMedia = media.url;
         const direct = await fetch(base+media.url); assert.equal(direct.status,200); assert.equal(await direct.text(),'0123456789');
         assert.equal((await fetch(base+media.url,{method:'HEAD'})).status,200);
         const range = await fetch(base+media.url,{headers:{range:'bytes=2-5'}});
         assert.equal(range.status,206); assert.equal(range.headers.get('content-range'),'bytes 2-5/10'); assert.equal(await range.text(),'2345');
-        const hls = await call(api+'/play',{play:upstreamUrl+'/master.m3u8',flag:'测试'});
+        const hls = await call('/admin/watch/'+id+'/play',{play:upstreamUrl+'/master.m3u8',flag:'测试'},true);
         const masterResponse = await fetch(base+hls.url); assert.equal(masterResponse.status,200);
         const master = await masterResponse.text();
         const childUrl = master.split('\n').find(line => line && !line.startsWith('#'));
@@ -116,7 +128,7 @@ try {
         const proxy = await fetch(base+'/proxy/'+id+'/',{headers:{Authorization:authorization}});
         assert.equal(proxy.status,200); assert.equal(await proxy.text(),'hello');
         await cli(id);
-        console.log(engine+'：首页/分类/搜索/详情/代理/正式CLI，实际 GET/HEAD/Range/HLS 主子列表/分片/key 通过');
+        console.log(engine+'：首页/分类/搜索/详情/代理/正式CLI；匿名公开票据拒绝内网上游，可信出口实际 GET/HEAD/Range/HLS 主子列表/分片/key 通过');
     }
     const state = await call('/admin/state',undefined,true);
     const expectedScripts = new Set([...expected.baseline,...Object.values(expected.sources).map(id => state.instances.find(s => s.id === id).scriptId)]);
