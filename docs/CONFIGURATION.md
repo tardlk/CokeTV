@@ -34,17 +34,18 @@ PUID/PGID 的非法值（包括0和空值）在初始化 data 前拒绝启动。
 
 | 设置 | 默认 | 作用 |
 | --- | --- | --- |
-| `allowPrivateTargets` | `true` | **可信出口**（管理员、内部源运行时，以及显式标注 `egress: trusted` 的服务端绑定媒体会话，如 Emby / 猫影视）能否访问内网/回环/链路本地目标；公网部署建议关闭。宿主持有的本机回环 origin 另作内部调用豁免。 |
-| `targetAllowlist` | `[]` | 非空时只允许名单内 host 或 CIDR（设置页每行一条）。域名条目与 CIDR 条目是**或**关系——域名负责 hostname、CIDR 负责解析结果，**不是内网通行证**：关闭内网访问时，解析到私网的域名同样被拒绝。**公开出口（匿名 `/watch` 播放铸造的能力票据）不读取本项**，见下。 |
+| `allowPrivateTargets` | `true` | **可信出口**（管理员、内部源运行时，以及经反证确认客户端无法控制最终 URL 的服务端绑定会话，当前仅 Emby）能否访问内网/回环/链路本地目标；公网部署建议关闭。宿主持有的本机回环 origin 另作内部调用豁免。 |
+| `targetAllowlist` | `[]` | 非空时只允许名单内 host 或 CIDR（设置页每行一条）。域名条目与 CIDR 条目是**或**关系——域名负责 hostname、CIDR 负责解析结果，**不是内网通行证**：关闭内网访问时，解析到私网的域名同样被拒绝。**公开出口（匿名 `/watch` 播放铸造的能力票据）不读取本项**；订阅出口仍按本项生效，见下。 |
 | `jsonPublic` | `false` | `/json/` 参数文件默认只对管理员、订阅 Token 或源内部请求开放；开启后恢复旧的匿名可读行为。 |
 
-**出口分三类，权限边界不同**。每张能力票据都带一个 `egress` 属性，规则是「**票据权限不得高于铸造它的调用链**」，缺省落最严的 `public`；派生的 HLS 子清单/`EXT-X-KEY`/`EXT-X-MAP`/分片与源代理票据只能继承父票据的 `egress`，永不提升。
+**出口分三类，权限边界不同**。每张能力票据都带一个 `egress` 属性（`public | subscription | trusted`），规则是「**票据权限不得高于铸造它的调用链**」；`egressOf()` 是显式白名单，缺省/`null`/任何其他字符串一律落到最严的 `public`。派生的 HLS 子清单/`EXT-X-KEY`/`EXT-X-MAP`/分片与源代理票据只能继承父票据的 `egress`，永不提升。权限由**调用方身份**决定（`{kind:'admin'|'runtime'|'ticket'|'subscription'}`），不是「有没有票据」。
 
 - **公开出口**（`egress: public`）：匿名 `POST /watch/sources/:id/play` 铸造的票据。**无论 `allowPrivateTargets` 与 `targetAllowlist` 如何，都不得访问私网/回环/链路本地**；只豁免 CokeTV 自身精确 origin（用于保留「能力票 → 自己的 `/proxy/…`」链路）。`targetAllowlist` 刻意不参与——白名单只服务可信出口。
-- **可信出口**：管理员、内部源运行时，以及显式 `egress: trusted` 的服务端绑定媒体会话。`allowPrivateTargets` **只控制这一类**。
-- **订阅出口**：仅持订阅 Token 且自行指定目标 URL 的调用方，**无论该开关与白名单如何，都不得访问任意私网/回环/链路本地地址**，只豁免 CokeTV 自身精确 origin。
+- **订阅出口**（`egress: subscription`）：猫影视/TVBox 订阅播放及其媒体会话、订阅驱动的源代理，以及它们派生的 HLS/源代理票据。规则等价于 `subscriptionTargetGuard`：`allowPrivate:false`，**仍读取 `targetAllowlist`**，仅豁免 CokeTV 自身精确 origin。不允许 `127.0.0.1:其他端口` 或同网段其他服务。
+- **可信出口**（`egress: trusted`）：管理员、内部源运行时，以及显式 `egress: trusted` 的服务端绑定会话（当前仅 Emby，反证见 `tests/emby-egress.test.js`）。`allowPrivateTargets` + `targetAllowlist` **只控制这一类**。
 
 > 之所以要分开：源脚本按契约可以把播放地址原样回显（drpy 的 `lazy` 即 `(flag,id) => ({url:id})`），所以**最终媒体 URL 不必然由可信代码决定**。该收紧的是「低权限调用链铸造的票据能拿多高的出口权限」，而不是禁掉宿主的全部 LAN 能力。
+> 不要把 `subscription` 并成 `public`：两者对 `targetAllowlist` 与 self-origin 的语义并不相同。
 
 宿主媒体转发与 `/http` 在每次连接/重定向前检查目标：IPv4、IPv6 与 IPv4 映射 IPv6 按字节判定；**链路本地整段（IPv4 `169.254.0.0/16`、IPv6 `fe80::/10`）**与已登记的云元数据地址/主机名（`169.254.169.254`、`169.254.0.23` 等）**无条件永久拒绝**，白名单、本机 origin 与内网开关都不豁免。不可路由/特殊用途网段（`192.0.0.0/24`、`192.0.2.0/24`、`192.88.99.0/24`、`198.18.0.0/15`、`198.51.100.0/24`、`203.0.113.0/24`）按非公网目标处理。关闭内网时，除宿主明确登记的本机回环 origin 外，任何 DNS 答案含内网地址都会拒绝；空/无效 DNS 答案也拒绝。IP/CIDR 名单支持 IPv4/IPv6，实际连接仅使用匹配并通过检查的地址，不二次解析；保留原域名的 Host、TLS SNI 和证书校验。相关安全修复的当前源码与镜像验收记录见 [接手入口](AI_HANDOFF.md#0-当前接手入口先看本节)；这些设置不是源脚本或外部插件的网络沙箱，源脚本的同权限执行边界仍见 README。
 

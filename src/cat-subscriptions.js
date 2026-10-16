@@ -17,7 +17,7 @@ const text = (value, label, max = 10000) => {
 export function catSubscriptionPath(subscription, short = false) {
     return `/cat/${short ? '' : encodeURIComponent(subscription.id) + '/'}${encodeURIComponent(subscription.token)}`;
 }
-export function registerCatSubscriptions(app, {store, baseUrl, execute, play, serveMedia, isNetdiskCurrent = () => true, targetGuard}) {
+export function registerCatSubscriptions(app, {store, baseUrl, execute, play, serveMedia, isNetdiskCurrent = () => true, guardForEgress}) {
     const sessions = createPlaybackSessions();
     const authorize = request => {
         const sub = request.params.id === undefined ? uniqueSubscriptionByToken(store.state, request.params.credential)
@@ -33,9 +33,10 @@ export function registerCatSubscriptions(app, {store, baseUrl, execute, play, se
     const scope = (sub, instance) => `${sub.id}:${sub.token}:${instance.id}`;
     const mediaUrl = (request, sub, instance, url, headers, type, netdiskRevision) => {
         const extension = mediaType(url, type) || (/^(mkv|avi|mp4|m4v|webm|mov)$/.test(type || '') ? type : '') || new URL(url).pathname.match(/\.(mp4|m4v|webm|mov|mkv|avi|mp3|m4a|aac|bin)$/i)?.[1]?.toLowerCase() || 'bin';
-        // 猫影视/TVBox 客户端由服务端绑定的媒体会话，沿用既有可信出口策略
-        // （本轮热点是匿名 /watch 的权限提升，未改动订阅侧出口策略）。
-        return `${baseUrl(request)}${catSubscriptionPath(sub, request.params.id === undefined)}/media/${encodeURIComponent(instance.id)}/${sessions.create(scope(sub, instance), url, headers, {egress: 'trusted', ...(netdiskRevision ? {netdiskRevision} : {})})}/stream.${extension}`;
+        // 猫影视/TVBox 客户端只持订阅 Token，而 `body.id` 会作为 play 进入源逻辑——
+        // 对 drpy 兼容源（`lazy:(a,b)=>({url:b})`）最终 URL 可直接受客户端输入影响。
+        // 因此会话 egress 必须是 **subscription**，绝不能是 trusted。
+        return `${baseUrl(request)}${catSubscriptionPath(sub, request.params.id === undefined)}/media/${encodeURIComponent(instance.id)}/${sessions.create(scope(sub, instance), url, headers, {egress: 'subscription', ...(netdiskRevision ? {netdiskRevision} : {})})}/stream.${extension}`;
     };
     const route = (method, suffix, handler) => {
         for (const prefix of ['/cat/:id/:credential', '/cat/:credential']) app.route({method, url: prefix + suffix, handler});
@@ -109,8 +110,11 @@ export function registerCatSubscriptions(app, {store, baseUrl, execute, play, se
         const session = sessions.get(request.params.ticket);
         if (!session || session.source !== scope(sub, instance) || !isNetdiskCurrent(session.netdiskRevision)) throw fail('播放链接已过期，请重新选择剧集', 403);
         reply.header('Cache-Control', 'private, no-store');
+        // guard 由会话自身的 egress 决定（此处为 subscription），派生票据同样继承它，
+        // 因此 HLS 主/子清单、分片、KEY/MAP 全都是 subscription，不会升级成 trusted。
         return serveMedia(request, reply, session.url, session.headers, sub.token, undefined,
-            url => mediaUrl(request, sub, instance, url, session.headers, undefined, session.netdiskRevision), targetGuard);
+            url => mediaUrl(request, sub, instance, url, session.headers, undefined, session.netdiskRevision),
+            guardForEgress ? guardForEgress(session.egress) : undefined);
     });
     return {allowsMedia(request) {
         try {

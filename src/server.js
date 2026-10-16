@@ -168,14 +168,24 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         allowlist: [],
         selfOrigins: selfOrigins(),
     });
-    // 按凭据种类推导能力票据的出口权限：管理员/内部运行时是可信出口；订阅凭据按
-    // 既有策略（不可访问私网）；能力票据继承其自身 egress，永不提升。
-    const egressForInfo = info => (info?.kind === 'admin' ? 'trusted' : childEgress(info));
-    const guardForEgress = egress => (egress === 'trusted' ? trustedTargetGuard : publicTargetGuard);
-    const guardFor = info => (info?.kind === 'subscription' ? subscriptionTargetGuard : guardForEgress(egressForInfo(info)));
-    // 把凭据种类固化成显式 egress 后再交给 proxyMint，避免「管理员信息对象没有
-    // egress 字段」被安全默认值误判为 public。
-    const scopeFor = info => ({...info, egress: egressForInfo(info)});
+    // 按**真实调用方身份**推导出口权限。身份对象统一为：
+    //   {kind:'admin'} | {kind:'runtime'} | {kind:'ticket', ...票据} | {kind:'subscription', token}
+    // 严禁「拿不到票据就推断为可信」——那正是匿名/订阅调用链被升级成 trusted 的根因。
+    const egressForCaller = info => {
+        if (info?.kind === 'admin' || info?.kind === 'runtime') return 'trusted';
+        if (info?.kind === 'subscription') return 'subscription';
+        if (info?.kind === 'ticket') return childEgress(info);
+        return 'public';
+    };
+    // 三态 → guard 的显式映射。非法/缺省一律降级到 publicTargetGuard。
+    const guardForEgress = egress => {
+        if (egress === 'trusted') return trustedTargetGuard;
+        if (egress === 'subscription') return subscriptionTargetGuard;
+        return publicTargetGuard;
+    };
+    const guardFor = info => guardForEgress(egressForCaller(info));
+    // 把调用方身份固化成显式 egress 后再交给 proxyMint，让派生票据继承同一权限。
+    const scopeFor = info => ({...info, egress: egressForCaller(info)});
     // 兼容别名：Emby / 猫影视等由服务端绑定 URL 的可信媒体会话统一按可信出口处理
     // （本轮不改动其既有出口策略，见 SECURITY.md「出站信任边界」）。
     const targetGuard = trustedTargetGuard;
@@ -190,27 +200,32 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
         return playbackHeaders(value);
     };
-    // 源执行 / 源代理入口：管理员、内部运行时或订阅 Token。
+    // 源执行 / 源代理入口的统一身份对象。必须显式区分调用方种类，
+    // 否则下游无法判断该用哪一种出口（订阅绝不能被当成可信）。
     const authorize = async (request, id) => {
-        if (await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey) return null;
+        if (request.headers['x-drpy-runtime'] === runner.internalKey) return {kind: 'runtime'};
+        if (await auth.isAdmin(request)) return {kind: 'admin'};
         const ticket = playback.allows(request, id) ? playback.get(request.query.token) : null;
-        if (ticket) return {token: request.query.token, headers: ticket.headers || {}};
+        // 票据展开在前：kind:'ticket' 必须覆盖票据payload 自带的 'proxy'/'media'。
+        if (ticket) return {...ticket, kind: 'ticket', token: request.query.token, headers: ticket.headers || {}};
         const sub = authorizedSubscription(store.state, request.query.token || request.body?.token, id);
         if (!sub) throw fail('订阅访问凭证无效或该源不在订阅中', 403);
-        return sub;
+        return {kind: 'subscription', subscription: sub, token: sub.token};
     };
     // 需要凭据但无 URL 绑定的服务入口（图片、/http、webdav/ftp 网关）：不接受播放票。
     const authorizeService = async request => {
-        if (await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey) return null;
+        if (request.headers['x-drpy-runtime'] === runner.internalKey) return {kind: 'runtime'};
+        if (await auth.isAdmin(request)) return {kind: 'admin'};
         const sub = authorizedSubscription(store.state, request.query.token || request.body?.token);
         if (!sub) throw fail('访问凭证无效', 403);
-        return sub;
+        return {kind: 'subscription', subscription: sub, token: sub.token};
     };
-    // 代理出口：管理员/内部、订阅 Token，或一张恰好绑定到该 URL 的代理能力票。
+    // 代理出口：管理员/内部运行时、订阅 Token，或一张恰好绑定到该 URL 的代理能力票。
     const authorizeProxy = async (request, target) => {
         const ticket = playback.get(request.query.token);
-        if (ticket && ticket.kind === 'proxy' && target && ticket.url === target && netdisk.current(ticket.netdiskRevision) && (!ticket.source || store.state.instances.some(item => item.id === ticket.source && item.enabled))) return ticket;
-        if (await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey) return {kind: 'admin'};
+        if (ticket && ticket.kind === 'proxy' && target && ticket.url === target && netdisk.current(ticket.netdiskRevision) && (!ticket.source || store.state.instances.some(item => item.id === ticket.source && item.enabled))) return {...ticket, kind: 'ticket'};
+        if (request.headers['x-drpy-runtime'] === runner.internalKey) return {kind: 'runtime'};
+        if (await auth.isAdmin(request)) return {kind: 'admin'};
         const sub = authorizedSubscription(store.state, request.query.token || request.body?.token);
         if (sub) return {kind: 'subscription', token: sub.token};
         throw fail('媒体访问凭证无效或已过期', 403);
@@ -300,7 +315,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
     app.post('/watch/sources/:id/play', playHandler);
     app.post('/admin/watch/:id/play', playHandler);
     catSubscriptions = registerCatSubscriptions(app, {
-        store, baseUrl, serveMedia, targetGuard,
+        store, baseUrl, serveMedia, guardForEgress,
         execute: (request, resolved, query, sub) => content.query(request, resolved, query, sub),
         isNetdiskCurrent: revision => netdisk.current(revision),
         play: (request, resolved, body, subscription) => content.play(request, resolved, body, {native: true, subscription}),
@@ -575,12 +590,11 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         const carried = typeof content === 'string' ? unwrapMediaProxy(content, baseUrl(request)) : null;
         const target = carried?.url || content;
         const streamHeaders = sanitizeSourceHeaders({...(carried?.headers || {}), ...(headers && typeof headers === 'object' && !Array.isArray(headers) ? headers : {})});
-        // 能力票驱动源代理时，派生票据继承票据自身的 egress：公开票派生出的目标
-        // 仍是 public，不能因为进入「源自己的代理路由」就恢复内部运行时的 trusted
-        // 网络权限。管理员/内部运行时与订阅凭据维持既有出口策略不变。
-        const parentTicket = playback.get(sub?.token);
-        const proxyEgress = parentTicket ? childEgress(parentTicket) : 'trusted';
-        const mint = proxyMint(streamHeaders, {...parentTicket, source: instance.id, egress: proxyEgress});
+        // 出口权限只由**真实调用方身份**决定：管理员/内部运行时 → trusted；
+        // 订阅凭据 → subscription（不再被升级成 trusted）；能力票 → 继承票据自身 egress。
+        // 「拿不到票据就当可信」的旧推断已移除——那正是订阅链被提权的根因。
+        const proxyEgress = egressForCaller(sub);
+        const mint = proxyMint(streamHeaders, {...sub, source: instance.id, egress: proxyEgress});
         for (const key of Object.keys(headers || {})) if (key.toLowerCase() === 'location') headers[key] = localToken(headers[key], baseUrl(request), sub?.token);
         if ([2, 3].includes(bytes) && typeof target === 'string' && /^https?:/.test(target)) {
             // toBytes=3：宿主直接拉流；toBytes=2：302 到绑定能力票据的 /mediaProxy。
@@ -597,9 +611,9 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         const info = await authorizeProxy(request, target);
         // Capability-bound headers win even when caller also sends credentials.
         // Incoming Basic/runtime credentials are never implicitly copied out.
-        const supplied = info.kind === 'proxy' ? info.headers || {} : decodeMediaHeaders(request.query);
+        const supplied = info.kind === 'ticket' ? info.headers || {} : decodeMediaHeaders(request.query);
         const headers = info.kind === 'subscription' ? safeProxyHeaders(supplied) : playbackHeaders(supplied);
-        const token = info.kind === 'proxy' ? request.query.token : info.token;
+        const token = info.kind === 'ticket' ? request.query.token : info.token;
         return serveMedia(request, reply, target, headers, token, proxyMint(headers, scopeFor(info)), undefined, guardFor(info));
     };
     app.route({method: ['GET', 'HEAD'], url: '/mediaProxy', handler: mediaProxyHandler});
@@ -634,7 +648,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         const target = decodeMediaTarget(request.params['*']);
         const info = await authorizeProxy(request, target);
         const headers = info.headers || {};
-        const token = info.kind === 'proxy' ? request.query.token : info.token;
+        const token = info.kind === 'ticket' ? request.query.token : info.token;
         return streamMedia(target, headers, request, reply, {base: baseUrl(request), token, mint: proxyMint(headers, scopeFor(info)), guard: guardFor(info)});
     });
     const images = new Map();

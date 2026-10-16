@@ -8,8 +8,9 @@ import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {createApp} from '../src/server.js';
 import {ROOT} from '../src/paths.js';
+import {installPublicUpstream} from './fixtures/public-upstream.js';
 
-let app, directory, base, sub, root, client, clientBase, upstream, upstreamBase;
+let app, directory, base, sub, root, client, clientBase, upstream, upstreamBase, upstreamRouting;
 const ids = {}, seen = [];
 const credential = 'cat-fixture-subscription';
 const secret = 'private-media-cookie';
@@ -42,7 +43,11 @@ before(async () => {
         res.setHeader('Content-Type', 'video/mp4'); res.end('0123456789');
     });
     await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
-    upstreamBase = `http://127.0.0.1:${upstream.address().port}`;
+    // 猫影视客户端只持订阅 Token，媒体会话走 subscription 出口：不得访问回环/私网。
+    // 这些用例验证的是传输层行为（Range/HLS 继承/五引擎/限流），因此上游改用
+    // 「公网地址映射到本地 fixture」；「订阅不能访问私网」由 subscription-egress.test.js 覆盖。
+    upstreamRouting = installPublicUpstream(upstream.address().port);
+    upstreamBase = upstreamRouting.url;
     for (const engine of ['js', 'dr2', 'cat', 'py', 'php']) {
         const suffix = engine === 'dr2' ? 'js' : engine === 'cat' ? 'cat.js' : engine;
         const fixture = await fs.readFile(path.join(ROOT, 'tests/fixtures', `协议样本.${suffix}`), 'utf8');
@@ -69,7 +74,7 @@ before(async () => {
 });
 after(async () => {
     await client?.stop(); delete globalThis.catServerFactory; delete globalThis.catDartServerPort;
-    await app?.close(); await new Promise(resolve => upstream?.close(resolve));
+    await app?.close(); upstreamRouting?.restore(); await new Promise(resolve => upstream?.close(resolve));
     if (directory) await fs.rm(directory,{recursive:true,force:true});
 });
 

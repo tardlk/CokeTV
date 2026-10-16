@@ -24,17 +24,26 @@ export function playbackHeaders(value) {
 }
 // 出口权限范围（egress）随能力票据全生命周期传播，规则只有一条：
 // **票据的出口权限不得高于铸造它的调用链**。
-//   public  —— 只能访问当前 SSRF 策略认定的公网目标（回环/私网/链路本地/CGNAT/
-//              特殊非全局可路由段一律拒绝，metadata 与链路本地仍是永久的硬拦）。
-//              匿名 /watch 播放流程铸造的票据全部属于这一类。
-//   trusted —— 沿用既有行为，由 allowPrivateTargets + targetAllowlist 决定能否访问
-//              私网。只有管理员、内部源运行时，以及服务端绑定的可信媒体会话才用它。
+//   public        —— 只能访问当前 SSRF 策略认定的公网目标（回环/私网/链路本地/CGNAT/
+//                    特殊非全局可路由段一律拒绝，metadata 与链路本地仍是永久的硬拦）。
+//                    匿名 /watch 播放流程及其派生票据属于这一类。
+//   subscription  —— 仅持订阅 Token 的调用链。规则等价于 subscriptionTargetGuard：
+//                    allowPrivate:false，仍使用现有订阅 allowlist 语义，仅豁免 CokeTV
+//                    自身精确 origin。不能访问 localhost / RFC1918 / link-local。
+//   trusted       —— 由 allowPrivateTargets + targetAllowlist 决定能否访问私网。
+//                    只有管理员、内部源运行时，以及经反证确认 URL 不可被客户端控制
+//                    的服务端绑定媒体会话才用它。
 // 默认取最严的一侧：将来新增 mint 点时若忘记标注，得到的是 public，而不是悄悄升级。
-const egressOf = value => (value === 'trusted' ? 'trusted' : 'public');
-// 派生能力只能继承父能力的出口权限，永不提升。公开票据派生出的
-// HLS 主/子清单、EXT-X-KEY、EXT-X-MAP、分片与代理票据一律保持 public。
+// 显式白名单：只承认这三种取值，undefined / null / 任何其他字符串一律落到 public。
+const EGRESS_VALUES = new Set(['public', 'subscription', 'trusted']);
+export function egressOf(value) {
+    return EGRESS_VALUES.has(value) ? value : 'public';
+}
+// 派生能力只能继承父能力的出口权限，永不提升：公开票据派生出公开票据、订阅票据
+// 派生出订阅票据、可信票据派生出可信票据。HLS 主/子清单、EXT-X-KEY、EXT-X-MAP、
+// 分片与代理票据全部遵守。
 export function childEgress(parent) {
-    return parent?.egress === 'trusted' ? 'trusted' : 'public';
+    return egressOf(parent?.egress);
 }
 // 由父能力派生子能力票据的**唯一实现**（HLS 子资源与源代理目标都走这里）。
 // 抽出来是为了让「派生不提升权限」这条规则可以被单元测试直接覆盖，
