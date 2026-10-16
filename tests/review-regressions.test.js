@@ -10,6 +10,7 @@ import {Store} from '../src/store.js';
 import {Runner} from '../src/runner.js';
 import {importBundle} from '../src/sources.js';
 import {createFtpFixture} from './fixtures/ftp-server.js';
+import {installPublicUpstream} from './fixtures/public-upstream.js';
 
 async function temporary(t) {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-regression-'));
@@ -27,7 +28,11 @@ test('兼容代理模式的多层网盘 HLS 的清单、KEY/MAP、分片跨代�
     });
     await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
     t.after(() => new Promise(resolve => upstream.close(resolve)));
-    const media = `http://127.0.0.1:${upstream.address().port}/root.m3u8`;
+    // 匿名 /watch 铸造的媒体票据走公开出口，核心里程碑 HLS 用例改用
+    // 「公网地址映射到本地 fixture」，以便继续验证多层清单/KEY/MAP/分片继承。
+    const routing = installPublicUpstream(upstream.address().port);
+    t.after(() => routing.restore());
+    const media = `${routing.url}/root.m3u8`;
     const app = await createApp({directory, seed: false, netdiskRequest: async options => ({status: 200, data: {state: true, data: options.url.includes('/snap') ? {count: 1, list: [{fc: '1', fid: '1', n: 'sample.mp4'}]} : {url: {url: media}}}})});
     t.after(() => app.close());
     await app.netdisk.accounts.save115(cookie, 'web');

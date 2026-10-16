@@ -5,13 +5,14 @@ import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
 import {createApp} from '../src/server.js';
+import {installPublicUpstream} from './fixtures/public-upstream.js';
 
 // 真正签发媒体/分片票据并执行固定样本，验证 429 发生在引擎执行之前。
 test('限流仅豁免 URL 匹配的代理票据；媒体票据驱动源代理仍消耗预算', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-rate-limit-'));
     const previous = process.env.RATE_LIMIT_PER_MINUTE;
     process.env.RATE_LIMIT_PER_MINUTE = '5';
-    let app, upstream;
+    let app, upstream, routing;
     try {
         upstream = http.createServer((request, response) => {
             if (request.headers.referer !== 'https://fixture.invalid/') {
@@ -27,7 +28,9 @@ test('限流仅豁免 URL 匹配的代理票据；媒体票据驱动源代理仍
             response.setHeader('Content-Type', 'video/mp4'); response.end('0123456789');
         });
         await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
-        const upstreamUrl = `http://127.0.0.1:${upstream.address().port}`;
+        // 匿名 /watch 铸造的票据走公开出口，上游改用「公网地址映射到本地 fixture」。
+        routing = installPublicUpstream(upstream.address().port);
+        const upstreamUrl = routing.url;
         app = await createApp({directory, seed: false});
         const {id} = await app.store.saveScript('js', '限流样本.js', `var rule={title:'限流样本',host:'https://fixture.invalid',play_parse:true,lazy:async function(flag,id){return {parse:0,url:id,header:{Referer:'https://fixture.invalid/'}}},proxy_rule:async function(params){return params.redirect?[200,'video/mp4','${upstreamUrl}/video.mp4',{Referer:'https://fixture.invalid/'},2]:[200,'text/plain',params.text]}};`);
         await app.listen({host: '127.0.0.1', port: 0});
@@ -92,6 +95,7 @@ test('限流仅豁免 URL 匹配的代理票据；媒体票据驱动源代理仍
         if (previous === undefined) delete process.env.RATE_LIMIT_PER_MINUTE;
         else process.env.RATE_LIMIT_PER_MINUTE = previous;
         await app?.close();
+        routing?.restore();
         if (upstream?.listening) await new Promise(resolve => upstream.close(resolve));
         await fs.rm(directory, {recursive: true, force: true});
     }

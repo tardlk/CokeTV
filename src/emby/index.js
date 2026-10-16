@@ -216,7 +216,7 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
     register(['GET','HEAD'],'/Items/:itemId/Images/:imageType',async(request,reply,ctx)=>{
         const item=findItem(ctx,request.params.itemId);if(request.params.imageType.toLowerCase()!=='primary'||!item.image)throw fail('图片不存在',404);
         await targetGuard(new URL(item.image));
-        return serveMedia(request,reply,item.image,{},undefined);
+        return serveMedia(request,reply,item.image,{},undefined,undefined,undefined,targetGuard);
     });
     const playInfo=(request,_reply,ctx)=>{
         if(request.body?.UserId&&request.body.UserId!==ctx.user.id)throw fail('不能访问其他订阅的观看记录',403);
@@ -233,7 +233,7 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
     register(['GET','POST'],'/Items/:itemId/PlaybackInfo',playInfo);
     const mediaUrl=(request,ctx,item,media)=>{
         const ext=/^(m3u8|mp4|mkv|ts|webm|mov|avi)$/.test(media.type)?media.type:'bin';
-        const ticket=mediaSessions.create(item.sourceId,media.url,media.headers,{userId:ctx.user.id,sessionKey:ctx.key,netdiskRevision:media.netdiskRevision,itemId:item.id});
+        const ticket=mediaSessions.create(item.sourceId,media.url,media.headers,{userId:ctx.user.id,sessionKey:ctx.key,netdiskRevision:media.netdiskRevision,itemId:item.id,egress:'trusted'});
         return `${baseUrl(request)}/emby/Media/${ticket}/stream.${ext}?api_key=${encodeURIComponent(ctx.token)}`;
     };
     const stream=async(request,reply,ctx)=>{
@@ -250,7 +250,7 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
         const session=mediaSessions.get(request.params.ticket);
         if(!session||session.userId!==ctx.user.id||session.sessionKey!==ctx.key||!allowed(ctx,session.source)||!isNetdiskCurrent(session.netdiskRevision)||!/^stream\.(bin|m3u8|mp4|mkv|ts|webm|mov|avi)$/.test(request.params.file))throw fail('媒体引用已过期或无权访问',403);
         const item=findItem(ctx,session.itemId);
-        return serveMedia(request,reply,session.url,session.headers,ctx.sub.token,undefined,url=>mediaUrl(request,ctx,item,{...session,url}));
+        return serveMedia(request,reply,session.url,session.headers,ctx.sub.token,undefined,url=>mediaUrl(request,ctx,item,{...session,url}),targetGuard);
     },{media:true});
     const changeState=(request,reply,ctx,kind)=>{
         const item=findItem(ctx,request.params.itemId),key=ctx.user.id+':'+item.id,old=db.get('userdata',key)||{};

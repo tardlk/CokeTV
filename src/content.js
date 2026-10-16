@@ -5,7 +5,7 @@ import {validFilename, inside} from './paths.js';
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
 const checkString = (value, max) => typeof value === 'string' && value.trim() && value.length <= max;
 export function createContent({store, runner, netdisk, contextFor, baseUrl, playback}) {
-    const play = async (request, {instance, script, file}, body, {native = false, subscription = null, clientUserAgent = false} = {}) => {
+    const play = async (request, {instance, script, file}, body, {native = false, subscription = null, clientUserAgent = false, egress = 'public'} = {}) => {
         const {play, flag = '', parser, delivery} = body || {};
         if (!checkString(play, 50000) || typeof flag !== 'string') throw fail('请选择要播放的剧集');
         if (delivery !== undefined && !['direct', 'proxy'].includes(delivery)) throw fail('播放传输方式无效');
@@ -62,7 +62,12 @@ export function createContent({store, runner, netdisk, contextFor, baseUrl, play
             const type = mediaType(url, result.type) || mediaType('file.' + result.netdiskFileName?.split('.').pop()) || 'native';
             return {url, type, direct: true, parses: options, parser: parser ?? null};
         }
-        const ticket = playback.create(instance.id, url, headers, result.netdiskRevision ? {netdiskRevision: result.netdiskRevision} : {});
+        // 媒体票据的出口权限取自调用链，而不是「拿到票据即信任」：匿名 /watch 播放
+        // 路径传来的 URL 可能完全由调用方经源回显而来，因此默认是 public。
+        const ticket = playback.create(instance.id, url, headers, {
+            ...(result.netdiskRevision ? {netdiskRevision: result.netdiskRevision} : {}),
+            egress,
+        });
         return {url: `/watch/media/${ticket}`, type: mediaType(url, result.type), parses: options, parser: parser ?? null};
     };
     return {

@@ -6,8 +6,12 @@ import os from 'node:os';
 import http from 'node:http';
 import {createApp} from '../src/server.js';
 import {createPlaybackSessions} from '../src/playback.js';
+import {installPublicUpstream} from './fixtures/public-upstream.js';
 
-let app, directory, upstream, upstreamUrl, source, other, authorization;
+// 匿名 /watch 铸造的媒体票据走公开出口（egress: public），不得访问回环/私网。
+// 这些用例验证的是传输层行为（请求头、Range、HLS 重写），因此上游改用
+// 「公网地址映射到本地 fixture」；「公开票据不能碰私网」由 playback-egress.test.js 覆盖。
+let app, directory, upstream, upstreamUrl, routing, source, other, authorization;
 const received = [];
 before(async () => {
     directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-watch-'));
@@ -21,7 +25,8 @@ before(async () => {
         res.setHeader('Content-Type', 'video/mp4'); res.end('0123456789');
     });
     await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
-    upstreamUrl = `http://127.0.0.1:${upstream.address().port}`;
+    routing = installPublicUpstream(upstream.address().port);
+    upstreamUrl = routing.url;
     app = await createApp({directory, seed: false});
 
     await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'watch-password', confirmPassword: 'watch-password'}});
@@ -31,7 +36,7 @@ before(async () => {
     other = (await app.store.saveScript('js', '其他样本.js', code)).id;
     await app.listen({host: '127.0.0.1', port: 0});
 });
-after(async () => { await app?.close(); await new Promise(resolve => upstream?.close(resolve)); await fs.rm(directory, {recursive: true, force: true}); });
+after(async () => { await app?.close(); routing?.restore(); await new Promise(resolve => upstream?.close(resolve)); await fs.rm(directory, {recursive: true, force: true}); });
 async function play(value, extra = {}) {
     const response = await app.inject({url: `/watch/sources/${source}/play`, method: 'POST', payload: {play: value, flag: '线路一', ...extra}});
     assert.equal(response.statusCode, 200, response.body); return response.json();

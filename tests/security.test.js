@@ -72,7 +72,9 @@ test('C1 未授权写入请求被拒且不改动状态文件', async () => {
     assert.equal(await fs.readFile(stateFile, 'utf8'), before);
 });
 // ---- C2：播放凭证绑定 URL ----
-async function ticketFor(value = `${upstreamUrl}/video.mp4`) {
+// 匿名 /watch 铸造的票据走公开出口，只能指向公网目标；fixture 用映射后的公网地址，
+// 以便继续验证「票据绑定 URL、不可挪用」这条语义（私网拒绝见 playback-egress.test.js）。
+async function ticketFor(value = `${publicUpstreamUrl}/video.mp4`) {
     const response = await app.inject({method: 'POST', url: `/watch/sources/${source}/play`, payload: {play: value, flag: '线路一'}});
     assert.equal(response.statusCode, 200, response.body);
     return response.json().url.split('/').at(-1);
@@ -82,15 +84,15 @@ test('C2 匿名媒体凭证只能访问票据绑定地址，不能当开放代�
     assert.equal((await app.inject(`/watch/media/${ticket}`)).statusCode, 200);
     const probes = [
         `/mediaProxy?url=${encodeURIComponent('http://169.254.169.254/latest/meta-data/')}&token=${ticket}`,
-        `/mediaProxy?url=${encodeURIComponent(upstreamUrl + '/other')}&token=${ticket}`,
-        `/req/${encodeURIComponent(upstreamUrl + '/video.mp4')}?token=${ticket}`,
-        `/m3u8-proxy/proxy?url=${encodeURIComponent(upstreamUrl + '/video.mp4')}&token=${ticket}`,
-        `/unified-proxy/proxy?url=${encodeURIComponent(upstreamUrl + '/video.mp4')}&token=${ticket}`,
+        `/mediaProxy?url=${encodeURIComponent(publicUpstreamUrl + '/other')}&token=${ticket}`,
+        `/req/${encodeURIComponent(publicUpstreamUrl + '/video.mp4')}?token=${ticket}`,
+        `/m3u8-proxy/proxy?url=${encodeURIComponent(publicUpstreamUrl + '/video.mp4')}&token=${ticket}`,
+        `/unified-proxy/proxy?url=${encodeURIComponent(publicUpstreamUrl + '/video.mp4')}&token=${ticket}`,
     ];
     for (const url of probes) assert.equal((await app.inject(url)).statusCode, 403, url);
 });
 test('C2 分片票据可用但不可挪用到其他地址', async () => {
-    const ticket = await ticketFor(`${upstreamUrl}/playlist.m3u8`);
+    const ticket = await ticketFor(`${publicUpstreamUrl}/playlist.m3u8`);
     const playlist = await app.inject({url: `/watch/media/${ticket}`});
     assert.equal(playlist.statusCode, 200, playlist.body);
     assert.match(playlist.body, /^#EXTM3U/);
@@ -98,7 +100,7 @@ test('C2 分片票据可用但不可挪用到其他地址', async () => {
     const parsed = new URL(segment);
     assert.ok(parsed.searchParams.get('token'));
     assert.equal((await app.inject(parsed.pathname + parsed.search)).statusCode, 200);
-    parsed.searchParams.set('url', `${upstreamUrl}/other`);
+    parsed.searchParams.set('url', `${publicUpstreamUrl}/other`);
     assert.equal((await app.inject(parsed.pathname + parsed.search)).statusCode, 403);
 });
 test('C2 调用方请求头不可注入 Host/Authorization/Cookie', async () => {

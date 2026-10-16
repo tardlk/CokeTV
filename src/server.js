@@ -19,7 +19,7 @@ import {buildContext} from './context.js';
 import {localToken, rewritePlaylist, streamMedia} from './media.js';
 import {syntaxCheck, importBundle, decodeSource, detectSourceEngine} from './sources.js';
 import {sourceTemplate} from './source-templates.js';
-import {createPlaybackSessions, playbackUrl, playbackHeaders, mediaType} from './playback.js';
+import {createPlaybackSessions, playbackUrl, playbackHeaders, mediaType, childEgress, createChildMint} from './playback.js';
 import {assertTargetAllowed} from './ssrf.js';
 import {guardedHttp, httpResponseLimit} from './outbound.js';
 import {decodeMediaTarget, decodeMediaHeaders, unwrapMediaProxy} from './media-params.js';
@@ -50,10 +50,9 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
     const netdisk = await NetdiskService.create(store.directory, netdiskRequest, guangyaRequest);
     const playback = createPlaybackSessions();
     const tvboxImporter = createTvboxImporter(store);
-    const proxyMint = (headers, scope = {}) => url => playback.createProxy(url, headers, {
-        ...(scope.source ? {source: scope.source} : {}),
-        ...(scope.netdiskRevision ? {netdiskRevision: scope.netdiskRevision} : {}),
-    });
+    // 派生票据（HLS 子清单/KEY/MAP/分片、源代理目标）只能继承父票据的 egress，
+    // 永不提升：公开票据派生出的所有子能力仍是 public。
+    const proxyMint = (headers, scope = {}) => createChildMint(playback, headers, scope);
     let catSubscriptions;
     const app = Fastify({logger: false, bodyLimit: 8 * 1024 * 1024, trustProxy: process.env.TRUST_PROXY === '1', routerOptions: {maxParamLength: 4096}});
     await app.register(formbody);
@@ -115,7 +114,9 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
     netdisk.register(app);
     const baseUrl = request => store.state.settings.publicUrl.replace(/\/$/, '') || `${request.protocol}://${request.headers.host}`;
     const contextFor = (request, instance, script, extra) => ({...buildContext(baseUrl(request), instance, script, extra), sourceEnvPath: store.state.instances.some(s => s.id === instance.id) ? store.sourceEnvPath(instance.id) : null, localPort: app.server.address()?.port || Number(process.env.PORT) || 54058});
-    const serveMedia = async (request, reply, target, headers, suppliedToken, mint, wrapUrl, guard = trustedTargetGuard) => {
+    // 默认出口取最严的 publicTargetGuard：任何忘记显式传 guard 的调用点都必须
+    // 退化为公开出口，而不是悄悄获得 trusted。可信调用点显式传 trustedTargetGuard。
+    const serveMedia = async (request, reply, target, headers, suppliedToken, mint, wrapUrl, guard = publicTargetGuard) => {
         const base = baseUrl(request);
         const parsed = new URL(target);
         const ownPort = app.server.address()?.port || Number(process.env.PORT) || 54058;
@@ -156,8 +157,27 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         allowlist: store.state.settings.targetAllowlist || [],
         selfOrigins: selfOrigins(),
     });
-    const guardFor = info => (info?.kind === 'subscription' ? subscriptionTargetGuard : trustedTargetGuard);
-    // 兼容别名：Emby / 猫影视等由服务端绑定 URL 的媒体路径统一按可信出口处理。
+    //  publicTargetGuard —— 匿名 /watch 播放流程铸造的能力票据（含其派生的 HLS
+    //    子清单/KEY/MAP/分片与源代理票据）使用它。无论 allowPrivateTargets 如何，
+    //    一律不得访问私网/回环/链路本地；targetAllowlist 也**刻意不参与**——
+    //    白名单只服务可信出口，不能把公开票据重新放行到内网。仅豁免 CokeTV 自身
+    //    精确 origin，用于保留「能力票 → 自己的 /proxy/…」这条兼容链路（下游仍会
+    //    按票据的 source 再校验）。metadata/link-local 的永久硬拦在其之前。
+    const publicTargetGuard = url => assertTargetAllowed(url, {
+        allowPrivate: false,
+        allowlist: [],
+        selfOrigins: selfOrigins(),
+    });
+    // 按凭据种类推导能力票据的出口权限：管理员/内部运行时是可信出口；订阅凭据按
+    // 既有策略（不可访问私网）；能力票据继承其自身 egress，永不提升。
+    const egressForInfo = info => (info?.kind === 'admin' ? 'trusted' : childEgress(info));
+    const guardForEgress = egress => (egress === 'trusted' ? trustedTargetGuard : publicTargetGuard);
+    const guardFor = info => (info?.kind === 'subscription' ? subscriptionTargetGuard : guardForEgress(egressForInfo(info)));
+    // 把凭据种类固化成显式 egress 后再交给 proxyMint，避免「管理员信息对象没有
+    // egress 字段」被安全默认值误判为 public。
+    const scopeFor = info => ({...info, egress: egressForInfo(info)});
+    // 兼容别名：Emby / 猫影视等由服务端绑定 URL 的可信媒体会话统一按可信出口处理
+    // （本轮不改动其既有出口策略，见 SECURITY.md「出站信任边界」）。
     const targetGuard = trustedTargetGuard;
     // 调用方提供的出站请求头白名单：禁止改写 Host/Cookie/Authorization/转发头，
     // 否则 /mediaProxy 会变成「带自定义请求头的开放代理」。源能力票据绑定的头不受此限。
@@ -271,11 +291,16 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
     app.get('/watch/sources/:id', watchHandler);
     app.get('/admin/watch/:id', watchHandler);
     const content = createContent({store, runner, netdisk, contextFor, baseUrl, playback});
-    const playHandler = (request, options) => content.play(request, watchSource(request), request.body, options);
+    // 出口权限只看「铸造这条能力的调用链」：匿名 /watch 走公开出口；已鉴权的
+    // 管理员或内部源运行时走可信出口（管理员用公开页面看 LAN 媒体属其自身意图）。
+    const playHandler = async (request, options) => content.play(request, watchSource(request), request.body, {
+        ...options,
+        egress: (await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey) ? 'trusted' : 'public',
+    });
     app.post('/watch/sources/:id/play', playHandler);
     app.post('/admin/watch/:id/play', playHandler);
     catSubscriptions = registerCatSubscriptions(app, {
-        store, baseUrl, serveMedia,
+        store, baseUrl, serveMedia, targetGuard,
         execute: (request, resolved, query, sub) => content.query(request, resolved, query, sub),
         isNetdiskCurrent: revision => netdisk.current(revision),
         play: (request, resolved, body, subscription) => content.play(request, resolved, body, {native: true, subscription}),
@@ -284,8 +309,9 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         const session = playback.get(request.params.ticket);
         if (!session || session.kind !== 'media' || !netdisk.current(session.netdiskRevision) || !store.state.instances.some(item => item.id === session.source && item.enabled)) throw fail('播放链接已过期，请重新选择剧集', 403);
         // 只抓服务端票据绑定的 URL 与请求头，绝不接受请求方传入的目标。
+        // 出口权限同样只取自票据自身（匿名铸造的票据是 public），且派生票据继承它。
         return serveMedia(request, reply, session.url, session.headers || {}, request.params.ticket,
-            proxyMint(session.headers || {}, session));
+            proxyMint(session.headers || {}, session), undefined, guardForEgress(session.egress));
     }});
     await registerEmby(app, {store, content, baseUrl, serveMedia, isNetdiskCurrent: revision => netdisk.current(revision), targetGuard});
     app.get('/admin/logs', async request => runner.logs.filter(entry => !request.query.source || entry.source === request.query.source).slice(-150));
@@ -549,12 +575,17 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         const carried = typeof content === 'string' ? unwrapMediaProxy(content, baseUrl(request)) : null;
         const target = carried?.url || content;
         const streamHeaders = sanitizeSourceHeaders({...(carried?.headers || {}), ...(headers && typeof headers === 'object' && !Array.isArray(headers) ? headers : {})});
-        const mint = proxyMint(streamHeaders, {...playback.get(sub?.token), source: instance.id});
+        // 能力票驱动源代理时，派生票据继承票据自身的 egress：公开票派生出的目标
+        // 仍是 public，不能因为进入「源自己的代理路由」就恢复内部运行时的 trusted
+        // 网络权限。管理员/内部运行时与订阅凭据维持既有出口策略不变。
+        const parentTicket = playback.get(sub?.token);
+        const proxyEgress = parentTicket ? childEgress(parentTicket) : 'trusted';
+        const mint = proxyMint(streamHeaders, {...parentTicket, source: instance.id, egress: proxyEgress});
         for (const key of Object.keys(headers || {})) if (key.toLowerCase() === 'location') headers[key] = localToken(headers[key], baseUrl(request), sub?.token);
         if ([2, 3].includes(bytes) && typeof target === 'string' && /^https?:/.test(target)) {
             // toBytes=3：宿主直接拉流；toBytes=2：302 到绑定能力票据的 /mediaProxy。
             // 两条路径携带同一组头，规避播放器 302 丢自定义头。
-            if (bytes === 3) return serveMedia(request, reply, target, streamHeaders, sub?.token, mint);
+            if (bytes === 3) return serveMedia(request, reply, target, streamHeaders, sub?.token, mint, undefined, guardForEgress(proxyEgress));
             return reply.redirect(`/mediaProxy?${new URLSearchParams({url: target, token: mint(target)})}`);
         }
         let body = bytes === 1 ? Buffer.from(String(content).split('base64,').pop(), 'base64') : content;
@@ -569,7 +600,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         const supplied = info.kind === 'proxy' ? info.headers || {} : decodeMediaHeaders(request.query);
         const headers = info.kind === 'subscription' ? safeProxyHeaders(supplied) : playbackHeaders(supplied);
         const token = info.kind === 'proxy' ? request.query.token : info.token;
-        return serveMedia(request, reply, target, headers, token, proxyMint(headers, info), undefined, guardFor(info));
+        return serveMedia(request, reply, target, headers, token, proxyMint(headers, scopeFor(info)), undefined, guardFor(info));
     };
     app.route({method: ['GET', 'HEAD'], url: '/mediaProxy', handler: mediaProxyHandler});
     for (const route of URL_PROXY_ROUTES) app.route({method: ['GET', 'HEAD'], url: route, handler: mediaProxyHandler});
@@ -604,7 +635,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         const info = await authorizeProxy(request, target);
         const headers = info.headers || {};
         const token = info.kind === 'proxy' ? request.query.token : info.token;
-        return streamMedia(target, headers, request, reply, {base: baseUrl(request), token, mint: proxyMint(headers, info), guard: guardFor(info)});
+        return streamMedia(target, headers, request, reply, {base: baseUrl(request), token, mint: proxyMint(headers, scopeFor(info)), guard: guardFor(info)});
     });
     const images = new Map();
     app.post('/image/upload', async request => {

@@ -5,10 +5,11 @@ import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
 import {createApp} from '../src/server.js';
+import {installPublicUpstream} from './fixtures/public-upstream.js';
 
 test('兼容代理模式：网盘账号只在后台管理；源详情自动展开，网页/TVBox/猫影视共用且保持实例与订阅范围', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-netdisk-integration-'));
-    let app, upstream;
+    let app, upstream, routing;
     const secret = 'UID=123; CID=fixture; SEID=private-netdisk-cookie';
     try {
         upstream = http.createServer((req, res) => {
@@ -18,7 +19,10 @@ test('兼容代理模式：网盘账号只在后台管理；源详情自动展�
             else { res.setHeader('Content-Type', 'video/mp4'); res.end('0123456789'); }
         });
         await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
-        const mediaURL = `http://127.0.0.1:${upstream.address().port}/video.mp4`;
+        // 匿名 /watch 铸造的媒体票据走公开出口，网盘临时直链改用
+        // 「公网地址映射到本地 fixture」，以便继续验证 Range/HLS 与请求头行为。
+        routing = installPublicUpstream(upstream.address().port);
+        const mediaURL = `${routing.url}/video.mp4`;
         app = await createApp({directory, seed: false, netdiskRequest: async options => {
             assert.equal(options.headers.Cookie, secret);
             return {status: 200, headers: {}, data: JSON.stringify({state: true, data: options.url.includes('/snap') ? {count: 2, list: [
@@ -82,7 +86,7 @@ test('兼容代理模式：网盘账号只在后台管理；源详情自动展�
         assert.equal((await app.inject(catURL.pathname)).statusCode, 403, '更新账号后旧猫影视媒体失效');
         assert.equal((await app.inject(child.pathname + child.search)).statusCode, 403, '更新账号后旧 HLS 子票据失效');
     } finally {
-        await app?.close(); if (upstream) await new Promise(resolve => upstream.close(resolve));
+        await app?.close(); routing?.restore(); if (upstream) await new Promise(resolve => upstream.close(resolve));
         await fs.rm(directory, {recursive: true, force: true});
     }
 });

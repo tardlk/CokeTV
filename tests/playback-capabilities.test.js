@@ -24,10 +24,12 @@ test('R2 能力引用保持 kind/source/URL/headers/expiry，不能被篡改、�
     const ticket = sessions.create('source', 'https://fixture.invalid/a', headers);
     headers.Cookie = 'changed';
     const payload = sessions.get(ticket);
-    assert.deepEqual(payload, {kind: 'media', source: 'source', url: 'https://fixture.invalid/a', headers: {Cookie: 'original'}, exp: 100});
-    payload.headers.Cookie = 'changed-again'; payload.url = 'https://fixture.invalid/b';
+    assert.deepEqual(payload, {kind: 'media', source: 'source', url: 'https://fixture.invalid/a', headers: {Cookie: 'original'}, egress: 'public', exp: 100});
+    payload.headers.Cookie = 'changed-again'; payload.url = 'https://fixture.invalid/b'; payload.egress = 'trusted';
     assert.equal(sessions.get(ticket).headers.Cookie, 'original');
     assert.equal(sessions.get(ticket).url, 'https://fixture.invalid/a');
+    // 出口权限同样不能被取用方改写：拿到副本也升不了级。
+    assert.equal(sessions.get(ticket).egress, 'public');
     assert.equal(sessions.get(`${ticket}!`), undefined);
     assert.equal(createPlaybackSessions().get(ticket), undefined);
     const request = {method: 'GET', routeOptions: {url: '/proxy/:module/*'}, query: {token: ticket}};
