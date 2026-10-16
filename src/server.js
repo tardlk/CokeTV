@@ -233,7 +233,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         if (['GET', 'HEAD'].includes(request.method) && TICKET_RATE_ROUTES.has(route)) {
             const ticket = playback.get(request.query.token);
             let target;
-            try { target = route === '/req/*' ? request.params['*'] : decodeMediaTarget(request.query.url); } catch {}
+            try { target = route === '/req/*' ? decodeMediaTarget(request.params['*']) : decodeMediaTarget(request.query.url); } catch {}
             if (ticket?.kind === 'proxy' && target && ticket.url === target && netdisk.current(ticket.netdiskRevision) && (!ticket.source || store.state.instances.some(item => item.id === ticket.source && item.enabled))) return;
         }
         if (rateBuckets.size > 20000) rateBuckets.clear();
@@ -595,7 +595,10 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         return reply.code(response.status).send({status: response.status, headers: response.headers, data: response.data});
     });
     app.get('/req/*', async (request, reply) => {
-        const target = request.params['*'];
+        // 与 /mediaProxy 对齐：先规范化目标（主机大小写、默认端口、href 形态）再做
+        // 票据 URL 比较与流式转发；否则同一地址换个写法就会让票据"无故失效"。
+        // 注意这里只做规范化，不做模糊匹配——不同 URL 依旧不能复用票据。
+        const target = decodeMediaTarget(request.params['*']);
         const info = await authorizeProxy(request, target);
         const headers = info.headers || {};
         const token = info.kind === 'proxy' ? request.query.token : info.token;

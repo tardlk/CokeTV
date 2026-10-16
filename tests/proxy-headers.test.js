@@ -180,6 +180,34 @@ test('toBytes=2/3 解包 headers 优先于旧 header，源凭据保留', async (
     }
 });
 
+test('/req 目标先规范化再比对票据：等价写法命中同一票据，不同 URL 仍被拒绝', async () => {
+    const id = await scriptWith(2, `${upstreamUrl}/canon.mp4`);
+    const viaProxy = await fetch(`${base}/proxy/${id}/?x=1`, {redirect: 'manual', headers: {authorization}});
+    assert.equal(viaProxy.status, 302);
+    const location = new URL(viaProxy.headers.get('location'), base);
+    const token = location.searchParams.get('token');
+    const canonical = location.searchParams.get('url');
+    assert.ok(token && canonical, '应拿到绑定 URL 的代理票据');
+    const statusOf = async url => { const response = await fetch(url); const status = response.status; await response.arrayBuffer(); return status; };
+    assert.equal(await statusOf(`${base}/req/${encodeURIComponent(canonical)}?token=${token}`), 200, '规范化形式应可用');
+    // 大小写不同的等价写法在 URL 规范化后是同一个地址，票据不应因此失效
+    const host = new URL(canonical).host;
+    const upper = canonical.replace(host, host.toUpperCase());
+    assert.equal(await statusOf(`${base}/req/${encodeURIComponent(upper)}?token=${token}`), 200, '等价写法不应因未规范化而被 403');
+    // 安全行为不能因为「兼容」而放松：不同 URL 仍不能复用票据
+    assert.equal(await statusOf(`${base}/req/${encodeURIComponent(`${upstreamUrl}/other.mp4`)}?token=${token}`), 403, '不同 URL 必须拒绝');
+});
+
+test('decodeMediaTarget 规范化：主机大小写、默认端口与 href 形态统一为同一地址', async () => {
+    const {decodeMediaTarget} = await import('../src/media-params.js');
+    assert.equal(decodeMediaTarget('http://EXAMPLE.com:80/a'), 'http://example.com/a');
+    assert.equal(decodeMediaTarget('https://Example.com:443/a'), 'https://example.com/a');
+    assert.equal(decodeMediaTarget('HTTP://Example.COM/a'), 'http://example.com/a');
+    assert.equal(decodeMediaTarget('http://example.com/a'), 'http://example.com/a');
+    // 仍然只接受 HTTP/HTTPS
+    assert.throws(() => decodeMediaTarget('ftp://example.com/a'), {statusCode: 400});
+});
+
 test('Python 基类媒体 URL 的 base64 加号保持兼容，真实辅助函数生成地址可拉流', async () => {
     const {execFile} = await import('node:child_process');
     const {promisify} = await import('node:util');
