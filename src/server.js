@@ -115,7 +115,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
     netdisk.register(app);
     const baseUrl = request => store.state.settings.publicUrl.replace(/\/$/, '') || `${request.protocol}://${request.headers.host}`;
     const contextFor = (request, instance, script, extra) => ({...buildContext(baseUrl(request), instance, script, extra), sourceEnvPath: store.state.instances.some(s => s.id === instance.id) ? store.sourceEnvPath(instance.id) : null, localPort: app.server.address()?.port || Number(process.env.PORT) || 54058});
-    const serveMedia = async (request, reply, target, headers, suppliedToken, mint, wrapUrl) => {
+    const serveMedia = async (request, reply, target, headers, suppliedToken, mint, wrapUrl, guard = trustedTargetGuard) => {
         const base = baseUrl(request);
         const parsed = new URL(target);
         const ownPort = app.server.address()?.port || Number(process.env.PORT) || 54058;
@@ -131,18 +131,34 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
             if (await auth.isAdmin(request)) headers.authorization = request.headers.authorization;
             if (request.headers['x-drpy-runtime'] === runner.internalKey) headers['x-drpy-runtime'] = runner.internalKey;
         }
-        return streamMedia(parsed.href, headers, request, reply, {base, token: suppliedToken, mint, wrapUrl, guard: targetGuard});
+        return streamMedia(parsed.href, headers, request, reply, {base, token: suppliedToken, mint, wrapUrl, guard});
     };
     // 代理出口 SSRF 策略：永久拒绝云元数据；内网/回环可按设置开关；可选白名单。
     const selfOrigins = () => {
         const port = app.server.address()?.port || Number(process.env.PORT) || 54058;
         return [`http://127.0.0.1:${port}`, `http://localhost:${port}`, `http://[::1]:${port}`];
     };
-    const targetGuard = url => assertTargetAllowed(url, {
+    // 出口分两类，权限边界不同（详见 SECURITY.md「出站信任边界」）：
+    //  trustedTargetGuard —— 管理员、内部源运行时，以及服务端已绑定 URL 的能力票据。
+    //    这些调用方本就有管理/源执行权限，按 allowPrivateTargets 决定能否访问 LAN，
+    //    保持家庭 NAS 与现有源（网盘在内网）的兼容。
+    const trustedTargetGuard = url => assertTargetAllowed(url, {
         allowPrivate: store.state.settings.allowPrivateTargets !== false,
         allowlist: store.state.settings.targetAllowlist || [],
         selfOrigins: selfOrigins(),
     });
+    //  subscriptionTargetGuard —— 仅持有订阅 Token 且由调用方自行指定目标 URL。
+    //    无论 allowPrivateTargets 如何，都不得访问任意私网/回环/链路本地地址；
+    //    只豁免 CokeTV 自身精确 origin，用于既有的「订阅 → 自己的 /proxy/…」代理链
+    //    （下游仍会再校验该 source 是否属于本订阅）。不许 127.0.0.1:其他端口。
+    const subscriptionTargetGuard = url => assertTargetAllowed(url, {
+        allowPrivate: false,
+        allowlist: store.state.settings.targetAllowlist || [],
+        selfOrigins: selfOrigins(),
+    });
+    const guardFor = info => (info?.kind === 'subscription' ? subscriptionTargetGuard : trustedTargetGuard);
+    // 兼容别名：Emby / 猫影视等由服务端绑定 URL 的媒体路径统一按可信出口处理。
+    const targetGuard = trustedTargetGuard;
     // 调用方提供的出站请求头白名单：禁止改写 Host/Cookie/Authorization/转发头，
     // 否则 /mediaProxy 会变成「带自定义请求头的开放代理」。源能力票据绑定的头不受此限。
     const BLOCKED_PROXY_HEADERS = new Set(['host', 'cookie', 'authorization', 'proxy-authorization', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-drpy-runtime', 'connection', 'content-length', 'transfer-encoding']);
@@ -551,7 +567,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         const supplied = info.kind === 'proxy' ? info.headers || {} : decodeMediaHeaders(request.query);
         const headers = info.kind === 'subscription' ? safeProxyHeaders(supplied) : playbackHeaders(supplied);
         const token = info.kind === 'proxy' ? request.query.token : info.token;
-        return serveMedia(request, reply, target, headers, token, proxyMint(headers, info));
+        return serveMedia(request, reply, target, headers, token, proxyMint(headers, info), undefined, guardFor(info));
     };
     app.route({method: ['GET', 'HEAD'], url: '/mediaProxy', handler: mediaProxyHandler});
     for (const route of URL_PROXY_ROUTES) app.route({method: ['GET', 'HEAD'], url: route, handler: mediaProxyHandler});
@@ -568,10 +584,14 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
             {base: baseUrl(request), token: sub?.token, method: request.method, body: request.body ? JSON.stringify(request.body) : undefined});
     }});
     app.post('/http', async (request, reply) => {
-        await authorizeService(request);
+        // /http 是「调用方自选 URL/method/headers/body」的通用 HTTP 客户端能力，
+        // 不属于普通媒体播放接口。只对管理员与内部源运行时开放：
+        // 订阅凭据（低权限外部凭据）不再能借它当通用出口；源侧走 x-drpy-runtime
+        // 的内部路径不变。确需给外部客户端开放时，应改为服务端签发的 URL 绑定能力票据。
+        if (!(await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey)) throw fail('HTTP 辅助接口仅供管理员和源内部调用', 403);
         const {url, method = 'GET', headers = {}, params = {}, data, responseType, maxRedirects} = request.body || {};
         if (!/^https?:/.test(url || '')) throw fail('HTTP 请求地址无效');
-        const response = await guardedHttp({url, method, headers, params, data, responseType, maxRedirects, timeout: store.state.settings.timeout}, targetGuard);
+        const response = await guardedHttp({url, method, headers, params, data, responseType, maxRedirects, timeout: store.state.settings.timeout}, trustedTargetGuard);
         return reply.code(response.status).send({status: response.status, headers: response.headers, data: response.data});
     });
     app.get('/req/*', async (request, reply) => {
@@ -579,7 +599,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         const info = await authorizeProxy(request, target);
         const headers = info.headers || {};
         const token = info.kind === 'proxy' ? request.query.token : info.token;
-        return streamMedia(target, headers, request, reply, {base: baseUrl(request), token, mint: proxyMint(headers, info), guard: targetGuard});
+        return streamMedia(target, headers, request, reply, {base: baseUrl(request), token, mint: proxyMint(headers, info), guard: guardFor(info)});
     });
     const images = new Map();
     app.post('/image/upload', async request => {

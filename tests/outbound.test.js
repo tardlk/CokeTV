@@ -33,9 +33,14 @@ async function fixture(t) {
     t.after(async () => { await app.close(); await new Promise(resolve => upstream.close(resolve)); await fs.rm(directory, {recursive: true, force: true}); });
     const token = app.store.state.subscriptions[0].token;
     const port = upstream.address().port;
-    return {app, seen, port, token,
-        media: (url, options = {}) => app.inject({url: `/mediaProxy?${new URLSearchParams({url, token})}`, ...options}),
-        request: payload => app.inject({method: 'POST', url: `/http?token=${token}`, payload}),
+    // 本文件验证的是「传输层」行为（DNS 绑定、重定向、请求头处理、TLS/Host/SNI），
+    // 不是订阅授权策略。新策略下订阅凭据不得访问任意回环/私网地址（含本 fixture），
+    // 因此改用内部源运行时凭据——即「可信出口」。订阅侧出口策略单独见
+    // tests/subscription-outbound.test.js。
+    const trusted = {'x-drpy-runtime': app.runner.internalKey};
+    return {app, seen, port, token, trusted,
+        media: (url, options = {}) => app.inject({...options, url: `/mediaProxy?${new URLSearchParams({url})}`, headers: {...trusted, ...(options.headers || {})}}),
+        request: payload => app.inject({method: 'POST', url: '/http', headers: trusted, payload}),
     };
 }
 

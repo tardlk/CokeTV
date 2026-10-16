@@ -5,8 +5,9 @@ import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
 import {createApp} from '../src/server.js';
+import {installPublicUpstream} from './fixtures/public-upstream.js';
 
-let app, directory, upstream, upstreamUrl, base, authorization, subscriptionToken;
+let app, directory, upstream, upstreamUrl, upstreamRouting, base, authorization, subscriptionToken;
 const seen = [];
 const b64 = value => Buffer.from(value).toString('base64');
 const sourceHeaders = {Cookie: 'SID=secret', Referer: 'https://site.invalid/', Authorization: 'Bearer upstream-token'};
@@ -28,7 +29,10 @@ before(async () => {
         res.writeHead(200, {'content-type': 'video/mp4'}); res.end('MEDIA');
     });
     await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
-    upstreamUrl = `http://127.0.0.1:${upstream.address().port}`;
+    // 本文件要同时覆盖订阅 / 管理员 / 内部运行时三类调用方；订阅出口只允许公网目标，
+    // 所以把 fixture 暴露在一个「公网地址」上（socket 层重写到本地回环）。
+    upstreamRouting = installPublicUpstream(upstream.address().port);
+    upstreamUrl = upstreamRouting.url;
     app = await createApp({directory, seed: false});
 
     await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'proxy-password', confirmPassword: 'proxy-password'}});
@@ -37,7 +41,7 @@ before(async () => {
     await app.listen({host: '127.0.0.1', port: 0});
     base = `http://127.0.0.1:${app.server.address().port}`;
 });
-after(async () => { await app?.close(); await new Promise(resolve => upstream?.close(resolve)); await fs.rm(directory, {recursive: true, force: true}); });
+after(async () => { upstreamRouting?.restore(); await app?.close(); await new Promise(resolve => upstream?.close(resolve)); await fs.rm(directory, {recursive: true, force: true}); });
 
 async function scriptWith(bytes, content, headers = sourceHeaders) {
     const {id} = await app.store.saveScript('js', `代理头样本-${bytes}-${Math.random().toString(36).slice(2, 7)}.js`, proxyRule(content, headers).replace('BYTES', String(bytes)));

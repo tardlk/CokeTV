@@ -6,8 +6,9 @@ import os from 'node:os';
 import net from 'node:net';
 import http from 'node:http';
 import {createApp} from '../src/server.js';
+import {installPublicUpstream} from './fixtures/public-upstream.js';
 
-let app, directory, upstream, upstreamUrl, source, authorization, subscriptionToken;
+let app, directory, upstream, upstreamUrl, publicUpstreamUrl, upstreamRouting, source, authorization, subscriptionToken;
 const received = [];
 
 // 用原生 socket 发送 absolute-form 请求行（app.inject 无法构造这种形态）。
@@ -29,6 +30,10 @@ before(async () => {
     });
     await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
     upstreamUrl = `http://127.0.0.1:${upstream.address().port}`;
+    // 订阅出口现在只允许公网/selfOrigin 目标，fixture 却只能跑在回环上。
+    // 这个 helper 把一个公网地址映射到本地 fixture，让订阅路径的用例仍可验证传输行为。
+    upstreamRouting = installPublicUpstream(upstream.address().port);
+    publicUpstreamUrl = upstreamRouting.url;
     app = await createApp({directory, seed: false});
     assert.equal((await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'security-password', confirmPassword: 'security-password'}})).statusCode, 200);
     authorization = `Basic ${Buffer.from(':security-password').toString('base64')}`;
@@ -38,7 +43,7 @@ before(async () => {
     subscriptionToken = app.store.state.subscriptions[0].token;
     await app.listen({host: '127.0.0.1', port: 0});
 });
-after(async () => { await app?.close(); await new Promise(resolve => upstream?.close(resolve)); await fs.rm(directory, {recursive: true, force: true}); });
+after(async () => { upstreamRouting?.restore(); await app?.close(); await new Promise(resolve => upstream?.close(resolve)); await fs.rm(directory, {recursive: true, force: true}); });
 
 // ---- C1：管理鉴权基于匹配路由 ----
 test('C1 百分号编码前缀无法绕过管理鉴权', async () => {
@@ -99,7 +104,8 @@ test('C2 分片票据可用但不可挪用到其他地址', async () => {
 test('C2 调用方请求头不可注入 Host/Authorization/Cookie', async () => {
     received.length = 0;
     const headers = JSON.stringify({Authorization: 'Bearer injected', Host: 'evil.example', Cookie: 'a=b'});
-    const response = await app.inject(`/mediaProxy?url=${encodeURIComponent(upstreamUrl + '/video.mp4')}&token=${subscriptionToken}&headers=${encodeURIComponent(headers)}`);
+    // 订阅路径只能用公网目标（内网目标已被订阅出口策略拒绝），故走映射后的公网地址。
+    const response = await app.inject(`/mediaProxy?url=${encodeURIComponent(publicUpstreamUrl + '/video.mp4')}&token=${subscriptionToken}&headers=${encodeURIComponent(headers)}`);
     assert.equal(response.statusCode, 200, response.body);
     const last = received.at(-1);
     assert.equal(last.headers.authorization, undefined);
@@ -109,7 +115,7 @@ test('C2 调用方请求头不可注入 Host/Authorization/Cookie', async () => 
 test('C2 订阅 Token 与播放票据不混用', async () => {
     const ticket = await ticketFor();
     assert.equal((await app.inject(`/api/${source}?token=${ticket}`)).statusCode, 403);
-    assert.equal((await app.inject(`/mediaProxy?url=${encodeURIComponent(upstreamUrl + '/video.mp4')}&token=${subscriptionToken}`)).statusCode, 200);
+    assert.equal((await app.inject(`/mediaProxy?url=${encodeURIComponent(publicUpstreamUrl + '/video.mp4')}&token=${subscriptionToken}`)).statusCode, 200);
 });
 test('C2 停用源后原有媒体票据失效', async () => {
     const ticket = await ticketFor();
@@ -134,14 +140,18 @@ test('M4 云元数据地址永久拒绝，重定向到内网同样被拦', async
     assert.equal((await app.inject(redirect)).statusCode, 403);
     assert.equal((await app.inject(`/req/${encodeURIComponent('http://169.254.169.254/')}?token=${subscriptionToken}`)).statusCode, 403);
 });
-test('M4 内网目标受 allowPrivateTargets 控制，白名单可进一步收紧', async () => {
-    const internal = `/mediaProxy?url=${encodeURIComponent(upstreamUrl + '/video.mp4')}&token=${subscriptionToken}`;
-    assert.equal((await app.inject(internal)).statusCode, 200);
+test('M4 内网目标受 allowPrivateTargets 控制，白名单可进一步收紧（可信出口）', async () => {
+    // 订阅凭据已完全失去内网访问能力（见 tests/subscription-outbound.test.js）；
+    // 本用例验证「可信出口」（管理员/内部运行时/能力票据）仍由 allowPrivateTargets
+    // 与 targetAllowlist 共同控制。
+    const internal = `/mediaProxy?url=${encodeURIComponent(upstreamUrl + '/video.mp4')}`;
+    const request = () => app.inject({url: internal, headers: {authorization}});
+    assert.equal((await request()).statusCode, 200);
     await app.store.mutate(state => { state.settings.allowPrivateTargets = false; });
-    try { assert.equal((await app.inject(internal)).statusCode, 403); }
+    try { assert.equal((await request()).statusCode, 403); }
     finally { await app.store.mutate(state => { state.settings.allowPrivateTargets = true; }); }
     await app.store.mutate(state => { state.settings.targetAllowlist = ['only.example.invalid']; });
-    try { assert.equal((await app.inject(internal)).statusCode, 403); }
+    try { assert.equal((await request()).statusCode, 403); }
     finally { await app.store.mutate(state => { state.settings.targetAllowlist = []; }); }
 });
 
