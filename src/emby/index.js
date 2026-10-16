@@ -8,6 +8,7 @@ import {fail,text,digest,suppliedToken,clientInfo,userDTO} from './auth.js';
 import {itemDTO,sourceDTO} from './dto.js';
 import {createPlaybackSessions} from '../playback.js';
 import {uniqueSubscriptionByToken} from '../subscriptions.js';
+import {checkUnsafeRequestOrigin} from '../origin.js';
 
 const id=()=>randomUUID().replaceAll('-','');
 const count=(value,fallback,max)=>{const n=value===undefined?fallback:Number(value);if(!Number.isSafeInteger(n)||n<1||n>max)throw fail('数量或页数超出范围');return n;};
@@ -49,14 +50,10 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
     };
     const dto=(request,ctx,item)=>itemDTO(item,{db,serverId:db.get('meta','server'),user:ctx.user,base:baseUrl(request),token:ctx.token});
     const libraryDTO=l=>({id:l.id,name:l.name,type:'CollectionFolder',kind:l.kind,parentId:db.get('meta','server')});
-    const checkOrigin=request=>{
-        if(['GET','HEAD','OPTIONS'].includes(request.method))return;
-        if(request.headers['sec-fetch-site']==='cross-site')throw fail('不允许跨站修改',403);
-        if(!request.headers.origin)return;
-        const origins=[`${request.protocol}://${request.headers.host}`,store.state.settings.publicUrl].filter(Boolean).map(value=>{try{return new URL(value).origin;}catch{return '';}});
-        if(!origins.includes(request.headers.origin))throw fail('不允许跨站修改',403);
-    };
-    const admin=(method,url,handler)=>app.route({method,url:'/admin/emby'+url,onRequest:async request=>checkOrigin(request),handler:async(request,reply)=>{
+    // /admin/emby* 与其他 /admin/* 一样，由 server.js 的全局 preHandler 统一做跨站来源校验，
+    // 这里不再保留重复实现。公开的 /emby/*、/System/* 路由不在 /admin/ 前缀下，
+    // 仍单独校验（见下方 register），使用同一个 src/origin.js helper。
+    const admin=(method,url,handler)=>app.route({method,url:'/admin/emby'+url,handler:async(request,reply)=>{
         reply.header('Cache-Control','private, no-store');
         // Opening an existing disabled database is an explicit management read.
         if(!db.db){try{await fs.access(path.join(db.directory,'emby.sqlite'));await db.open();}catch(error){if(error.code!=='ENOENT')throw error;}}
@@ -103,7 +100,7 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
         return {list:(result.list||[]).slice(0,100).map(v=>({vod_id:String(v.vod_id),vod_name:String(v.vod_name||'').slice(0,300)}))};
     });
 
-    app.post('/admin/subscriptions/:id/emby/prepare',{onRequest:async request=>checkOrigin(request)},async(request,reply)=>{
+    app.post('/admin/subscriptions/:id/emby/prepare',async(request,reply)=>{
         reply.header('Cache-Control','private, no-store');
         const sub=store.state.subscriptions.find(s=>s.id===request.params.id);
         if(!sub||uniqueSubscriptionByToken(store.state,sub.token)!==sub)throw fail('订阅已停用、不存在或Token重复',409);
@@ -119,7 +116,7 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
     const register=(methods,url,handler,{publicRoute=false,media=false}={})=>{
         const lower=url.split('/').map(part=>part.startsWith(':')?part:part.toLowerCase()).join('/');
         for(const route of new Set([url,lower,...[url,lower].map(p=>'/emby'+p)]))app.route({method:methods,url:route,handler:async(request,reply)=>{
-            reply.header('Cache-Control','private, no-store');checkOrigin(request);
+            reply.header('Cache-Control','private, no-store');checkUnsafeRequestOrigin(request,store.state.settings.publicUrl);
             if(!media)rate(request,'request',1200);
             await db.open();
             let ctx=publicRoute?null:authenticate(request);

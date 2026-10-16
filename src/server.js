@@ -28,6 +28,7 @@ import {registerCatSubscriptions} from './cat-subscriptions.js';
 import {NetdiskService} from './netdisk/service.js';
 import {createContent} from './content.js';
 import {registerEmby} from './emby/index.js';
+import {checkUnsafeRequestOrigin} from './origin.js';
 
 dotenv.config();
 const exec = promisify(execFile);
@@ -95,8 +96,11 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
     const ADMIN_ROUTES = /^\/admin\//;
     app.addHook('preHandler', async (request, reply) => {
         const route = request.routeOptions?.url || '';
-        if (route === '/admin/access/setup') return;
         if (!ADMIN_ROUTES.test(route)) return;
+        // 所有 /admin/* 的非安全方法统一做跨站来源校验（netdisk/emby 不再各自实现）。
+        // 首次 setup 也覆盖：避免设密页被跨站自动提交，但不改变 first-writer 初始化模型。
+        checkUnsafeRequestOrigin(request, store.state.settings.publicUrl);
+        if (route === '/admin/access/setup') return;
         const ip = request.ip || request.raw?.socket?.remoteAddress || 'local';
         // /admin/* 一并限流：密码校验（scrypt）再便宜也不该被未鉴权请求无限触发。
         if (!allowRequest(`admin:${ip}`)) return reply.code(429).send({error: '管理接口请求过于频繁，请稍后再试'});
@@ -104,10 +108,6 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         await auth.guard(request, reply);
         // 只在真正鉴权失败时计数，正常登录不受影响。
         if (reply.statusCode === 401) recordAdminFailure(`adminfail:${ip}`);
-        if (!reply.sent && route.startsWith('/admin/netdisk/') && request.method === 'POST' && request.headers.origin) {
-            const origins = [`${request.protocol}://${request.headers.host}`, store.state.settings.publicUrl].filter(Boolean).map(value => { try { return new URL(value).origin; } catch { return ''; } });
-            if (!origins.includes(request.headers.origin)) throw fail('不允许跨站修改网盘账号', 403);
-        }
     });
     app.get('/access/status', async () => ({requiresSetup: auth.needsSetup()}));
     app.post('/admin/access/setup', async request => auth.setup(request));
