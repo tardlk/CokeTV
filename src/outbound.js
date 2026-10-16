@@ -5,6 +5,20 @@ import axios from 'axios';
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
 
+// /http 是「调用方自选 URL/method/headers/body」的通用 HTTP 客户端能力，必须给非流式
+// 响应设上限，否则单次请求就能把进程内存打满。**只作用于 /http 这类非流式辅助调用**：
+// 真正的媒体播放走 streamMedia（流式转发），不受此限制，否则会把大视频全部打坏。
+const DEFAULT_HTTP_MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+const MIN_HTTP_MAX_RESPONSE_BYTES = 64 * 1024;
+const MAX_HTTP_MAX_RESPONSE_BYTES = 128 * 1024 * 1024;
+export function httpResponseLimit(value = process.env.HTTP_MAX_RESPONSE_BYTES) {
+    const size = Number(value);
+    if (!Number.isInteger(size) || size < MIN_HTTP_MAX_RESPONSE_BYTES || size > MAX_HTTP_MAX_RESPONSE_BYTES) return DEFAULT_HTTP_MAX_RESPONSE_BYTES;
+    return size;
+}
+// 超限不能退化成无信息的 500，要给出明确的 502。
+const isResponseTooLarge = error => error?.code === 'ERR_FR_MAX_CONTENT_LENGTH_EXCEEDED' || /maxContentLength size of/i.test(String(error?.message || ''));
+
 // Implements both dns.lookup callback forms, including Node's all:true dual
 // stack connection path. No DNS lookup or fallback outside this list occurs.
 export function pinnedLookup(addresses) {
@@ -25,7 +39,7 @@ const withoutHeaders = (headers, pattern) => Object.fromEntries(Object.entries(h
 
 // Axios's synchronous beforeRedirect hook cannot await the policy/DNS check.
 // Keep its serialization and response parsing with manual, checked redirects.
-export async function guardedHttp({url, method = 'GET', headers = {}, params = {}, data, responseType, maxRedirects = 21, timeout = 30000}, guard) {
+export async function guardedHttp({url, method = 'GET', headers = {}, params = {}, data, responseType, maxRedirects = 21, timeout = 30000, maxContentLength}, guard) {
     if (!Number.isInteger(maxRedirects) || maxRedirects < 0 || maxRedirects > 21) throw fail('HTTP 重定向上限须为 0–21');
     let target = axios.getUri({url, params}), currentMethod = String(method).toUpperCase(), currentHeaders = {...headers}, currentData = data;
     const deadline = Date.now() + timeout;
@@ -38,9 +52,16 @@ export async function guardedHttp({url, method = 'GET', headers = {}, params = {
         // Keep Node's original SNI behavior, including sources which address an
         // IP and supply Host for a TLS virtual host. Lookup changes only the IP.
         const httpsAgent = new https.Agent({keepAlive: false});
-        const response = await axios({url: parsed.href, method: currentMethod, headers: currentHeaders, data: currentData,
-            responseType, timeout: remaining, validateStatus: () => true, maxRedirects: 0,
-            lookup, httpAgent, httpsAgent, proxy: false});
+        let response;
+        try {
+            response = await axios({url: parsed.href, method: currentMethod, headers: currentHeaders, data: currentData,
+                responseType, timeout: remaining, validateStatus: () => true, maxRedirects: 0,
+                lookup, httpAgent, httpsAgent, proxy: false,
+                ...(Number.isInteger(maxContentLength) ? {maxContentLength} : {})});
+        } catch (error) {
+            if (isResponseTooLarge(error)) throw fail('上游响应超过大小限制', 502);
+            throw error;
+        }
         const location = response.headers.location;
         if (![301, 302, 303, 307, 308].includes(response.status) || !location || maxRedirects === 0) return response;
         if (responseType === 'stream') response.data.destroy();

@@ -21,7 +21,7 @@ import {syntaxCheck, importBundle, decodeSource, detectSourceEngine} from './sou
 import {sourceTemplate} from './source-templates.js';
 import {createPlaybackSessions, playbackUrl, playbackHeaders, mediaType} from './playback.js';
 import {assertTargetAllowed} from './ssrf.js';
-import {guardedHttp} from './outbound.js';
+import {guardedHttp, httpResponseLimit} from './outbound.js';
 import {decodeMediaTarget, decodeMediaHeaders, unwrapMediaProxy} from './media-params.js';
 import {createTvboxImporter} from './tvbox-import.js';
 import {registerCatSubscriptions} from './cat-subscriptions.js';
@@ -591,7 +591,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         if (!(await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey)) throw fail('HTTP 辅助接口仅供管理员和源内部调用', 403);
         const {url, method = 'GET', headers = {}, params = {}, data, responseType, maxRedirects} = request.body || {};
         if (!/^https?:/.test(url || '')) throw fail('HTTP 请求地址无效');
-        const response = await guardedHttp({url, method, headers, params, data, responseType, maxRedirects, timeout: store.state.settings.timeout}, trustedTargetGuard);
+        const response = await guardedHttp({url, method, headers, params, data, responseType, maxRedirects, timeout: store.state.settings.timeout, maxContentLength: httpResponseLimit()}, trustedTargetGuard);
         return reply.code(response.status).send({status: response.status, headers: response.headers, data: response.data});
     });
     app.get('/req/*', async (request, reply) => {

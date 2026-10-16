@@ -9,6 +9,7 @@ import http from 'node:http';
 import https from 'node:https';
 import forge from 'node-forge';
 import {createApp} from '../src/server.js';
+import {httpResponseLimit} from '../src/outbound.js';
 
 async function fixture(t) {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-outbound-'));
@@ -25,6 +26,7 @@ async function fixture(t) {
         if (url.pathname.startsWith('/move/')) { response.writeHead(Number(url.pathname.split('/').at(-1)), {location: '/echo?from=redirect'}); response.end(); return; }
         if (url.pathname === '/playlist.m3u8') { response.setHeader('content-type', 'application/vnd.apple.mpegurl'); response.end('#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="key.bin"\n#EXTINF:1,\nsegment.ts\n'); return; }
         if (url.pathname === '/echo') { response.setHeader('content-type', 'application/json'); response.end(JSON.stringify(seen.at(-1))); return; }
+        if (url.pathname === '/big') { response.end('x'.repeat(200 * 1024)); return; }
         if (request.headers.range) { response.writeHead(206, {'content-range': 'bytes 2-5/10'}); response.end('2345'); return; }
         response.end('fixed-upstream');
     });
@@ -238,4 +240,35 @@ test('R4 /http 不通过环境代理重新解析目标，实际连接仍使用�
     const response = await f.request({url: `http://allowed.fixture.invalid:${f.port}/echo`});
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.json().data.url, '/echo');
+});
+
+test('R7 httpResponseLimit：默认 16MiB，非法/越界值回退默认，合法值生效', () => {
+    const DEFAULT = 16 * 1024 * 1024;
+    for (const invalid of [undefined, '', 'abc', '0', '1024', String(DEFAULT * 100), '-1', '1.5']) {
+        assert.equal(httpResponseLimit(invalid), DEFAULT, String(invalid));
+    }
+    assert.equal(httpResponseLimit(String(64 * 1024)), 64 * 1024);
+    assert.equal(httpResponseLimit(String(8 * 1024 * 1024)), 8 * 1024 * 1024);
+    assert.equal(httpResponseLimit(String(128 * 1024 * 1024)), 128 * 1024 * 1024);
+});
+
+test('R7 /http 非流式响应超限返回 502 且不影响后续请求；放宽限制后恢复正常', async t => {
+    const f = await fixture(t); localDns(t);
+    const base = `http://allowed.fixture.invalid:${f.port}`;
+    const previous = process.env.HTTP_MAX_RESPONSE_BYTES;
+    t.after(() => { if (previous === undefined) delete process.env.HTTP_MAX_RESPONSE_BYTES; else process.env.HTTP_MAX_RESPONSE_BYTES = previous; });
+    process.env.HTTP_MAX_RESPONSE_BYTES = String(64 * 1024);
+    // 小响应正常
+    assert.equal((await f.request({url: `${base}/echo`, responseType: 'text'})).statusCode, 200);
+    // 刚好低于上限（/video 返回固定小响应）也正常
+    assert.equal((await f.request({url: `${base}/video`, responseType: 'text'})).statusCode, 200);
+    // 超限：明确的 502，而不是无信息的 500
+    const tooLarge = await f.request({url: `${base}/big`, responseType: 'text'});
+    assert.equal(tooLarge.statusCode, 502, tooLarge.body);
+    assert.match(tooLarge.json().error, /大小限制/);
+    // 进程与服务继续可用
+    assert.equal((await f.request({url: `${base}/echo`, responseType: 'text'})).statusCode, 200);
+    // 调大上限后同一目标恢复正常
+    process.env.HTTP_MAX_RESPONSE_BYTES = String(128 * 1024 * 1024);
+    assert.equal((await f.request({url: `${base}/big`, responseType: 'text'})).statusCode, 200);
 });
