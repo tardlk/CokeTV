@@ -69,7 +69,9 @@ for (const kind of ['media', 'http']) test(`R4 ${kind} 连接绑定受检 DNS �
     const f = await fixture(t);
     f.app.store.state.settings.allowPrivateTargets = false;
     let secondLookups = 0, checkedDials = 0;
-    const checked = '203.0.113.20';
+    // 用真实公网地址作「受检的公网答案」：TEST-NET/文档网段（192.0.2/198.51.100/203.0.113）
+    // 现在已被 isInternalAddress 归为非公网目标，不能再当占位公网地址。
+    const checked = '93.184.216.34';
     t.mock.method(dnsPromises, 'lookup', async () => [{address: checked, family: 4}]);
     t.mock.method(dns, 'lookup', (_host, options, callback) => {
         secondLookups++;
