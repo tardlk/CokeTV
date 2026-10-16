@@ -143,6 +143,24 @@ test('S6 source proxy + 管理员/内部运行时 + LAN target：保持 200（�
     }
 });
 
+// ---- S7：订阅经 /mediaProxy 的 HLS 派生（非猫影视路径）----
+test('S7 订阅 /mediaProxy：HLS master 200，私网子资源各自 403', async () => {
+    const before = lanHits.length;
+    const master = await app.inject(`/mediaProxy?url=${encodeURIComponent(`${publicBase}/root-mixed.m3u8`)}&token=${TOKEN}`);
+    assert.equal(master.statusCode, 200, master.body);
+    assert.match(master.body, /^#EXTM3U/);
+    const uris = [...master.body.matchAll(/(?:URI="|\n)(http[^"\n]+)/g)].map(match => match[1]);
+    assert.equal(uris.length, 3, master.body);
+    for (const uri of uris) {
+        const parsed = new URL(uri);
+        assert.ok(parsed.searchParams.get('token'), `${uri} 应带独立票据`);
+        const response = await app.inject(parsed.pathname + parsed.search);
+        assert.equal(response.statusCode, 403, `${uri} => ${response.statusCode}`);
+        assert.equal(response.json().error, '内网地址已在设置中禁止访问');
+    }
+    assert.equal(lanHits.length, before, '私网子资源不得被连接');
+});
+
 // ---- §13：capability 层三态继承 ----
 test('C4 单元：三态 egress 派生只继承不提升，非法取值一律 public', () => {
     // egressOf 白名单
