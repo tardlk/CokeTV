@@ -62,8 +62,28 @@ test('H1 链路本地整段（169.254.0.0/16）与云 metadata 永久拒绝，�
 test('H1 DNS 解析到链路本地地址同样被永久拒绝，与 IP 直连一致', async t => {
     for (const answer of ['169.254.0.23', '::ffff:a9fe:17', '169.254.169.123']) {
         t.mock.method(dns, 'lookup', async () => [{address: answer, family: net.isIP(answer)}]);
-        await assert.rejects(assertTargetAllowed('http://dns.fixture.invalid/', {allowPrivate: true, allowlist: ['169.254.0.0/16'], selfOrigins: ['http://dns.fixture.invalid/']}), {statusCode: 403}, answer);
+        const variants = [
+            {allowPrivate: true, allowlist: ['169.254.0.0/16'], selfOrigins: ['http://dns.fixture.invalid/']},
+            // 域名条目「命中」这个 hostname 也不能放行：硬拦发生在白名单之前。
+            {allowPrivate: true, allowlist: ['dns.fixture.invalid', '*.fixture.invalid'], selfOrigins: ['http://dns.fixture.invalid/']},
+        ];
+        for (const options of variants) {
+            await assert.rejects(assertTargetAllowed('http://dns.fixture.invalid/', options), {statusCode: 403}, `${answer} ${JSON.stringify(options.allowlist)}`);
+        }
     }
+});
+
+test('H3 targetAllowlist 是「域名或 CIDR」而非「域名且 CIDR」；内网开关先判定', async t => {
+    let answer = '127.0.0.1';
+    t.mock.method(dns, 'lookup', async () => [{address: answer, family: 4}]);
+    // 域名命中白名单、但解析到回环：关闭内网时必须拒绝 —— 白名单不是内网通行证。
+    await assert.rejects(assertTargetAllowed('http://a.example.com/', {allowPrivate: false, allowlist: ['*.example.com']}), {statusCode: 403}, '域名白名单不得放行内网解析');
+    // 域名命中白名单、解析到公网：允许，且只返回匹配地址。
+    answer = '8.8.8.8';
+    assert.deepEqual(await assertTargetAllowed('http://a.example.com/', {allowPrivate: false, allowlist: ['*.example.com']}), [{address: '8.8.8.8', family: 4}]);
+    // 可信出口 + 管理员开启内网 + 域名白名单：允许访问 LAN —— 这是有意行为，不是漏洞。
+    answer = '192.168.1.10';
+    assert.deepEqual(await assertTargetAllowed('http://a.example.com/', {allowPrivate: true, allowlist: ['*.example.com']}), [{address: '192.168.1.10', family: 4}]);
 });
 
 test('H2 非全局可路由网段在严格模式下不被当作普通公网目标，宽松模式下仍放行以保持 NAS 兼容', async () => {
