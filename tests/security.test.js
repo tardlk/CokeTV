@@ -166,6 +166,13 @@ test('H1 源参数文件默认不可匿名读取，内部凭据与订阅 Token �
     assert.equal((await app.inject({url: path0, headers: {'x-drpy-runtime': app.runner.internalKey}})).statusCode, 200);
     assert.ok([400, 403, 404].includes((await app.inject('/json/..%2fadmin.json')).statusCode));
 });
+test('G1 所有 /admin/* 响应统一 Cache-Control: private, no-store', async () => {
+    const target = await app.store.saveScript('js', '缓存样本.js', "var rule={title:'缓存样本'};");
+    for (const url of ['/admin/state', `/admin/scripts/${target.id}`, '/admin/export', '/admin/logs', '/admin/health', '/admin/emby']) {
+        const response = await app.inject({url, headers: {authorization}});
+        assert.match(response.headers['cache-control'] || '', /private.*no-store/, url);
+    }
+});
 test('H1 开关 jsonPublic=true 时恢复旧的公开行为', async () => {
     const path0 = '/json/' + encodeURIComponent('源参数.json');
     await app.store.mutate(state => { state.settings.jsonPublic = true; });

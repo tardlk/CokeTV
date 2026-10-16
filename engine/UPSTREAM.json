@@ -286,9 +286,9 @@
     },
     "libs/php.js": {
       "kind": "patch",
-      "sha256": "bafbd710a51183a296d647cb4fcb8db8d8378ac5c36a33822495f6a622955695",
+      "sha256": "5dd9a58e32d55b00b9056d19b793f22d96a520e65d536ed137587fda88fb3e1f",
       "upstreamSha256": "2d67aaa86779faf6f2a86f5b8c14a96888634a8f242648c326bb38213f1b172a",
-      "reason": "Original streaming/memory budget with host secret-redacted errors, instance cache and proxy alias compatibility."
+      "reason": "Original streaming/memory budget with host secret-redacted errors, instance cache and proxy alias compatibility. Additionally keys the module cache on proxyUrl as well as the file hash, so a changed local proxy URL re-initializes instead of reusing a stale captured env (aligned with hipy.js)."
     },
     "libs/xbpq.js": {
       "kind": "upstream",

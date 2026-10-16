@@ -218,7 +218,9 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         reply.header('X-Content-Type-Options', 'nosniff');
         reply.header('Referrer-Policy', 'no-referrer');
         reply.header('X-Frame-Options', 'SAMEORIGIN');
-        if (request.routeOptions?.url?.startsWith('/admin/netdisk')) reply.header('Cache-Control', 'private, no-store');
+        // 所有 /admin/* 响应统一 no-store：管理响应里含设置、订阅 Token、源 ENV、源参数与日志，
+        // 不应依赖浏览器默认缓存策略（此前只覆盖 /admin/netdisk）。
+        if (request.routeOptions?.url?.startsWith('/admin')) reply.header('Cache-Control', 'private, no-store');
         return payload;
     });
     const URL_PROXY_ROUTES = ['/unified-proxy/proxy', '/file-proxy/proxy', '/m3u8-proxy/playlist', '/m3u8-proxy/ts', '/m3u8-proxy/proxy'];
