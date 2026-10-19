@@ -12,7 +12,9 @@
 
 ## 0. 当前接手入口（先看本节）
 
-**最新交付：2026-10-16，第二轮安全热修（egress 三态）已提交推送并发布。** 功能提交 `144bc0e`（`1a6f059` 三态修复 + `144bc0e` 补 S7 测试）已在 main；[Verify 38916375908](https://github.com/tardlk/CokeTV/actions/runs/38916375908)（3m36s）、[Docker 38916375808](https://github.com/tardlk/CokeTV/actions/runs/38916375808)（12m36s）均 success；`ghcr.io/tardlk/coketv:latest` / `sha-144bc0e` 同为 `sha256:f9f385621ca733eeda783fec026cd355fab22a9481a47a6a9c65ffc2356e7d1f`（image id `sha256:15fc38572c1703722f2d6f512c12712155bd46d0b28e51176b20f83a707a1930`，linux/amd64，revision 标签 `144bc0e`）。Docker 流水线在真实镜像上跑完 11 类容器矩阵、34 个回归文件全过（`backendTests 232`）；`test:parity` 对照固定原版 **46 用例 / 差异 0**。**行为变化（兼容性相关，需告知猫影视/TVBox 用户）**：`egress` 由二态扩为 `public | subscription | trusted` 三态；**猫影视/TVBox 订阅播放的媒体会话及其 HLS/源代理派生票据从 trusted 降为 subscription**——持订阅 Token 的客户端即使让源把客户端输入原样作为播放 URL / proxy target 返回，也不能借 CokeTV 访问 `127.0.0.1`/`10/8`/`172.16/12`/`192.168/16`/链路本地/metadata；订阅驱动源代理同样如此。管理员与内部源运行时的 LAN 能力**不受影响**。Emby 保留 trusted，反证见 `tests/emby-egress.test.js`。本机核心 **282 / 282** + UI **75 / 75** + `check` 五项全过 + `build` ✅。详细记录见 7.63；随后交接纯文档 skip ci，不重复发布镜像。
+**最新交付：2026-10-17，真实 NAS 实机验收完成，三轮安全修复全部通过。** 在用户绿联 UGOS Pro NAS 上部署 `ghcr.io/tardlk/coketv:sha-144bc0e`（digest 与 CI 发布链闭环一致），并以同机真实运行的 Emby(8096) 为内网靶子端到端验收：匿名 `/watch` 与猫影视/媒体代理订阅调用链访问私网**全部 403**（管理员对照 200，LAN 能力保留）、HLS master→segment 派生继承、票据 URL 精确绑定（篡改 url 仍 403）、重启数据保留与旧票据失效全部通过；**新发现 1 项中危待修：预建 data 目录权限不收紧（777 vs 600），见 7.2 首条**。验收完成后现场已按用户要求全部清理（NAS 恢复原状）。详细记录见 7.64。
+
+**上一交付：2026-10-16，第二轮安全热修（egress 三态）已提交推送并发布。** 功能提交 `144bc0e`（`1a6f059` 三态修复 + `144bc0e` 补 S7 测试）已在 main；[Verify 38916375908](https://github.com/tardlk/CokeTV/actions/runs/38916375908)（3m36s）、[Docker 38916375808](https://github.com/tardlk/CokeTV/actions/runs/38916375808)（12m36s）均 success；`ghcr.io/tardlk/coketv:latest` / `sha-144bc0e` 同为 `sha256:f9f385621ca733eeda783fec026cd355fab22a9481a47a6a9c65ffc2356e7d1f`（image id `sha256:15fc38572c1703722f2d6f512c12712155bd46d0b28e51176b20f83a707a1930`，linux/amd64，revision 标签 `144bc0e`）。Docker 流水线在真实镜像上跑完 11 类容器矩阵、34 个回归文件全过（`backendTests 232`）；`test:parity` 对照固定原版 **46 用例 / 差异 0**。**行为变化（兼容性相关，需告知猫影视/TVBox 用户）**：`egress` 由二态扩为 `public | subscription | trusted` 三态；**猫影视/TVBox 订阅播放的媒体会话及其 HLS/源代理派生票据从 trusted 降为 subscription**——持订阅 Token 的客户端即使让源把客户端输入原样作为播放 URL / proxy target 返回，也不能借 CokeTV 访问 `127.0.0.1`/`10/8`/`172.16/12`/`192.168/16`/链路本地/metadata；订阅驱动源代理同样如此。管理员与内部源运行时的 LAN 能力**不受影响**。Emby 保留 trusted，反证见 `tests/emby-egress.test.js`。本机核心 **282 / 282** + UI **75 / 75** + `check` 五项全过 + `build` ✅。详细记录见 7.63；随后交接纯文档 skip ci，不重复发布镜像。
 
 **上一交付：2026-10-16，匿名媒体票据出口权限提升热修已提交推送并发布。** 功能提交 `0ca12fe`（`e14438c` egress 修复 + `0ca12fe` 容器验收修正与文档同步）已在 main；[Verify 38898029540](https://github.com/tardlk/CokeTV/actions/runs/38898029540)（2m46s）、[Docker 38898029513](https://github.com/tardlk/CokeTV/actions/runs/38898029513)（8m56s）均 success；`ghcr.io/tardlk/coketv:latest` / `sha-0ca12fe` 同为 `sha256:751c49bda6a083514bdb4adc1cfb78310cf56b06b4fe4f09b51443710166c228`（image id `sha256:28a4d3037bb281d90253d63bb21f8c18445f928ff4827cc3e87b45d2e2c7b07e`，linux/amd64，revision 标签 `0ca12fe`）。Docker 流水线在真实镜像上跑完 11 类容器矩阵、34 个回归文件全过（`backendTests 232`）；`test:parity` 对照固定原版 **46 用例 / 差异 0**。**行为变化（兼容性相关）**：匿名 `/watch/.../play` 铸造的媒体票据及其派生的 HLS 子清单/KEY/MAP/分片、源代理票据**一律走公开出口，不得访问私网/回环/链路本地**（此前零凭据即可让服务端读取内网目标并回传内容）；管理员与内部源运行时的 LAN 能力**不受影响**，仍由 `allowPrivateTargets` + `targetAllowlist` 控制。本机核心 **272 / 272** + UI **75 / 75** + `check` 五项全过 + `build` ✅。详细记录见 7.62；随后交接纯文档 skip ci，不重复发布镜像。
 
@@ -233,6 +235,8 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 - 未做 Docker/容器验收、外部站点播放、原 drpy-node-coder CLI 或新的 `npm audit`；未修改用户 `data/`，未 push、未发布或重建镜像。
 
 ### 7.2 仍需产品决策或专项排期的事项
+
+- **【中危·待修】预建 data 目录权限不收紧**（2026-10-17 NAS 实测发现，见 7.64）：用户先 `mkdir` 数据目录再部署时，`admin.json`（密码哈希）与 `state.json`（订阅 Token）以 777 落地而非 600；entrypoint 自建路径才正确（755/600/700）。根因在 `scripts/prepare-container-data.mjs` 对已存在目录只调属主不调 mode，且 **CI 干净环境测不到该分支**（矩阵里 data 均为自建）。修复需按惯例先加「预建 777 目录 → 部署 → 断言 600」的失败先行容器矩阵用例，再无条件收紧 mode。规避：部署前 `chmod 700` data 目录或部署后 `chmod 600 data/admin.json data/state.json`。
 
 - **每源隔离方案**：当前所有源共用 worker，源可读文件系统、ENV 和内部凭据，这是 AGENTS 已确认的同权限信任边界。每源进程隔离尚未实施；单独进程也不自动提供沙箱。任何权限收紧需要先作产品决策、评估五引擎与动态 require/辅助库兼容，不能直接删掉现有能力后宣称问题已解决。
 - **供应链**：`.github/workflows/*.yml` 的 `uses:` 全部是浮动 tag，未钉 commit SHA；`engine/spider/py/base/requirements.txt` 无版本约束与 hash；基础镜像 `node:22-trixie-slim` 未钉 digest。
@@ -953,3 +957,18 @@ GitHub 的 work/media-release-gates-20261006 已通过分支页 Delete branch �
 - **本机门禁**：`npm run check` 五项全过；核心 **282 / 282 / 0**（较 7.62 的 272 净增 10）；UI **75 / 75**；`npm run build` ✅。
 - **未做/边界**：未改 `targetAllowlist` 语义（public 不读、subscription 仍读、trusted 按开关+白名单）；未把 subscription 并成 public；未新引初始化码；未改 `TRUST_PROXY` 默认；源脚本仍同权限执行。
 - **CI 与发布记录**：推送 main 后两个提交都过门禁——`1a6f059`：[Verify 38915928271](https://github.com/tardlk/CokeTV/actions/runs/38915928271)（3m15s）、[Docker 38915928281](https://github.com/tardlk/CokeTV/actions/runs/38915928281)（7m47s）；`144bc0e`：[Verify 38916375908](https://github.com/tardlk/CokeTV/actions/runs/38916375908)（3m36s）、[Docker 38916375808](https://github.com/tardlk/CokeTV/actions/runs/38916375808)（12m36s，含排队）。最终 `ghcr.io/tardlk/coketv:latest` 与 `sha-144bc0e` 同为 `sha256:f9f385621ca733eeda783fec026cd355fab22a9481a47a6a9c65ffc2356e7d1f`（image id `sha256:15fc38572c1703722f2d6f512c12712155bd46d0b28e51176b20f83a707a1930`，linux/amd64，revision 标签 `144bc0e`）；发布仍是同一 candidate artifact 直接打标、登录前校验 sha，无重建。`test:parity` **46 用例 / 差异 0**；容器矩阵 **11 类全过**、34 个回归文件、`backendTests 232`。**注意：`1a6f059` 与 `144bc0e` 各发布了一次镜像（运行时代码相同，后者只多一条测试），`latest` 现指向 `sha-144bc0e`。**
+
+### 7.64 真实 NAS 实机验收：三轮修复在绿联 UGOS Pro 上全部通过（2026-10-17）
+
+- **环境**：用户真实 NAS（绿联私有云 UGOS Pro，Debian 12 / x86_64 / Docker 29.6.2 / 15.4GiB），同机运行 Emby(8096)/qBittorrent/MoviePilot/Dockge，全程未受影响。SSH 身份 uid=1000 gid=10(admin)。
+- **部署**：`ghcr.io/tardlk/coketv:sha-144bc0e`（**digest `sha256:f9f38562…` 与 CI 发布链闭环一致**），`PUID=1000/PGID=10`，`-v /volume1/docker/coketv/data:/app/data -p 54058:54058`。healthy；node 服务进程确认**非 root**；data 属主正确。
+- **核心验收（内网目标 = NAS 上真实运行的 Emby `192.168.5.10:8096`）全部通过**：
+  - 三态出口：订阅 Token → Emby/网关/云元数据全 403；**管理员 → 同一 Emby 200（14894B）**；匿名 403。
+  - 匿名播放回显源（`lazy` 原样返回 `body.play`，注意需 `play_parse:true` 否则免嗅覆盖为 parse:1）：play 200 签票据 → **取票据 403**；管理员对照 200。
+  - 猫影视订阅 `POST /cat/<token>/api/:source/play`（body.id=内网）：200 签会话 → **取媒体会话 403**（subscription egress 实证）。
+  - selfOrigins 边界：订阅 → 自身 `/admin/*` 401、NAS 其他端口(5001/9999) 403、`/http` 403（管理员对照 200）。
+  - 公网 HLS（mux.dev 测试流）：master→child→segment 全链派生票据，segment 取回 1.9MB 真实数据；**篡改票据 url 为内网（token 不变）→ 403**（精确绑定）。
+  - 媒体 GET 200 / Range 206；`docker restart` 后数据全保留、旧票据全部 403 失效；Emby 兼容层 `/emby/System/Info/Public` 200。
+  - HEAD 404 经直连对照确认是**上游 Emby 不支持 HEAD**，非本项目问题。
+- **新发现（已登记 7.2 待办）**：预建 data 目录权限不收紧（777 vs 600），见 7.2 首条。
+- **现场处置**：验收完成后按用户要求**已全部清理**——容器、`/volume1/docker/coketv/`、镜像均已删除，NAS 恢复原状；本机同步清理临时文件与 colima VM（回收 6.4G）。完整报告：`CokeTV-nas-field-test-2026-10-17.md`（用户本机 Projects 目录，非仓库文件）。
