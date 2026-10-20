@@ -119,6 +119,38 @@ try {
     inject(owner); inside(owner,['node','scripts/container-smoke.mjs']);
     report.checks.push('old-root-owner-auto-repair/state-preserved/service-1000/no-capabilities/no-new-privileges');
 
+    // NAS users may create data with 0777; test both first setup and legacy files.
+    const wideDirectory = await fs.mkdtemp(path.join(os.tmpdir(),'coketv-wide-bind-'));
+    const wide = `coketv-wide-bind-${id}`; names.push(wide);
+    const privatePaths = ['/app/data/admin.json', '/app/data/state.json', '/app/data/runtime/config/env.json'];
+    const assertPrivateModes = () => {
+        assert.equal(inside(wide,['stat','-c','%u:%g %a','/app/data']).trim(),'1000:1000 700');
+        for (const file of privatePaths) assert.equal(inside(wide,['stat','-c','%u:%g %a',file]).trim(),'1000:1000 600',file);
+    };
+    const privateSnapshot = () => inside(wide,['node','-e',`const fs=require('fs'); console.log(JSON.stringify(${JSON.stringify(privatePaths)}.map(p=>[p,fs.readFileSync(p,'base64')])));`]);
+    try {
+        await fs.chmod(wideDirectory,0o777);
+        run(['run','-d','--name',wide,...startupSecurity,'-v',wideDirectory+':/app/data',image]);
+        await wait(wide); assertServiceIdentity(wide);
+        inject(wide); inside(wide,['node','scripts/container-smoke.mjs']);
+        assertPrivateModes();
+        const snapshot = privateSnapshot();
+        run(['stop',wide]);
+        // Emulate an existing NAS dataset with permissive modes and old ownership.
+        run(['run','--rm','--user','0:0','-v',wideDirectory+':/app/data','--entrypoint','node',image,'-e',`const fs=require('fs'); for(const p of ['/app/data',...${JSON.stringify(privatePaths)}]) { fs.chownSync(p,0,0); fs.chmodSync(p,0o777); }`]);
+        run(['start',wide]); await wait(wide); assertServiceIdentity(wide);
+        assertPrivateModes(); assert.equal(privateSnapshot(),snapshot);
+        run(['restart',wide]); await wait(wide);
+        assertPrivateModes(); assert.equal(privateSnapshot(),snapshot);
+        report.checks.push('precreated-0777-NAS-bind/first-setup-0600/legacy-0777-repair/private-bytes-preserved/restart');
+    } finally {
+        try { run(['rm','-f',wide]); }
+        finally {
+            run(['run','--rm','--user','0:0','-v',wideDirectory+':/app/data','--entrypoint','chown',image,'-R',`${process.getuid()}:${process.getgid()}`,'/app/data']);
+            await fs.rm(wideDirectory,{recursive:true,force:true});
+        }
+    }
+
     // A NAS bind mount starts as a root-owned directory, unlike a new named volume.
     const bindDirectory = await fs.mkdtemp(path.join(os.tmpdir(),'coketv-nas-bind-'));
     try {
