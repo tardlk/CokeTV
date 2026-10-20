@@ -12,7 +12,7 @@
 
 ## 0. 当前接手入口（先看本节）
 
-**最新源码修复：2026-10-20，NAS 预建 data 宽权限已修复并通过完整验收，尚未合并/发布。** 功能提交 `b2dc954` 位于[草稿 PR #2](https://github.com/tardlk/CokeTV/pull/2)；[Verify 39396656589](https://github.com/tardlk/CokeTV/actions/runs/39396656589) 与 [Docker 39396656505](https://github.com/tardlk/CokeTV/actions/runs/39396656505) 均 success，publish skipped。完整 check/build、后端 285 + UI 75 = 360 项通过；固定原版 46 对照、差异 0；原生 amd64 镜像 12 类矩阵及 235 项容器回归通过，包括预建 0777 bind、旧宽权限/属主修复、私密内容保留和重启。目录收紧为 0700、私密数据文件为 0600，运行目录辅助程序仅保留属主执行位；同日本机 macOS arm64 的完整测试、真实 HTTP/浏览器和重启权限补验也已通过，详情见 7.65。历史 GHCR 镜像仍不含本次修复，未部署 NAS。
+**最新交付：2026-10-20，NAS 预建 data 宽权限修复已合入 main 并发布。** 主线功能提交 `19bf23f`，[PR #2](https://github.com/tardlk/CokeTV/pull/2) 已合并，本机及远端修复分支均已删除，当前只保留 main；后续直接在 main 工作，约定见 AGENTS.md。[Verify 39400999725](https://github.com/tardlk/CokeTV/actions/runs/39400999725) 与 [Docker 39400999600](https://github.com/tardlk/CokeTV/actions/runs/39400999600) 均 success，candidate/publish 全部成功。完整 check/build、后端 285 + UI 75 = 360 项通过，固定原版 46 对照、差异 0，原生 amd64 镜像 12 类矩阵及 235 项容器回归通过。`ghcr.io/tardlk/coketv:latest` / `sha-19bf23f` 同为 `sha256:511359d17871ede020058c44b323bca528dffae039e1919ca759ae2a826f1473`；匿名核对清单字节摘要、config/image ID 与候选一致，linux/amd64、OCI revision 为完整 `19bf23f` 提交。修复及本机实测见 7.65，主线发布和清理见 7.66；未重新部署 NAS。
 
 **最新交付：2026-10-17，真实 NAS 实机验收完成，三轮安全修复全部通过。** 在用户绿联 UGOS Pro NAS 上部署 `ghcr.io/tardlk/coketv:sha-144bc0e`（digest 与 CI 发布链闭环一致），并以同机真实运行的 Emby(8096) 为内网靶子端到端验收：匿名 `/watch` 与猫影视/媒体代理订阅调用链访问私网**全部 403**（管理员对照 200，LAN 能力保留）、HLS master→segment 派生继承、票据 URL 精确绑定（篡改 url 仍 403）、重启数据保留与旧票据失效全部通过；**新发现 1 项中危待修：预建 data 目录权限不收紧（777 vs 600），见 7.2 首条**。验收完成后现场已按用户要求全部清理（NAS 恢复原状）。详细记录见 7.64。
 
@@ -238,7 +238,7 @@ TEST_PYTHON=python3 TEST_PHP=php npm test
 
 ### 7.2 仍需产品决策或专项排期的事项
 
-- **【中危·已修复并验收，待合并发布】预建 data 目录权限不收紧**（2026-10-17 NAS 实测发现，见 7.64；2026-10-20 修复及完整验收见 7.65）：旧初始化按位合并原 mode 与属主权限，保留组/其他用户访问；现收紧专用 data 目录及既有私密文件，运行目录辅助程序保留属主执行位。新增失败先行回归、预建 0777 bind 容器矩阵均通过。原 NAS 首次文件落地记录属于历史实测，本次未重新部署 NAS；未更新镜像前仍需自行收紧专用 data 及私密文件权限。
+- **【已完成】预建 data 目录权限不收紧**（2026-10-17 NAS 实测发现，见 7.64）：目录 0700、私密数据 0600、辅助程序属主执行位保留的修复及失败先行回归见 7.65；2026-10-20 已合入 main 并随 `sha-19bf23f` / latest 发布，完整验收和镜像身份见 7.66。原 NAS 首次落地记录属于历史实测，本次未重新部署 NAS；仍使用旧镜像的部署不自动获得修复。
 
 - **每源隔离方案**：当前所有源共用 worker，源可读文件系统、ENV 和内部凭据，这是 AGENTS 已确认的同权限信任边界。每源进程隔离尚未实施；单独进程也不自动提供沙箱。任何权限收紧需要先作产品决策、评估五引擎与动态 require/辅助库兼容，不能直接删掉现有能力后宣称问题已解决。
 - **供应链**：`.github/workflows/*.yml` 的 `uses:` 全部是浮动 tag，未钉 commit SHA；`engine/spider/py/base/requirements.txt` 无版本约束与 hash；基础镜像 `node:22-trixie-slim` 未钉 digest。
@@ -975,11 +975,18 @@ GitHub 的 work/media-release-gates-20261006 已通过分支页 Delete branch �
 - **新发现（已登记 7.2 待办）**：预建 data 目录权限不收紧（777 vs 600），见 7.2 首条。
 - **现场处置**：验收完成后按用户要求**已全部清理**——容器、`/volume1/docker/coketv/`、镜像均已删除，NAS 恢复原状；本机同步清理临时文件与 colima VM（回收 6.4G）。完整报告：`CokeTV-nas-field-test-2026-10-17.md`（用户本机 Projects 目录，非仓库文件）。
 
-### 7.65 NAS 预建 data 宽权限修复（2026-10-20，尚未发布）
+### 7.65 NAS 预建 data 宽权限修复与验收（2026-10-20，已发布见 7.66）
 
 - **失败先行**：新增预建 0777 目录/旧私密文件和宽松 umask 下新建 data 两条回归，旧逻辑实际 5 通过、2 失败；修复后权限与发行门禁专项共 11 通过、0 失败、0 跳过；另以真实辅助程序执行回归验证收紧权限不破坏执行能力。
 - **实现**：目录统一收紧为 0700，普通数据文件统一收紧为 0600，运行目录已有可执行辅助文件保留属主执行位（0700），config/json 参数和 .plugins.js 固定为 0600，并清除特殊权限位；新建 data 显式使用 0700。PUID/PGID、文件内容、符号链接不跟随、硬链接/特殊文件拒绝和重复启动幂等性继续保留。显式 Docker user 仍跳过 root 初始化。
 - **持续门禁**：容器矩阵新增独立预建 0777 NAS bind 场景，覆盖首次部署/设密/五引擎中的 JS/Python/PHP 创建执行、旧文件 0777 与 root 属主自动修复、凭据/订阅/ENV 内容保留及重启。测试在 finally 删除容器、临时目录，不改正式 data。
 - **完整验收通过**：功能提交 `b2dc954` 的 [Verify 39396656589](https://github.com/tardlk/CokeTV/actions/runs/39396656589)、[Docker 39396656505](https://github.com/tardlk/CokeTV/actions/runs/39396656505) 均 success。Node 22 完整 check/build/test：后端 285/285、UI 75/75；固定原版对照 46 用例、差异 0。真实 linux/amd64 候选镜像 12 类矩阵和 35 文件/235 项容器回归通过，含新增宽权限修复及辅助程序执行回归，零跳过。PR 合并测试提交 `b0fa802fa241343b903077c5cf7a1819d2ea86b0` 已与功能分支核对文件树一致；候选 image ID 为 `sha256:3dd5dc6fb3d9ad6137113c55a73a228a8bb32840c2ff0a83ce7f32918ed19267`，并非 GHCR 已发布镜像。
-- **交付与清理**：草稿 PR #2 保留供审阅，publish 按 PR 门禁 skipped；没有合并 main、发布镜像或部署 NAS。随后仅回填本交接文档，使用 skip ci，不重复触发镜像构建。本机复用共享 Node 作有限检查，未安装依赖/解释器/Docker、未新增常驻服务或自启项；测试临时目录已清理，共享工具保留。CI runner 为临时环境，矩阵在 finally 清理容器/卷/临时目录；验收产物按现有流水线保留供复核。
+- **PR 阶段交付与清理（历史）**：草稿 PR #2 保留供审阅，publish 按 PR 门禁 skipped；没有合并 main、发布镜像或部署 NAS。随后仅回填本交接文档，使用 skip ci，不重复触发镜像构建。本机复用共享 Node 作有限检查，未安装依赖/解释器/Docker、未新增常驻服务或自启项；测试临时目录已清理，共享工具保留。CI runner 为临时环境，矩阵在 finally 清理容器/卷/临时目录；验收产物按现有流水线保留供复核。
 - **同日本机补验（随后完成）**：用户授权按需安装环境后，以 Node 22.23.3/npm 10.9.9、PHP 8.4.23 和基于现有 Python 3.12.14 的隔离环境，在原生 macOS arm64 上执行完整 `npm run check`、`npm run build`、`npm test`：后端 285/285、UI 75/75，零失败、零跳过；固定原版离线响应契约回归通过，本机未安装 Docker 或重复运行原版在线容器对照。使用独立数据目录和真实 HTTP 服务验证首装设密、后台鉴权、JS/Python/PHP 模板执行；预建 data/旧凭据设为 0777 后初始化及重启，data=0700，管理凭据/状态/ENV=0600，文件字节、密码和源执行保留。浏览器实际选源、后台登录、三类源列表和退出通过；无影片模板不代表第三方站点或实际音视频验收。测试服务及子进程已停止，临时浏览器标签已关闭，无新增自启项；临时工具、venv、下载包、缓存、node_modules、dist 和测试数据全部清理，回收约 934 MiB，仅本机保留约 160 KiB 日志/清单/截图。现有共享工具未修改；本次同步仅补公开验收记录，不上传本机私密交接或验证产物。
+
+### 7.66 合入主线、删除工作分支与镜像发布（2026-10-20）
+
+- **用户要求与 Git 状态**：用户要求放入主线、不再开工作分支并清理本次分支。PR #2 已合并，main 功能提交 `19bf23f55389934860b703923105271560742c73`；本地及远端 `fix/nas-data-permissions` 均已删除，远端分支清单只剩 main，本地也只保留 main。后续直接在 main 工作并按用户要求推送，不主动新建分支或 PR，已写入 AGENTS.md。
+- **主线门禁**：[Verify 39400999725](https://github.com/tardlk/CokeTV/actions/runs/39400999725) / [Docker 39400999600](https://github.com/tardlk/CokeTV/actions/runs/39400999600) 均 success。完整 check/build/test 为后端 285/285 + UI 75/75，固定原版 46 对照、差异 0；候选镜像完成 12 类矩阵、35 文件/235 项容器回归，零跳过，包含预建 0777 bind、旧私密文件收紧、内容/密码保留、辅助程序实际执行、重启、自定义 PUID/PGID 及五引擎真实媒体。
+- **发布身份**：candidate 与 publish 均 success；`ghcr.io/tardlk/coketv:latest` 和 `sha-19bf23f` 同为 `sha256:511359d17871ede020058c44b323bca528dffae039e1919ca759ae2a826f1473`。匿名以 HTTP/2 获取两个标签清单，字节一致且 SHA256 与发布日志/注册表头一致；config 字节哈希为候选 image ID `sha256:b0fbd724cade3d5c7fa87494c47743a5511899d6ba93ec57f418d6601c568438`，platform 为 linux/amd64、OCI revision 为完整主线功能提交。身份核对不等于发布后再次跑完整容器矩阵，本轮未重新部署 NAS。
+- **收尾与环境**：随后只在 main 直接补交接和工作约定，使用 skip ci，不重复构建或发布。删除远端分支时临时下载并校验官方 GitHub CLI 2.102.0，复用既有系统钥匙串登录，没有创建新凭据；工具及归档已删除，回收约 53 MiB，原有 GitHub 配置/共享工具保留。本机无本任务运行服务、长期保留的新环境或新增自启项；仅保留约 168 KiB 本机验证记录，不进入 Git。
