@@ -23,7 +23,7 @@ export async function prepareContainerData(directory, {uid = 1000, gid = 1000} =
     const rootStat = await fs.lstat(directory);
     if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw new Error('DATA_DIR 必须是实际目录，不能是符号链接');
     let changed = 0;
-    const visit = async file => {
+    const visit = async (file, relative = '') => {
         const stat = await fs.lstat(file);
         // In particular, runtime/node_modules points outside data; never follow it.
         if (stat.isSymbolicLink()) return;
@@ -35,14 +35,17 @@ export async function prepareContainerData(directory, {uid = 1000, gid = 1000} =
             if (current.isFile() && current.nlink > 1) throw new Error('data 内存在硬链接，请单独检查权限');
             // A pre-created NAS mount can be 0777, including legacy credentials.
             // Adding owner permissions alone leaves group/other access intact.
-            const mode = current.isDirectory() ? 0o700 : 0o600;
+            // User runtime helpers may be invoked directly (including plugin venvs).
+            // Retain only their existing owner execute bit; credentials/config stay 0600.
+            const runtimeHelper = relative.startsWith('runtime/') && !relative.startsWith('runtime/config/') && !relative.startsWith('runtime/json/') && relative !== 'runtime/.plugins.js';
+            const mode = current.isDirectory() ? 0o700 : 0o600 | (runtimeHelper ? current.mode & 0o100 : 0);
             if (current.uid !== uid || current.gid !== gid) { await handle.chown(uid, gid); changed++; }
             if ((current.mode & 0o7777) !== mode) { await handle.chmod(mode); changed++; }
             if (current.isDirectory()) {
                 // Linux descriptor paths pin each parent while walking, so renaming a
                 // parent into a symlink cannot redirect initialization outside data.
                 const parent = process.platform === 'linux' ? `/proc/self/fd/${handle.fd}` : file;
-                for (const name of await fs.readdir(parent)) await visit(path.join(parent, name));
+                for (const name of await fs.readdir(parent)) await visit(path.join(parent, name), path.posix.join(relative, name));
             }
         } finally { await handle.close(); }
     };
