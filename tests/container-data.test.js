@@ -40,6 +40,36 @@ test('container preparation preserves private contents/modes and is idempotent',
     assert.equal(await prepareContainerData(data, owner), 0);
 });
 
+test('container preparation tightens pre-created world-writable data and legacy private files', async t => {
+    const directory = await fixture(t), data = path.join(directory, 'data');
+    const directories = [data, path.join(data, 'runtime'), path.join(data, 'runtime/config'), path.join(data, 'netdisk')];
+    for (const folder of directories) { await fs.mkdir(folder); await fs.chmod(folder, 0o777); }
+    const files = ['admin.json', 'state.json', 'runtime/config/env.json', 'netdisk/115.json'];
+    for (const [index, relative] of files.entries()) {
+        const file = path.join(data, relative);
+        await fs.writeFile(file, `private-fixture-${index}`);
+        await fs.chmod(file, [0o777, 0o666, 0o644, 0o600][index]);
+    }
+    assert.ok(await prepareContainerData(data, owner) > 0);
+    for (const folder of directories) assert.equal((await fs.stat(folder)).mode & 0o7777, 0o700, folder);
+    for (const [index, relative] of files.entries()) {
+        const file = path.join(data, relative), stat = await fs.stat(file);
+        assert.equal(stat.mode & 0o7777, 0o600, relative);
+        assert.equal(stat.uid, owner.uid); assert.equal(stat.gid, owner.gid);
+        assert.equal(await fs.readFile(file, 'utf8'), `private-fixture-${index}`);
+    }
+    assert.equal(await prepareContainerData(data, owner), 0);
+});
+
+test('container preparation protects newly created data even under a permissive umask', async t => {
+    const directory = await fixture(t), data = path.join(directory, 'data');
+    const previous = process.umask(0);
+    try {
+        await prepareContainerData(data, owner);
+        assert.equal((await fs.stat(data)).mode & 0o7777, 0o700);
+    } finally { process.umask(previous); }
+});
+
 test('container preparation skips outside symlinks and rejects linked data root', async t => {
     const directory = await fixture(t), data = path.join(directory, 'data'), outside = path.join(directory, 'outside');
     await fs.mkdir(data); await fs.mkdir(outside, {mode: 0o500});

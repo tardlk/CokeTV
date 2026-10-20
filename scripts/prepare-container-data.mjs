@@ -19,7 +19,7 @@ export async function prepareContainerData(directory, {uid = 1000, gid = 1000} =
     directory = path.resolve(directory);
     const protectedDirectories = ['/', '/app', '/etc', '/usr', '/opt', '/home', '/root', '/proc', '/sys', '/dev', '/run', '/tmp', '/var', '/bin', '/sbin'];
     if (protectedDirectories.includes(directory) || ['/etc','/usr','/opt','/home','/root','/proc','/sys','/dev','/bin','/sbin'].some(name => directory.startsWith(name + '/')) || (directory.startsWith('/app/') && directory !== '/app/data' && !directory.startsWith('/app/data/'))) throw new Error('DATA_DIR 必须是 CokeTV 专用数据目录');
-    await fs.mkdir(directory, {recursive: true});
+    await fs.mkdir(directory, {recursive: true, mode: 0o700});
     const rootStat = await fs.lstat(directory);
     if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw new Error('DATA_DIR 必须是实际目录，不能是符号链接');
     let changed = 0;
@@ -33,7 +33,9 @@ export async function prepareContainerData(directory, {uid = 1000, gid = 1000} =
             const current = await handle.stat();
             if (current.dev !== stat.dev || current.ino !== stat.ino) throw new Error('data 在初始化期间发生变化，请停止其他使用该目录的服务');
             if (current.isFile() && current.nlink > 1) throw new Error('data 内存在硬链接，请单独检查权限');
-            const mode = (current.mode & 0o777) | (current.isDirectory() ? 0o700 : 0o600);
+            // A pre-created NAS mount can be 0777, including legacy credentials.
+            // Adding owner permissions alone leaves group/other access intact.
+            const mode = current.isDirectory() ? 0o700 : 0o600;
             if (current.uid !== uid || current.gid !== gid) { await handle.chown(uid, gid); changed++; }
             if ((current.mode & 0o7777) !== mode) { await handle.chmod(mode); changed++; }
             if (current.isDirectory()) {
