@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import {readdirSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {spawnSync} from 'node:child_process';
@@ -65,9 +66,13 @@ const wait = async name => {
 const inject = name => {
     // Only after checking the actual distribution: tests and their dev-only tools
     // are copied into disposable verification containers, never into the image.
-    for (const folder of ['tests','scripts','docs','.github']) run(['cp',path.join(root,folder),name+':/app/'+folder]);
+    // 发行镜像已自带 /app/scripts（check-shell/verify/prepare-container-data），
+    // 目录式 docker cp 会在其下再嵌一层 scripts/scripts，故逐个文件覆盖。
+    for (const file of readdirSync(path.join(root,'scripts'))) run(['cp',path.join(root,'scripts',file),name+':/app/scripts/'+file]);
+    for (const folder of ['tests','docs','.github']) run(['cp',path.join(root,folder),name+':/app/'+folder]);
     run(['cp',path.join(root,'Dockerfile'),name+':/app/Dockerfile']);
     for (const dependency of ['node-forge','undici']) run(['cp',path.join(root,'node_modules',dependency),name+':/app/node_modules/'+dependency]);
+    inside(name,['node','-e',"if(!require('fs').existsSync('scripts/container-smoke.mjs')) throw Error('注入失败：scripts/ 未落到 /app/scripts')"]);
 };
 
 try {
