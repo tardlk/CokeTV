@@ -17,7 +17,7 @@
 - `src/worker.js` / `runner.js`：按需 drpy3 worker 池（`SOURCE_WORKERS`，默认 2）、每源串行、超时回收与脱敏日志；worker 0 保留网关/WS，无 Python 守护或旧插件启动。FTP/WebDAV 和源自定义 WS 仍按需提供宿主能力。
 - `src/host/`：独立 HTML 解析、JSONPath、ENV 及网关辅助；来源与本地哈希在 UPSTREAM。宿主修改进入 src，不修改官方引擎原包。
 - `src/store.js`：数据版本 v2、事务/历史、v1 预备份与旧源标记、显式代码迁移。数据只在 data，发行始终零预置源。
-- `src/logging.js`、`src/backups.js`：stdio + 轮转文件日志（脱敏）、data 快照（定时/手动、保留份数、下载）。
+- `src/logging.js`、`src/backups.js`：stdio + 轮转文件日志（脱敏）、data 快照（定时/手动、保留份数、下载）；快照 zip 由 `worker_threads` 生成，避免阻塞主事件循环。
 - 网页、TVBox、猫影视、Emby 和 115/光鸭继续通过统一内容服务。CatVod 执行器已删除，猫影视连接程序保留；TVBox 配置链接导入和采集 JSON/XML 脚本生成器已移除。
 
 ## 网盘开发契约
@@ -55,7 +55,7 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 
 后台读取旧代码后人工改写，保存为 drpy3；保持共享该脚本的原实例 ID、ENV、参数与订阅引用，并恢复原启用状态。文件名冲突自动采用独立名称，不覆盖已有源；迁移失败回滚文件和状态。回退应停止服务并成对恢复旧代码及升级前 data 备份，不让两个版本同时写同一目录。
 
-升级与协议回归在临时目录完成。随后本地预览已初始化 data，并按用户要求导入爱看机器人 drpy3 脚本；当前实际源、账号与配置以磁盘数据为准，不能自动覆盖或清空。该站点脚本与本机调试资料不进入发行树。NAS 未部署本轮版本。
+升级与协议回归在临时目录完成。历史本机预览曾初始化 data 并导入站点脚本，但这些运行数据不随仓库分发；当前检出没有 data，实际源、账号与配置以部署机的磁盘数据为准，不能自动覆盖或清空。站点脚本与本机调试资料不进入发行树。NAS 未部署 0.2.4。
 
 ## 已完成实现
 
@@ -73,9 +73,11 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 
 2026-10-26（0.2.4，并发与备份线程化）：源执行从全局单队列改为 worker 池（`SOURCE_WORKERS`，1–4，默认 2）；每个源固定一个 worker 且串行，不同源可并行，任一 worker 超时/崩溃只回收该 worker，worker 0 保留网关/WS，含 `fServer`/`ws` 的源固定到 worker 0。备份 zip 改由 `worker_threads` 生成，主进程只做目录遍历、容量校验与原子重命名；Emby `VACUUM INTO` 副本以文件路径交给压缩线程并在结束后清理。新增 runner-pool 并发/同源串行回归。
 
-2026-10-26（0.2.3，冗余清理）：移除 `src/host/utils/` 中无调用方的约 450 行死代码（proxy-util 的 verifyAuth/decodeParam/makeRemoteRequest 链/isInternalIp 等、proxy-common 的 rewriteM3u8、两个 client 工厂、pathHelper 的 resolvePath/isSafePath），同步更新 `engine/UPSTREAM.json` 的宿主文件哈希；运行时版本改为从 `package.json` 读取（`src/version.js`），前端由 Vite/Vitest `define` 注入 `__APP_VERSION__`，消除服务端/前端/侧栏的版本号重复。复核网关日志：worker 已在入口把 `console.log/warn/error` 重定向为 IPC 日志，实际进入统一 sink，无需再改 host log.js。
+2026-10-26（0.2.3，冗余清理）：移除 `src/host/utils/` 中无调用方的 457 行死代码（proxy-util 的 verifyAuth/decodeParam/makeRemoteRequest 链/isInternalIp 等、proxy-common 的 rewriteM3u8、两个 client 工厂、pathHelper 的 resolvePath/isSafePath），同步更新 `engine/UPSTREAM.json` 的宿主文件哈希；运行时版本改为从 `package.json` 读取（`src/version.js`），前端由 Vite/Vitest `define` 注入 `__APP_VERSION__`，消除服务端/前端/侧栏的版本号重复。复核网关日志：worker 已在入口把 `console.log/warn/error` 重定向为 IPC 日志，实际进入统一 sink，无需再改 host log.js。
 
 2026-10-26（0.2.2，安全修复）：图片上传收紧为管理员/源内部，仅接受 PNG/JPEG/GIF/WebP 并按魔数校验，SVG 与订阅 Token 上传被拒绝，/image 响应加 CSP；WebDAV/FTP 网关的 /config 测试接口只允许管理员/源内部，其他请求剥离 body 中的 config，堵住订阅 Token 驱动的内网 SSRF；数据快照补 `netdisk/` 与 Emby `VACUUM INTO` 一致副本；日志脱敏覆盖 JSON 形态的 token/password/cookie/authorization，并在内存日志入口统一脱敏；`/api`、`/parse`、`/image`、`/json`、`/webdav`、`/ftp` 纳入公开限流；实现文档中的 `LOG_STDOUT=0`。生产依赖执行 `npm audit fix --omit=dev`（undici 7.30.1、fastify 5.12.7、fast-uri 4.2.3），`npm audit --omit=dev` 为 0；开发依赖仍有 vitest/tinypool 等 6 项，见 SECURITY。新增 hardening 回归，补充快照/Emby 备份/脱敏/限速测试。
+
+2026-10-26（文档收敛）：README 吸收配置与使用、开发与验证、第三方与许可；网盘开发契约并入本文件；删除 CONFIGURATION/DEVELOPMENT/NETDISK_DEVELOPMENT/THIRD_PARTY 四个独立文档，当前只保留 README、SECURITY、AGENTS、AI_HANDOFF。
 
 2026-10-26（0.2.1）：运行日志改为 stdio 单行 JSON + `data/logs/coketv.log`（0600，5 MiB × 3 个历史文件），写入前隐藏 URL token、Authorization/Cookie 与 password 类赋值；后台新增“运行维护”页，可看最近 400 条、按级别过滤、下载日志。新增进程内数据快照：启动 60 秒后检查，默认每 24 小时创建、保留 7 份，zip 0600，包含状态/凭据/脚本与历史/ENV/KV/参数文件/解析脚本，不含运行库；后台可立即创建与下载；删除脚本、批量迁移、导入配置前自动补快照（10 分钟节流，失败不阻断）。恢复步骤写入 README「数据快照与恢复」。静态资源启用 gzip/br（阈值 1 KiB）与一年 immutable 缓存，HTML 统一 no-cache。版本升至 0.2.1；新增 logging/backups/maintenance-api/static-delivery 测试与运行维护 UI 测试。
 
@@ -83,9 +85,9 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 
 ## 验证与发行边界
 
-本机为 macOS arm64 / Node 22.23.4。0.2.2 完整 `npm test` 通过后端 264 项（253 通过、11 项 data 站点脚本在空壳下跳过）和界面 77 项，合计 341 项；`npm run check` 与 `npm run build` 通过。新增回归覆盖图片上传权限/SVG/魔数、WebDAV/FTP 配置越权阻断、日志 JSON 脱敏与 stdout 开关、快照含网盘凭据与 Emby 一致副本、`/api` 限流，以及原有日志/快照/维护接口/静态资源用例。
+本机为 macOS arm64 / Node 22.23.4。最新 0.2.4 的 `npm test` 为后端 265 项（254 通过、11 项 data 站点脚本在空壳下跳过）+ 界面 77 项，合计 342 项；0.2.2 历史为 264 项（253 通过）+ 77 项 = 341 项；`npm run check` 与 `npm run build` 均通过。新增回归覆盖图片上传权限/SVG/魔数、WebDAV/FTP 配置越权阻断、日志 JSON 脱敏与 stdout 开关、快照含网盘凭据与 Emby 一致副本、`/api` 限流、worker 池并发/同源串行，以及原有日志/快照/维护接口/静态资源用例。
 
-2026-10-26 的 `70bcf98` 已在 GitHub Actions 原生 Linux amd64 上通过 Verify 与 Docker 候选矩阵（12 项容器检查、容器内 237 项回归 fail 0 / skipped 0），并用同一镜像发布 `ghcr.io/tardlk/coketv:latest` 与 `:sha-70bcf98`（manifest digest 见 §0）。0.2.1 的 `cce9666`、0.2.2 的 `40b1303`、0.2.3 的 `a4f972b` 均在 Verify 与 Docker amd64 上全绿。0.2.4 本机 `npm test` 为后端 265 项（254 通过/11 跳过）+ 界面 77 项 = 342 项，新增 runner-pool 覆盖不同源并行/同源串行与 WS 源固定 worker 0；`cc3cb77` 与 `v0.2.4` 的 Verify/Docker amd64 均成功，`:latest`、`:0.2.4`、`:0.2` 与 `:sha-cc3cb77` 指向同一 digest（见 §0）。本机仍无 Docker 及原生 amd64 环境，真实站点、真实 WASM 解密、异地客户端和 NAS 实机不在本轮验证范围。
+2026-10-26 的 `70bcf98` 已在 GitHub Actions 原生 Linux amd64 上通过 Verify 与 Docker 候选矩阵（12 项容器检查、容器内 237 项回归 fail 0 / skipped 0），并用同一镜像发布 `ghcr.io/tardlk/coketv:latest` 与 `:sha-70bcf98`（manifest digest 见 §0）。0.2.1 的 `cce9666`、0.2.2 的 `40b1303`、0.2.3 的 `a4f972b` 均在 Verify 与 Docker amd64 上全绿。0.2.4 的 `cc3cb77` 与 `v0.2.4` 的 Verify/Docker amd64 均成功，`:latest`、`:0.2.4`、`:0.2` 与 `:sha-cc3cb77` 指向同一 digest（见 §0）。本机仍无 Docker 及原生 amd64 环境，真实站点、真实 WASM 解密、异地客户端和 NAS 实机不在本轮验证范围。
 
 上游百忙无果1、央视频-1 仅在临时目录经 CokeTV HTTP 接口运行上游固定响应；六环节、多清晰度、m3u8 与 WASM 桩 TS 代理通过，示例未进入发行树。完整真实 GET/HEAD/Range/HLS/二进制代理、CLI 和重启持久化脚本也在本机服务验证；另以仅安装生产依赖的独立临时副本复验。以上不等于原生 Linux amd64 Docker 验收、真实站点/真实 WASM 解密或异地客户端验收。
 
