@@ -895,13 +895,4 @@ export class FTPClient {
     }
 }
 
-/**
- * 创建 FTP 客户端实例的工厂函数
- * @param {Object} config - 配置对象
- * @returns {FTPClient} FTP 客户端实例
- */
-export function createFTPClient(config) {
-    return new FTPClient(config);
-}
-
 export default FTPClient;

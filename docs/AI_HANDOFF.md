@@ -1,12 +1,12 @@
 # CokeTV 接手记录
 
-更新：2026-10-26。当前源码版本 **0.2.2**，用户已明确 **只保留 drpy3 一个源执行引擎**；工作方式继续直接在 `main` 工作，不主动创建分支或 PR。
+更新：2026-10-26。当前源码版本 **0.2.3**，用户已明确 **只保留 drpy3 一个源执行引擎**；工作方式继续直接在 `main` 工作，不主动创建分支或 PR。
 
 ## 0. 当前接手入口（先看本节）
 
 - **先读顺序**：`AGENTS.md`（用户已确认的产品与安全决定）→ 本文件 → `README.md`、`SECURITY.md`、`docs/CONFIGURATION.md`、`docs/DEVELOPMENT.md`。
 - **当前验证**（2026-10-26，macOS arm64 / Node 22.23.4）：`npm run check`、`npm run build` 通过；`npm test` 为后端 264 项（253 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 77 项，共 341 项。
-- **镜像（2026-10-26 已发布）**：`ghcr.io/tardlk/coketv:0.2.2`、`:0.2`、`:latest`、`:sha-40b1303` 指向同一 manifest digest `sha256:fb303b356f2a4c7e35d2d89603052c42f3e8b31f7f1f3f31da0c67fed5b48c4c`（image ID `sha256:e558385fd20668d70742fff75b0a9004eb5de23a670f213ab1d2d81080e3da17`），源码提交 `40b1303`。GitHub Release：https://github.com/tardlk/CokeTV/releases/tag/v0.2.2 。上一版 0.2.1 为 `:sha-cce9666`（manifest `sha256:26412dbf3d5df18c42e6da8f89e9db02c16b5468cbbed74414a40547a7674d6e`），0.2.0 为 `:sha-70bcf98`；0.2.0 未单独打 Git tag。
+- **镜像（0.2.2 已发布，0.2.3 待本轮发布）**：`ghcr.io/tardlk/coketv:0.2.2`、`:0.2`、`:latest`、`:sha-40b1303` 指向同一 manifest digest `sha256:fb303b356f2a4c7e35d2d89603052c42f3e8b31f7f1f3f31da0c67fed5b48c4c`（源码 `40b1303`）。0.2.3 的清理提交要等本次推送后的 Verify + Docker amd64 成功；成功前不要宣称 `latest` 已包含 0.2.3。上一版 0.2.1 为 `:sha-cce9666`（manifest `sha256:26412dbf3d5df18c42e6da8f89e9db02c16b5468cbbed74414a40547a7674d6e`），0.2.0 为 `:sha-70bcf98`；0.2.0 未单独打 Git tag。GitHub Release：https://github.com/tardlk/CokeTV/releases/tag/v0.2.2 。
 - **发布门禁**：推送 `main`/`v*` 触发 `.github/workflows/docker.yml`；候选镜像先在原生 amd64 跑容器矩阵，再用同一镜像（不重建）发布 GHCR。本机没有 Docker，容器结论只能来自 Actions。
 - **本机私有**：`HANDOFF.md`、`.tools/`、`data/` 不入库；不要拿正式用户 data 做删除、迁移或恢复实验。
 
@@ -41,6 +41,8 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 本轮按用户要求改为脚本级真删除：DELETE /admin/scripts/:id 和 /admin/scripts/batch 调用 Store.deleteScripts，实际删除脚本/历史/全部关联源 ENV 与持久 KV 并移除订阅引用，事务失败回滚。共享脚本的全部源一并删除，确认框明确提示数量；遗留孤立脚本进入管理列表可删除。移除实例新建与目录扫描入口/API，以及旧实例删除 API 和软删除选项，不再内部扫描；导入/新建脚本自动注册对应源。现有运行脚本仍留给用户确认删除，未自动清理 s.js 或爱看机器人。
 
 网页观影对没有分类和首页影片、但可以搜索的源显示“请搜索影片”与直接聚焦搜索框的按钮，不再一律显示“暂无影片”。首页/搜索响应可选的 notice 仅按纯文本显示（最多 500 字符），用于说明站点浏览限制；切换查询时清除旧提示，不修改官方引擎。站点脚本和登录资料仍仅保存在忽略的本机运行目录。
+
+2026-10-26（0.2.3，冗余清理）：移除 `src/host/utils/` 中无调用方的约 450 行死代码（proxy-util 的 verifyAuth/decodeParam/makeRemoteRequest 链/isInternalIp 等、proxy-common 的 rewriteM3u8、两个 client 工厂、pathHelper 的 resolvePath/isSafePath），同步更新 `engine/UPSTREAM.json` 的宿主文件哈希；运行时版本改为从 `package.json` 读取（`src/version.js`），前端由 Vite/Vitest `define` 注入 `__APP_VERSION__`，消除服务端/前端/侧栏的版本号重复。复核网关日志：worker 已在入口把 `console.log/warn/error` 重定向为 IPC 日志，实际进入统一 sink，无需再改 host log.js。
 
 2026-10-26（0.2.2，安全修复）：图片上传收紧为管理员/源内部，仅接受 PNG/JPEG/GIF/WebP 并按魔数校验，SVG 与订阅 Token 上传被拒绝，/image 响应加 CSP；WebDAV/FTP 网关的 /config 测试接口只允许管理员/源内部，其他请求剥离 body 中的 config，堵住订阅 Token 驱动的内网 SSRF；数据快照补 `netdisk/` 与 Emby `VACUUM INTO` 一致副本；日志脱敏覆盖 JSON 形态的 token/password/cookie/authorization，并在内存日志入口统一脱敏；`/api`、`/parse`、`/image`、`/json`、`/webdav`、`/ftp` 纳入公开限流；实现文档中的 `LOG_STDOUT=0`。生产依赖执行 `npm audit fix --omit=dev`（undici 7.30.1、fastify 5.12.7、fast-uri 4.2.3），`npm audit --omit=dev` 为 0；开发依赖仍有 vitest/tinypool 等 6 项，见 SECURITY。新增 hardening 回归，补充快照/Emby 备份/脱敏/限速测试。
 

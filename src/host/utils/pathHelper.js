@@ -19,12 +19,3 @@ function findProjectRoot() {
 }
 
 export const PROJECT_ROOT = findProjectRoot();
-
-export function resolvePath(p) {
-  return path.resolve(PROJECT_ROOT, p);
-}
-
-export function isSafePath(p) {
-  const resolved = resolvePath(p);
-  return resolved === PROJECT_ROOT || resolved.startsWith(PROJECT_ROOT + path.sep);
-}

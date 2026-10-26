@@ -29,6 +29,7 @@ import {NetdiskService} from './netdisk/service.js';
 import {createContent} from './content.js';
 import {registerEmby} from './emby/index.js';
 import {checkUnsafeRequestOrigin, requestOrigin} from './origin.js';
+import {VERSION} from './version.js';
 import {createLogSink, inTestRunner, redactLogMessage} from './logging.js';
 import {Backups} from './backups.js';
 
@@ -302,8 +303,8 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
         if (rateBuckets.size > 20000) rateBuckets.clear();
         if (!allowRequest(`public:${request.ip || request.raw?.socket?.remoteAddress || 'local'}`)) reply.code(429).send({error: '请求过于频繁，请稍后再试'});
     });
-    app.get('/health', async () => ({ok: true, version: '0.2.2'}));
-    app.get('/admin/health', async () => ({ok: true, version: '0.2.2', memory: process.memoryUsage(), runtime: runner.status(), backups: await backups.status()}));
+    app.get('/health', async () => ({ok: true, version: VERSION}));
+    app.get('/admin/health', async () => ({ok: true, version: VERSION, memory: process.memoryUsage(), runtime: runner.status(), backups: await backups.status()}));
     app.get('/admin/state', async () => { await store.refreshEnvironment(); return {...store.state, runtime: runner.status()}; });
     app.get('/watch/sources', async () => store.state.instances.filter(instance => sourceAvailable(store.state, instance)).flatMap(instance => {
         const script = store.state.scripts.find(item => item.id === instance.scriptId);

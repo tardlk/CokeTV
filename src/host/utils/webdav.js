@@ -883,14 +883,5 @@ export class WebDAVClient {
     }
 }
 
-/**
- * 创建 WebDAV 客户端实例
- * @param {Object} config - 配置对象
- * @returns {WebDAVClient} WebDAV 客户端实例
- */
-export function createWebDAVClient(config) {
-    return new WebDAVClient(config);
-}
-
 // 默认导出
 export default WebDAVClient;

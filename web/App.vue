@@ -51,6 +51,7 @@ export default {
             await applyRoute();
         }
         function rememberWorkspaceRoute() { workspaceRoute = {url: routeURL(), position: routePosition()}; }
+        const appVersion = __APP_VERSION__;
         const state = ref(null), page = ref('sources'), query = ref(''), engine = ref('all'), selected = ref([]), currentPage = ref(1);
         const auth = ref(sessionStorage.getItem('coketv-access') || ''), login = ref({password: ''}), loginError = ref('');
         const requiresSetup = ref(false), accessLoading = ref(true), newPassword = ref(''), confirmPassword = ref('');
@@ -207,7 +208,7 @@ export default {
         onMounted(async () => { window.addEventListener('popstate', syncWatch); await syncWatch(); });
         onBeforeUnmount(() => window.removeEventListener('popstate', syncWatch));
         return {workspace,removeSelected,publicSources,watchLoading,watchError,watchApi,loadWatch,watching,openWatch,closeWatch,requiresSetup,accessLoading,newPassword,confirmPassword,createPassword,requestFile,renameSource,saveName,pageSize,openLinks,switchCapability,modalTitle, workspaceSource, closeWorkspace, api, state, page, query, engine, selected, currentPage, totalPages, visible, filtered, sources, scriptRows, enabledCount, auth, login, loginError, busy, modal, form, confirming,
-            action, signIn, toggle, selectVisible, switchSource, batch, editScript, newScript, saveScript, upload, removeSource, openSubscription, saveSubscription, subscriptionBase, subscriptionUrl, catSubscriptionUrl, copy, preview, deleteSub, resetToken, logout, acceptConfirm, load, download};
+            action, signIn, toggle, selectVisible, switchSource, batch, editScript, newScript, saveScript, upload, removeSource, openSubscription, saveSubscription, subscriptionBase, subscriptionUrl, catSubscriptionUrl, copy, preview, deleteSub, resetToken, logout, acceptConfirm, load, download, appVersion};
     }
 };
 </script>
@@ -223,7 +224,7 @@ export default {
   <SourceWorkspace v-else-if="page==='workspace' && workspaceSource" ref="workspace" :key="workspaceSource.id" :source="workspaceSource" :sources="sources" :api="api" @close="closeWorkspace" @saved="action(load)" />
   <SidebarProvider v-else>
     <Sidebar collapsible="icon">
-      <SidebarHeader><a class="brand-lockup" href="/admin" @click.prevent="page='sources'"><span class="brand-mark"><Icon name="layers" /></span><div class="group-data-[collapsible=icon]:hidden"><strong>CokeTV</strong><small>v0.2.2</small></div></a></SidebarHeader>
+      <SidebarHeader><a class="brand-lockup" href="/admin" @click.prevent="page='sources'"><span class="brand-mark"><Icon name="layers" /></span><div class="group-data-[collapsible=icon]:hidden"><strong>CokeTV</strong><small>v{{appVersion}}</small></div></a></SidebarHeader>
       <SidebarContent><AppNavigation :page="page" :sources="sources.length" :subscriptions="state.subscriptions.length" @navigate="page=$event" @watch="openWatch" /></SidebarContent>
 <SidebarRail />
     </Sidebar>

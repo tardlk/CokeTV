@@ -1,6 +1,6 @@
 # CokeTV
 
-基于 **drpy3** 的源执行、网页观影和 TVBox / 猫影视 / Emby 订阅服务。当前源码版本 **0.2.2**，只有 drpy3 一个源执行引擎，运行环境为 Node.js 22。Python、PHP、drpyS、CatVod 和独立 DR2 执行器已移除。
+基于 **drpy3** 的源执行、网页观影和 TVBox / 猫影视 / Emby 订阅服务。当前源码版本 **0.2.3**，只有 drpy3 一个源执行引擎，运行环境为 Node.js 22。Python、PHP、drpyS、CatVod 和独立 DR2 执行器已移除。
 
 发行是空壳：不预装站点、解析脚本或站点资源。用户自行导入有权使用的本地 drpy3 脚本或 ZIP 源包。支持相对 ESM/CJS 模块、WASM、源参数、ENV 和实例独立存储。
 

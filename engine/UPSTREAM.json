@@ -68,7 +68,7 @@
       "upstreamSha256": null
     },
     "src/host/utils/webdav.js": {
-      "sha256": "f4ccabb84dfe3df6ade54f7a77bce2b4b545b3b44c57922ffbdeec9630aa6e10",
+      "sha256": "f94c0070a7cc14451765d0164b61f8905883ecdd7f4577ce3901f81b7daa0e2c",
       "reason": "CokeTV独立宿主辅助库；自原drpy-node提取并去除旧执行器依赖，保留解析/网关及脱敏行为。",
       "repository": "https://github.com/hjdhnx/drpy-node",
       "revision": "c466cb162fbf9522570722449ca6706ced01cb2b",
@@ -92,7 +92,7 @@
       "upstreamSha256": "b856bbffc89f2ecf03cacae94a7a46def804cd9a5da36e04062860b7fbcd8b6a"
     },
     "src/host/utils/proxy-common.js": {
-      "sha256": "6761f9b41dcfd45c9f35a5b985a4e491de304c091b0121cee15f908cbd0e4507",
+      "sha256": "cb36b65dc1d29465a8542ce4ccf307166a186126512da50c64620c4fb304ed7d",
       "reason": "CokeTV独立宿主辅助库；自原drpy-node提取并去除旧执行器依赖，保留解析/网关及脱敏行为。",
       "repository": "https://github.com/hjdhnx/drpy-node",
       "revision": "c466cb162fbf9522570722449ca6706ced01cb2b",
@@ -100,7 +100,7 @@
       "upstreamSha256": "6761f9b41dcfd45c9f35a5b985a4e491de304c091b0121cee15f908cbd0e4507"
     },
     "src/host/utils/proxy-util.js": {
-      "sha256": "15f88d4a5428e11c0a4ad8f35ea980c9f5c8cef382847ea83754e6c203ef904a",
+      "sha256": "82b33b34eba32e8afc95673aeca94380635eabf868dc954a9afe351d92713b05",
       "reason": "CokeTV独立宿主辅助库；自原drpy-node提取并去除旧执行器依赖，保留解析/网关及脱敏行为。",
       "repository": "https://github.com/hjdhnx/drpy-node",
       "revision": "c466cb162fbf9522570722449ca6706ced01cb2b",
@@ -108,7 +108,7 @@
       "upstreamSha256": "15f88d4a5428e11c0a4ad8f35ea980c9f5c8cef382847ea83754e6c203ef904a"
     },
     "src/host/utils/ftp.js": {
-      "sha256": "f1bd2de8fb2fd79dba24fa5b949c648a373f80e3d9df76078ce9d54064a65d00",
+      "sha256": "5fa29b4b00ccc9306d2602773e072ffcc797f84b610570199b243b795fa67fbd",
       "reason": "CokeTV独立宿主辅助库；自原drpy-node提取并去除旧执行器依赖，保留解析/网关及脱敏行为。",
       "repository": "https://github.com/hjdhnx/drpy-node",
       "revision": "c466cb162fbf9522570722449ca6706ced01cb2b",
@@ -116,7 +116,7 @@
       "upstreamSha256": "f1bd2de8fb2fd79dba24fa5b949c648a373f80e3d9df76078ce9d54064a65d00"
     },
     "src/host/utils/pathHelper.js": {
-      "sha256": "53fa95927815f5139d7a5c8a81500c74fec4254ad45f87ecae755f5031378e59",
+      "sha256": "6a75cac1834eadbfde1aac282c846976d61580fd0557fff8d47cbe7484328889",
       "reason": "CokeTV独立宿主辅助库；自原drpy-node提取并去除旧执行器依赖，保留解析/网关及脱敏行为。",
       "repository": "https://github.com/hjdhnx/drpy-node",
       "revision": "c466cb162fbf9522570722449ca6706ced01cb2b",

@@ -1,6 +1,6 @@
 # 开发与验证
 
-CokeTV 0.2.2 使用 Node.js 22，唯一源引擎为 drpy3。`src/` 是 HTTP/管理/订阅/网盘宿主，`src/host/` 是独立的解析、ENV和按需网关；`engine/libs/drpy3/` 保留官方原包四文件，版本与 SHA-256 见 UPSTREAM.json。`web/` 是 Vue 前端；用户运行文件仅放 data，不进入发行。
+CokeTV 0.2.3 使用 Node.js 22，唯一源引擎为 drpy3。`src/` 是 HTTP/管理/订阅/网盘宿主，`src/host/` 是独立的解析、ENV和按需网关；`engine/libs/drpy3/` 保留官方原包四文件，版本与 SHA-256 见 UPSTREAM.json。`web/` 是 Vue 前端；用户运行文件仅放 data，不进入发行。
 
 ## 当前验证
 
