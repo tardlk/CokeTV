@@ -1,3 +1,4 @@
+import {SOURCE_TIMEOUT} from './runtime-defaults.js';
 // Shared source playback for web, Cat and Emby adapters. No HTTP handler dispatch.
 import {playbackUrl, playbackHeaders, mediaType} from './playback.js';
 import {unwrapMediaProxy} from './media-params.js';
@@ -37,11 +38,11 @@ export function createContent({store, runner, netdisk, contextFor, baseUrl, play
                 const name = parsed.pathname.match(/^\/parse\/([^/]+)$/)?.[1];
                 if (!name || parsed.origin !== new URL(baseUrl(request)).origin) throw fail('网页播放仅支持本地 /parse/ 脚本或 JSON 解析');
                 const filename = `${decodeURIComponent(name)}.js`;
-                validFilename('js', filename);
-                result = await runner.run({engine: 'js', file: inside(store.runtime, `jx/${filename}`), instanceId: instance.id}, {url: target}, env, 'parse');
+                validFilename('dr3', filename);
+                result = await runner.run({engine: 'dr3', file: inside(store.runtime, `jx/${filename}`), instanceId: instance.id}, {url: target}, env, 'parse');
             } else if (Number(selected.type) === 1) {
                 const {default: axios} = await import('axios');
-                const response = await axios.get(playbackUrl(`${selected.url}${encodeURIComponent(target)}`, baseUrl(request)), {timeout: store.state.settings.timeout, headers: playbackHeaders(selected.ext?.header)});
+                const response = await axios.get(playbackUrl(`${selected.url}${encodeURIComponent(target)}`, baseUrl(request)), {timeout: SOURCE_TIMEOUT, headers: playbackHeaders(selected.ext?.header)});
                 result = response.data?.data?.url ? response.data.data : response.data;
             } else throw fail('此解析类型暂不支持网页播放');
             if (typeof result === 'string') { try { result = JSON.parse(result); } catch { result = {url: result}; } }

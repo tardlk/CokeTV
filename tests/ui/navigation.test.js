@@ -11,11 +11,11 @@ beforeEach(() => {
     sessionStorage.setItem('coketv-access', btoa(':fixture-password'));
     history.replaceState({}, '', '/sources/source/edit');
     const source = {id: 'source', scriptId: 'script', name: 'sample', params: '', enabled: true, searchable: true, filterable: false};
-    const state = {instances: [source], scripts: [{id: 'script', engine: 'js', file: 'sample.js'}], subscriptions: [], settings: {publicUrl: '', timeout: 30000, env: {}, plugins: [], parses: [], lives: []}};
+    const state = {instances: [source], scripts: [{id: 'script', engine: 'dr3', file: 'sample.js'}], subscriptions: [], settings: {env: {}, plugins: [], parses: [], lives: []}};
     requests = [];
     vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
         requests.push({url, method: options.method});
-        const value = url === '/access/status' ? {requiresSetup: false} : url === '/admin/state' ? state : url === '/admin/scripts/script' ? {id: 'script', file: 'sample.js', engine: 'js', code: 'var rule={};', revisions: []} : url === '/watch/sources' ? [{...source, script: {engine: 'js'}}] : {values: {sample: 'original'}, defaults: {}};
+        const value = url === '/access/status' ? {requiresSetup: false} : url === '/admin/state' ? state : url === '/admin/scripts/script' ? {id: 'script', file: 'sample.js', engine: 'dr3', code: 'var rule={};', revisions: []} : url === '/watch/sources' ? [{...source, script: {engine: 'dr3'}}] : {values: {sample: 'original'}, defaults: {}};
         return {ok: true, json: async () => structuredClone(value)};
     }));
 });

@@ -1,56 +1,30 @@
-import fs from 'fs/promises';
-import path from 'path';
-import os from 'os';
-import {execFile} from 'child_process';
-import {promisify} from 'util';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
 import AdmZip from 'adm-zip';
-import {ENGINE_DIRS, EXTENSIONS, ROOT} from './paths.js';
-import {pathToFileURL} from 'url';
 const exec = promisify(execFile);
-export const requireImportEngine = () => Object.assign(new Error('无法确定 JS 源的运行格式，请选择对应引擎'), {statusCode: 422, importCode: 'IMPORT_ENGINE_REQUIRED'});
-// CatVod loads __jsEvalReturn(), a default object, or the module namespace.
-// Import routes must accept the same module shapes as that loader.
-export function isCatVodSource(code) {
-    return /\bexport\s+default\b|\bexport\s+(?:(?:async\s+)?function|const|let|var)\s+(?:__jsEvalReturn|init|home|homeVod|category|detail|detailContent|search|play|proxy|action)\b|\bexport\s*\{[^}]*\b(?:default|__jsEvalReturn|init|home|homeVod|category|detail|detailContent|search|play|proxy|action)\b[^}]*\}|\bexport\s*\*\s+from\b/.test(code);
+const unsupported = () => Object.assign(new Error('只支持 drpy3 源，请先迁移旧脚本'), {statusCode: 422, importCode: 'IMPORT_DRPY3_REQUIRED'});
+export function isDrpy3Source(code) {
+    return /\blang\s*:\s*['"](?:dr3|drpy3)['"]/i.test(code)
+        || /\b(?:from\s*|require\s*\(\s*)['"]drpy3['"]/.test(code)
+        || (/\bexport\s+default\b/.test(code) && /\b(?:rule|meta)\s*[:,]/.test(code));
 }
-export async function detectSourceEngine(name, code) {
-    if (/\.py$/i.test(name)) return 'py';
-    if (/\.php$/i.test(name)) return 'php';
-    if (!/\.js$/i.test(name)) throw Object.assign(new Error('文件类型不支持'), {statusCode: 400});
-    const decoded = await decodeSource('js', code);
-    if (isCatVodSource(decoded)) return 'cat';
-    const lang = decoded.match(/\blang\s*:\s*['"]([^'"]+)['"]/)?.[1]?.toLowerCase();
-    if (['cat', 'catvod'].includes(lang)) return 'cat';
-    if (['dr2', 'drpy2'].includes(lang)) return 'dr2';
-    if (['ds', 'drpys'].includes(lang)) return 'js';
-    throw requireImportEngine();
-}
-export async function decodeSource(engine, code) {
-    if (!['js', 'dr2'].includes(engine)) return code;
-    if (isCatVodSource(code)) return code;
-    const {getOriginalJs} = await import(pathToFileURL(path.join(ROOT, 'engine/libs_drpy/drpyCustom.js')).href);
-    return getOriginalJs(code);
-}
-
-export async function syntaxCheck(engine, name, code, settings) {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-'));
-    const file = path.join(dir, name);
+export async function syntaxCheck(engine, name, code, settings, {module = false} = {}) {
+    if (engine !== 'dr3') throw unsupported();
+    if (!module && !name.startsWith('_') && !isDrpy3Source(code)) throw unsupported();
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-check-'));
     try {
-        await fs.writeFile(file, await decodeSource(engine, code));
-        if (engine === 'py') await exec(settings.pythonPath, ['-c', 'import ast,sys; ast.parse(open(sys.argv[1], encoding="utf-8-sig").read())', file], {timeout: 10000});
-        else if (engine === 'php') await exec(settings.phpPath, ['-l', file], {timeout: 10000});
-        else await exec(process.execPath, ['--check', file], {timeout: 10000});
+        const file = path.join(dir, name.endsWith('.cjs') ? 'source.cjs' : 'source.mjs');
+        await fs.writeFile(file, code);
+        await exec(process.execPath, ['--check', file], {timeout: 10000});
         return {ok: true};
-    } catch (error) {
-        if (error.code === 'ENOENT') throw new Error(`找不到 ${engine === 'php' ? 'PHP' : 'Python'} 解释器，请在设置中配置路径`);
-        throw Object.assign(new Error((error.stderr || error.stdout || error.message).slice(0, 2500)), {statusCode: 400});
-    } finally { await fs.rm(dir, {recursive: true, force: true}); }
+    } catch (error) { throw Object.assign(new Error((error.stderr || error.message).slice(0, 2500)), {statusCode: 400}); }
+    finally { await fs.rm(dir, {recursive: true, force: true}); }
 }
-
-export async function importBundle(store, engine, bytes) {
-    if (engine !== 'auto' && !ENGINE_DIRS[engine]) throw new Error('请选择有效引擎');
-    const zip = new AdmZip(bytes);
-    const entries = zip.getEntries().filter(entry => !entry.isDirectory);
+export async function importBundle(store, bytes) {
+    const zip = new AdmZip(bytes), entries = zip.getEntries().filter(e => !e.isDirectory);
     if (!entries.length || entries.length > 1000) throw new Error('源包文件数量无效');
     const staged = []; let total = 0;
     for (const entry of entries) {
@@ -58,22 +32,17 @@ export async function importBundle(store, engine, bytes) {
         if (name.startsWith('/') || name.split('/').some(p => p === '..') || /(^|\/)\./.test(name) || ((entry.attr >>> 16) & 0o170000) === 0o120000) throw new Error('源包包含非法路径');
         total += entry.header.size;
         if (entry.header.size > 8 * 1024 * 1024 || total > 32 * 1024 * 1024) throw new Error('源包解压大小超过限制');
-        const code = entry.getData().toString('utf8');
+        const binary = /\.(wasm|bin|dat)$/i.test(name);
+        const code = binary ? entry.getData() : entry.getData().toString('utf8');
         let relative;
-        if (name.startsWith('spider/')) {
-            const dir = name.split('/')[1];
-            if (![...Object.values(ENGINE_DIRS), 'catLib'].includes(dir)) throw new Error(`源包目录不支持: ${dir}`);
-            relative = name;
-        } else if (name.startsWith('json/') || name.startsWith('jx/')) relative = name;
-        else if (!name.includes('/')) {
-            const entryEngine = /\.(py|php)$/i.test(name) ? await detectSourceEngine(name, '') : engine === 'auto' ? (/\.js$/i.test(name) ? await detectSourceEngine(name, code) : 'js') : engine;
-            relative = `spider/${ENGINE_DIRS[entryEngine]}/${name}`;
-        }
-        else throw new Error('源包须使用 spider/<引擎目录>、json/、jx/，或根目录直接放脚本');
-        if (!/\.(js|py|php|json|txt|m3u|conf)$/i.test(relative)) throw new Error(`文件类型不支持: ${name}`);
-        const sourceEngine = Object.keys(ENGINE_DIRS).find(key => relative.startsWith(`spider/${ENGINE_DIRS[key]}/`));
-        if (sourceEngine && code && !path.basename(relative).startsWith('_')) await syntaxCheck(sourceEngine, path.basename(relative), code, store.state.settings);
-        staged.push({relative, code, engine: sourceEngine && !path.basename(relative).startsWith('_') && relative.endsWith(EXTENSIONS[sourceEngine]) && relative.split('/').length === 3 ? sourceEngine : null});
+        if (name.startsWith('spider/js_dr3/') || name.startsWith('json/') || name.startsWith('jx/')) relative = name;
+        else if (!name.includes('/')) relative = `spider/js_dr3/${name}`;
+        else throw new Error('源包须使用 spider/js_dr3/、json/、jx/，或在根目录放脚本');
+        if (!/\.(js|mjs|cjs|wasm|bin|dat|json|txt|m3u|conf)$/i.test(relative)) throw new Error(`文件类型不支持: ${name}`);
+        if (binary && !relative.startsWith('spider/js_dr3/')) throw new Error('二进制资源须放在 drpy3 源目录');
+        const source = relative.startsWith('spider/js_dr3/') && relative.split('/').length === 3 && relative.endsWith('.js') && !path.basename(relative).startsWith('_');
+        if (/\.[cm]?js$/i.test(relative)) await syntaxCheck('dr3', path.basename(relative), code, store.state.settings, {module: !source && !relative.startsWith('jx/')});
+        staged.push({relative, code, engine: source ? 'dr3' : null});
     }
     return store.importBundle(staged);
 }

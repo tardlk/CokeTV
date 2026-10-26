@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -17,7 +18,7 @@ async function fixture(t) {
         const response = await app.inject({url:'/admin/emby' + url, method, headers, ...(payload === undefined ? {} : {payload})});
         assert.equal(response.statusCode,200,response.body); return response.json();
     };
-    const script = await app.store.saveScript('js','emby-fixture.js','var rule={};');
+    const script = await app.store.saveScript('dr3','emby-fixture.js',ruleFixture('var rule={};'));
     const source = app.store.state.instances.find(s => s.scriptId === script.id);
     app.store.state.subscriptions.push({id:'viewer-sub',name:'观看范围',token:'subscription-secret',enabled:true,instances:[source.id]});
     await app.store.persist();
@@ -108,7 +109,7 @@ test('Emby媒体实际GET/HEAD/Range及多层HLS保持私密头和撤销范围',
     });
     await new Promise(resolve=>upstream.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>upstream.close(resolve)));
     const f=await fixture(t),p=await provision(f);
-    await f.app.listen({port:0,host:'127.0.0.1'});const base=`http://127.0.0.1:${f.app.server.address().port}`;f.app.store.state.settings.publicUrl=base;
+    await f.app.listen({port:0,host:'127.0.0.1'});const base=`http://127.0.0.1:${f.app.server.address().port}`;p.headers.host=new URL(base).host;
     const raw=f.app.runner.run;let hls=false;
     f.app.runner.run=async(s,q)=>q.play?{parse:0,url:`http://127.0.0.1:${upstream.address().port}/${hls?'master.m3u8':'media.mp4'}`,header:{Cookie:secret}}:raw(s,q);
     const list=(await f.app.inject({url:'/Items?IncludeItemTypes=Episode&Recursive=true',headers:p.headers})).json();const item=list.Items[0];

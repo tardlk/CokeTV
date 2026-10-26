@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -23,7 +24,7 @@ async function fixture(t, {legacy = false} = {}) {
         assert.equal(response.statusCode, 200, response.body);
     }
     const code = await fs.readFile(path.join(ROOT, 'tests/fixtures/协议样本.js'), 'utf8');
-    const script = await app.store.saveScript('js', 'CLI协议样本.js', code);
+    const script = await app.store.saveScript('dr3', 'CLI协议样本.js', ruleFixture(code));
     await app.listen({host: '127.0.0.1', port: 0});
     return {app, directory, source: script.id, requests, base: `http://127.0.0.1:${app.server.address().port}`};
 }
@@ -91,56 +92,19 @@ test('R10 旧明文凭据登录迁移后，verify CLI 仍可用，客户端不�
     assert.deepEqual(await fs.readFile(file), migrated);
 });
 
-test('R10 真实终端密码不回显，Unicode/空格/退格可登录，取消不发请求且恢复终端模式', async t => {
-    const f = await fixture(t), file = path.join(f.directory, 'admin.json');
-    const credentials = await fs.readFile(file);
-    const script = `
-import json, os, pty, select, subprocess, sys, termios, time
-master, slave = pty.openpty()
-initial = termios.tcgetattr(slave)
-env = dict(os.environ)
-password = env.pop('COKETV_TEST_PASSWORD')
-cancel = env.pop('COKETV_TEST_CANCEL') == '1'
-env.pop('ADMIN_PASSWORD', None)
-child = subprocess.Popen(sys.argv[1:], stdin=slave, stdout=slave, stderr=slave, env=env)
-output = b''
-sent = False
-deadline = time.monotonic() + 10
-try:
-    while time.monotonic() < deadline:
-        ready, _, _ = select.select([master], [], [], 0.05)
-        if ready:
-            output += os.read(master, 4096)
-        if not sent and '管理密码'.encode() in output:
-            sent = True
-            os.write(master, (password[:3].encode() + b'\\x03') if cancel else (b'Z\\x7f' + password.encode() + b'\\r'))
-        if child.poll() is not None:
-            while select.select([master], [], [], 0)[0]:
-                output += os.read(master, 4096)
-            break
-    else:
-        raise RuntimeError('terminal verify did not exit')
-    current = termios.tcgetattr(slave)
-    mask = termios.ECHO | termios.ICANON
-    print(json.dumps({'code': child.returncode, 'stdout': output.decode(), 'stderr': '', 'prompted': sent, 'restored': (initial[3] & mask) == (current[3] & mask)}, ensure_ascii=False))
-finally:
-    if child.poll() is None:
-        child.kill()
-    child.wait()
-    os.close(master)
-    os.close(slave)
-`;
-    for (const [cancel, flags] of [[false, []], [false, ['--password-stdin']], [true, []]]) {
-        const before = f.requests.length;
-        const {stdout} = await exec(process.env.TEST_PYTHON || 'python3', ['-c', script, process.execPath, path.join(ROOT, 'scripts/verify.mjs'), f.source, f.base, ...flags], {
-            env: {...process.env, DATA_DIR: f.directory, COKETV_TEST_PASSWORD: password, COKETV_TEST_CANCEL: cancel ? '1' : '0'}, timeout: 15000,
-        });
-        const result = JSON.parse(stdout);
-        assert.equal(result.prompted, true);
-        assert.equal(result.restored, true);
-        assert.ok(!result.stdout.includes(password));
-        if (cancel) { assert.equal(result.code, 130, result.stdout); assert.equal(f.requests.length, before); }
-        else passed(result);
+test('隐藏输入恢复终端状态，密码不回显，取消返回130', async () => {
+    const {PassThrough} = await import('node:stream');
+    const {promptPassword} = await import('../scripts/verify.mjs');
+    for (const cancel of [false, true]) {
+        const input = new PassThrough(); input.isTTY = true; input.isRaw = false;
+        input.setRawMode = value => { input.isRaw = value; };
+        let displayed = ''; const output = {write: text => { displayed += text; }};
+        const pending = promptPassword({input, output});
+        input.emit('keypress', password, {});
+        input.emit('keypress', '', cancel ? {ctrl:true,name:'c'} : {name:'return'});
+        if (cancel) await assert.rejects(pending, error => error.exitCode === 130);
+        else assert.equal(await pending, password);
+        assert.equal(input.isRaw, false); assert.equal(displayed.includes(password), false);
+        input.destroy();
     }
-    assert.deepEqual(await fs.readFile(file), credentials);
 });

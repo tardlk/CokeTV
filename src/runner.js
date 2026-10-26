@@ -1,18 +1,11 @@
 import {fork, execFile} from 'child_process';
-import net from 'net';
 import {EventEmitter} from 'events';
 import {fileURLToPath} from 'url';
 import path from 'path';
 import {randomBytes} from 'crypto';
 import {sourceOperation} from './source-operation.js';
+import {SOURCE_TIMEOUT} from './runtime-defaults.js';
 
-async function freePort() {
-    const server = net.createServer();
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    const port = server.address().port;
-    await new Promise(resolve => server.close(resolve));
-    return port;
-}
 export class Runner extends EventEmitter {
     constructor(store) {
         super(); this.store = store; this.child = null; this.current = null;
@@ -32,13 +25,9 @@ export class Runner extends EventEmitter {
     }
     async startInternal() {
         if (this.child) return;
-        const settings = this.store.state.settings;
-        const port = await freePort();
         const child = fork(fileURLToPath(new URL('./worker.js', import.meta.url)), [], {
             cwd: this.store.runtime, detached: process.platform !== 'win32', serialization: 'advanced',
-            env: {...process.env, ROOT: this.store.runtime, PYTHON_PATH: settings.pythonPath,
-                PHP_PATH: settings.phpPath, CHROME_PATH: settings.browserPath,
-                DRPY_INTERNAL_KEY: this.internalKey, DRPY_PLUGINS: settings.plugins.some(p => p.active) ? '1' : '0', DRPY_PY_PORT: String(port), BRIDGE_TIMEOUT: String(Math.max(60000, settings.timeout))},
+            env: {...process.env, ROOT: this.store.runtime, DRPY_INTERNAL_KEY: this.internalKey},
             stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
         });
         this.child = child;
@@ -49,7 +38,7 @@ export class Runner extends EventEmitter {
             if (message.kind === 'stats') this.stats = message;
             if (message.kind === 'phase' && this.current?.id === message.id &&
                 this.current.method === 'home' && message.method === 'homeVod' && !this.current.recommendationPhase) {
-                // Original home and homeVod each receive the configured timeout.
+                // Home and homeVod each receive the default timeout.
                 // Re-arm once between phases; a stuck phase still kills the worker.
                 const pending = this.current;
                 pending.recommendationPhase = true;
@@ -102,7 +91,7 @@ export class Runner extends EventEmitter {
             return new Promise((resolve, reject) => {
                 const id = ++this.sequence;
                 const method = sourceOperation(query, operation);
-                const timeout = method === 'action' ? Math.max(60000, this.store.state.settings.timeout) : this.store.state.settings.timeout;
+                const timeout = method === 'action' ? 60000 : SOURCE_TIMEOUT;
                 const armTimer = () => setTimeout(() => {
                     if (this.current?.id === id) this.reset(`源执行超过 ${timeout / 1000} 秒，已回收运行进程`);
                 }, timeout);

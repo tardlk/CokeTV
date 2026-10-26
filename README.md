@@ -1,197 +1,71 @@
 # CokeTV
 
-基于 drpy-node 兼容内核的源执行与 TVBox / 猫影视订阅管理服务。
+基于 **drpy3** 的源执行、网页观影和 TVBox / 猫影视 / Emby 订阅服务。当前源码版本 **0.2.0**，只有 drpy3 一个源执行引擎，运行环境为 Node.js 22。Python、PHP、drpyS、CatVod 和独立 DR2 执行器已移除。
 
-CokeTV 是不预装任何站点源的空壳，提供服务器执行脚本、TVBox 订阅、网页管理与网页观影。保留 JS、DR2、CatVod、PHP、HIPY 的运行入口；列表按语言显示 JS、Python、PHP。管理与播放界面参考 OmniBox，源执行仍沿用 drpy-node 协议。
+发行是空壳：不预装站点、解析脚本或站点资源。用户自行导入有权使用的本地 drpy3 脚本或 ZIP 源包。支持相对 ESM/CJS 模块、WASM、源参数、ENV 和实例独立存储。
 
-仓库：[tardlk/CokeTV](https://github.com/tardlk/CokeTV)。当前版本：`0.1.0`。
-
-## 快速开始
-
-需要 Node.js 22。Python 与 PHP 源还需要对应解释器及依赖。
+## 源码启动
 
 ```sh
 git clone https://github.com/tardlk/CokeTV.git
 cd CokeTV
 npm ci
 npm run build
-
-python3 -m venv .venv
-.venv/bin/pip install -r engine/spider/py/base/requirements.txt
-PYTHON_PATH="$PWD/.venv/bin/python3" PHP_PATH=php npm start
+npm start
 ```
 
-打开 [http://127.0.0.1:54058](http://127.0.0.1:54058) 直接进入观影首页，浏览、搜索和播放无需密码。进入“管理后台”（`/admin`）才需要访问密码；全新部署首次进入管理后台时直接填写新密码和确认密码，创建后进入后台，没有默认密码、用户或账号系统。通过页面创建的密码只以加盐 KDF 结果保存到 `data/admin.json`，重启后继续使用。尚未创建密码时，也可通过 `ADMIN_PASSWORD` 预设管理密码；已有管理密码时，该变量不会覆盖或重置它。环境变量方式只在内存中保留 KDF 结果，重启时需要继续提供该变量，并保护保存变量的 `.env` 或部署配置。
+打开 [http://127.0.0.1:54058](http://127.0.0.1:54058) 直接观影；管理入口为 `/admin`。首次进入管理后台创建密码，没有默认账号或密码。脚本编辑、配置和管理 API 均要求管理密码。已有密码保留；`ADMIN_PASSWORD` 只在尚未创建密码时提供预设值，不覆盖已有密码。
 
-后台“网盘管理”以115、光鸭平台卡片统一展示授权状态，点击“配置授权/管理授权”打开弹窗，支持扫码或使用已有登录信息。凭据不会回显；可在确认后移除单个网盘的本机授权，不删除云盘文件。账号供源和订阅共用。源详情返回标准分享链接后，服务器自动展开分集并处理播放。光鸭可复用已有浏览器授权；需要保存的分享仅在管理员开启按需转存后新增副本到 CokeTV 专用目录，不移动或删除已有文件。发行不预置搜索站点。账号保存和客户端限制见 [网盘配置](docs/CONFIGURATION.md#网盘账号与-115-分享)；爬虫作者请看 [网盘开发指南](docs/NETDISK_DEVELOPMENT.md)，包含详情格式、JS/Python 示例与排错说明。
-
-已安装运行环境并构建前端后，可以用 `./start.sh` 启动。本机开发工具若放在 `.tools/`，启动脚本会自动识别；这些工具不随仓库分发。
-
-PHP 源按需要安装 curl、mbstring、xml 等扩展。浏览器、外部插件、Cookie、Token 以及源专用依赖按实际源配置。
+后台可新建 drpy3 源，点击“导入脚本”直接选择 `.js` 或 ZIP 文件。编辑页提供代码、扩展参数、本源 ENV、接口验证和脱敏日志；未保存的修改会阻止验证并提供退出保护。已有运行环境也可使用 `./start.sh`。
 
 ## Docker
 
-镜像通过 GitHub Actions 构建、验收并发布到 GHCR，仅提供 **linux/amd64（x86-64）**：
+镜像通过 GitHub Actions 在原生 Linux amd64 上构建并验收后发布到 `ghcr.io/tardlk/coketv`。源码改动不代表 `latest` 已更新，实际镜像功能以对应提交的发布结果为准。
 
 ```sh
-docker pull --platform linux/amd64 ghcr.io/tardlk/coketv:latest
 mkdir -p data
 docker compose up -d
 ```
 
-也可以单独运行：
+Compose 挂载 `./data:/app/data`，默认端口 54058。支持 `PUID`/`PGID`（默认 1000:1000）；NAS 用户为 1000:10 时可设置 `PGID=10`。入口先修正 CokeTV 专用 data 目录的权限，再以普通账号运行服务并清除能力；目录 0700、私密文件 0600。不要挂载共享文件夹根目录或其他项目目录。显式指定 Docker `user` 会跳过入口权限初始化，需自行保证目录可写。
 
-```sh
-docker run -d --name coketv --platform linux/amd64 \
-  -p 54058:54058 -v "$(pwd)/data:/app/data" \
-  -e PUID=1000 -e PGID=1000 \
-  --cap-drop=ALL --security-opt=no-new-privileges:true \
-  --cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=FOWNER \
-  --cap-add=SETUID --cap-add=SETGID --cap-add=SETPCAP \
-  --restart unless-stopped ghcr.io/tardlk/coketv:latest
-```
+镜像只安装 Node 与必要系统工具，不安装 Python/PHP、浏览器或 ffmpeg；网页使用客户端播放器，不提供服务器转码。
 
-首次使用空数据目录时，源、解析、直播和环境变量均为空；进入 /admin 直接创建管理密码（或通过 `ADMIN_PASSWORD` 预设），再导入 TVBox 链接或自己的脚本。镜像保留 Node.js 22、Python、PHP、ffmpeg 及兼容辅助库。挂载的 data 持久化用户数据，更新镜像不会清空已有源。
+## 从多引擎版本升级
 
-容器入口先以 root 准备 **CokeTV 专用 data 目录**的权限，再切换为 **PUID:PGID（默认 1000:1000）** 运行服务及源脚本，并清除全部 Linux 能力、附加组和权限提升能力。NAS 的 root 属主挂载目录及旧数据通常无需手动 `chown`；启动将已有目录收紧为 0700、普通数据文件收紧为 0600；runtime 中已有可执行辅助文件仅保留属主执行位（0700），config/json 参数及插件配置仍固定为 0600，并调整属主、保留文件内容。预建 0777 的 data 和旧私密文件同样收紧，不保留组/其他用户权限或特殊权限位。符号链接不跟随，硬链接、跨文件系统挂载及特殊文件会拒绝初始化。不要将共享文件夹根目录或其他项目目录挂载为 data。
+**0.2.0 是脚本兼容范围的主动收敛。** 原生 drpy3 源继续运行；drpyS、DR2、CatVod、Python、PHP 脚本需要改写后才能使用。drpy3 官方包内置的 `load2x` 保持原样，但 CokeTV 不单独提供 DR2 导入或执行入口。
 
-通过环境变量 `PUID` 和 `PGID` 匹配 NAS 用户，均默认 `1000`，支持 1–2147483647 的十进制整数，不接受 root（0）、空值或用户名；无效配置在修改 data 前拒绝启动。例如 NAS 用户为 UID 1000、GID 10，在 Compose 中设置：
+首次读取 v1 数据时，程序在刷新运行库前将已有数据备份至 `data/backups/before-drpy3-*`，然后将旧源标记为“待迁移”并停止执行。原脚本、参数、ENV、历史和订阅引用保留；公开观影和订阅列表不输出待迁移源。后台可查看旧代码，改写后点击“保存为 drpy3”，保留原实例 ID、参数、ENV 和订阅关系。迁移不会自动翻译源代码。
 
-```yaml
-environment:
-  TZ: Asia/Shanghai
-  PUID: "1000"
-  PGID: "10"
-```
+回退旧版本前停止服务并恢复升级前备份的专用 data 目录；不要让旧版本与新版本同时写同一目录。代码版本和数据版本应成对恢复。具体行为见 [配置说明](docs/CONFIGURATION.md)。
 
-仓库 Compose 也支持在同目录 `.env` 中写入 `PUID=1000`、`PGID=10`，再重建容器；单独运行时使用 `-e PUID=1000 -e PGID=10`。修改 ID 后入口会更新 data 属主并保留内容，无需在 NAS 创建相同名字的容器用户。自定义 UID 的 HOME 仍为镜像内 `/home/node`，可写业务文件应放在 data。
+## 观影、订阅和网盘
 
-Compose 的 `cap_add` 仅用于入口初始化与切换身份，请使用当前完整配置；旧版只写 `cap_drop: ALL` 会阻止初始化。显式指定 `user: "1000:1000"` 时跳过权限初始化并使用 Docker 指定的身份，PUID/PGID 不再控制身份，需要提前准备可写目录；`docker exec` 默认账号仍由镜像配置决定，日常命令使用 `docker exec --user <PUID>:<PGID>`（例如 `--user 1000:10`）。主机目录挂载与命名卷的区别见 [Docker 官方说明](https://docs.docker.com/engine/storage/bind-mounts/)。
+- 网页支持浏览、搜索、详情、多线路选集、播放、收藏和续播；观看记录保存在浏览器本地。
+- 每条订阅选择启用源并排序。TVBox 入口 `/tvbox/<Token>`，统一输出服务器 type4 API；猫影视入口 `/cat/<Token>/index.js.md5`，由轻量连接程序调用服务器，不下发源脚本或 ENV。
+- 同一订阅的 Emby 登录使用服务根地址、用户名 `coke`、密码为该订阅 Token；自动准备所选源的有限推荐目录，保留稳定 ID、收藏和续播，不默认扫描全站。
+- 115、光鸭账号在管理后台配置，凭据仅保存在服务器。分享目录展开及播放由统一网盘模块处理，默认客户端直连临时媒体地址；显式代理继续受鉴权和出口策略约束。
+- 光鸭按需转存默认关闭，开启后只在 CokeTV 专用目录新增所选视频副本并复用，不移动或删除原文件。
 
-只读挂载、NAS ACL、NFS root squash 或 Docker 用户映射仍可能拒绝权限调整；失败时容器停止并提示检查，不会回退为 root 运行服务。旧版 `sha-cbcd7dd` 及更早镜像没有自动初始化，仍需停止使用该目录的服务后手动修正：
+## 安全边界
 
-```sh
-docker run --rm --user 0:0 -v "$(pwd)/data:/app/data" \
-  --entrypoint chown ghcr.io/tardlk/coketv:sha-cbcd7dd -R 1000:1000 /app/data
-```
+**导入的源脚本与宿主同权限执行，能够访问文件系统和网络；子进程隔离用于执行管理与超时回收，不是安全沙箱。** 只导入可信脚本，不向不可信人员提供管理密码。
 
-现有部署更新前，先停止服务并备份完整 `data/`，再拉取镜像并启动；不要删除数据目录或同时启动两个共享该目录的容器。Compose 显式传入 `TZ`、`PUID` 和 `PGID`，不会自动把主机 `.env` 中的所有变量传给容器；需要 `ADMIN_PASSWORD` 等变量时，须在 `compose.yaml` 的 `environment` 中显式配置，或使用 `docker run -e`。
+公开观影不要求密码，但不返回脚本、源参数、ENV、账号凭据或订阅 Token。管理鉴权以匹配到的路由为准；写请求进行来源校验。媒体使用短期随机票据，匿名与订阅调用不能借代理访问私网、回环或云元数据；管理员和内部运行时保留受设置控制的内网能力。详见 [SECURITY.md](SECURITY.md)。
 
-从源码构建 x86 镜像（可选浏览器）：
+## 文档与验证
 
-```sh
-docker buildx build --platform linux/amd64 --load -t coketv:local .
-docker buildx build --platform linux/amd64 --load \
-  --build-arg INSTALL_BROWSER=1 -t coketv:browser .
-```
-
-浏览器版在设置中填写 /usr/bin/chromium。发布工作流在原生 amd64 验证空数据、五引擎实际媒体、旧框架升级、私密配置与同卷重启；验收后只发布同一镜像。PR 和手动默认 dry-run 只构建/验收，不写 GHCR。已核对的源码提交、固定镜像 digest 与发布前后验收记录统一见 [接手入口](docs/AI_HANDOFF.md#0-当前接手入口先看本节)，实时构建状态见 [GitHub Actions](https://github.com/tardlk/CokeTV/actions)。本地修改通过测试不代表运行容器或已发布镜像已更新。
-
-## 使用流程
-
-1. **添加源**：选择 JS、Python 或 PHP，填写脚本名，保存后进入编辑页。自动补文件后缀，同名脚本不会被覆盖。
-2. **导入源**：点击导入，粘贴 TVBox 配置链接并读取，选择兼容项后导入。直接引用的 JS/Python/PHP 脚本会下载并识别，JSON/XML 采集接口会生成兼容源脚本，Android JAR 等不兼容项列出跳过原因。“本地文件”仍支持 `.js`、`.py`、`.php` 和 ZIP；不明确的 JS 再选择运行格式。
-3. **编辑与验证**：编辑页提供 Monaco 代码编辑器、本源环境变量、扩展参数、接口预览和日志。代码与配置独立保存，验证使用已保存版本。
-4. **管理列表**：单击名称重命名；列表开关控制启用、搜索和筛选；勾选源后批量启用、停用或删除。删除先确认，默认移除源实例及订阅引用，保留脚本、历史与本源配置；可勾选同时清理本源配置及不再被其他源使用的脚本和历史版本。共享脚本保留。扫描源目录、新建参数化实例位于源管理工具栏。
-5. **生成订阅**：创建订阅，选择源并排序。访问令牌支持自定义，新建留空自动生成；修改令牌后需在 TVBox 和猫影视更新链接。在“订阅链接”中选择 TVBox 或猫影视，复制简短地址（`/tvbox/<令牌>` 或 `/cat/<令牌>/index.js.md5`），原地址仍兼容。增减源、改名或调整顺序后，在播放器刷新订阅。
-6. **网页观影**：侧栏进入“网页观影”，点击“影视站”选择已启用的源，浏览分类；搜索框点击后展开推荐和本地搜索记录，输入关键词后点击搜索或按回车。打开详情后选集、切换线路并播放。支持观看历史、续播和收藏；这些信息只保存在当前浏览器。
-
-网页观影入口为 `/`（兼容 `/watch`），播放页面为 `/watch/play?source=<实例ID>&vod=<影片ID>`，直接访问和刷新都无需密码。播放器按需加载 ArtPlayer、HLS.js 与 mpegts.js，支持浏览器可解码的普通视频、HLS、FLV/TS。源要求解析时使用设置中的解析服务；没有解析配置、外部插件或站点凭据时会显示具体原因。TVBox 可以播放的编码不一定受浏览器支持。
-
-TVBox 在另一台设备上时，在设置中填写可达的服务对外地址，例如 `http://192.168.1.10:54058`。停用源不会出现在订阅中；删除实例会移除订阅引用。同名脚本或相同内容 ZIP 重新导入时，若脚本已没有实例，会重新创建启用实例；已有实例的参数和开关保持不变，原订阅成员不会自动恢复。
-
-统一115与光鸭在网页、TVBox和猫影视中默认直连平台媒体：NAS负责目录与取地址，视频由客户端从网盘平台获取，不自动回退NAS中转。网页使用浏览器自身标识取地址，原生客户端携带返回的媒体头，账号Cookie始终留在服务器。浏览器编码支持、HLS跨域许可和外网不同出口仍需实际验证；其他源的代理协议保持兼容。
-
-### 猫影视 / Miraplay
-
-订阅链接窗口的“猫影视”页提供 `index.js.md5` 入口。CokeTV 自动提供同目录的 `index.js`、`index.config.js` 和两个 MD5；不需要额外上传文件。适用于使用 CatPawOpen Node.js 接口的播放器，不适用于旧 QuickJS 配置入口。2026-10-08 用户已确认 iOS Miraplay 能导入并播放生成的 MP4 / 加密 HLS 样片；精确 App/iOS 版本未提供，其他版本和真实站点仍需分别验收，不能用本地协议测试代替。
-
-手机端运行轻量连接程序，分类、分页、搜索、详情与源解析继续由 CokeTV 的五引擎执行；CokeTV 必须保持运行。连接配置只含服务端点与版本，不包含源脚本、源参数、ENV 或上游账号请求头。每次读取站点列表都检查当前订阅，停用源或订阅、移除源、删除订阅与重置 Token 后，新请求会被拒绝；已经下载到播放器缓冲区的媒体不会被追溯清除。
-
-手机必须能访问设置中的“服务对外地址”。电脑上的 `127.0.0.1` 不能作为手机地址；容器还需具备相应的端口映射。局域网测试需同一 Wi-Fi，对外使用需自行配置可达的 HTTPS 服务。四文件下载入口使用路径中的订阅凭证，链接与下载的连接配置均应按私人订阅保管。重置链接会同时影响 TVBox 和猫影视。
-
-普通源视频使用 CokeTV 的媒体转发，保留源请求头、Range、HLS 主/子清单、分片、KEY 和 MAP；服务器里的 Cookie/Authorization 不下发到连接配置。已配置的 JSON / 本地脚本解析沿用服务器设置；普通网页可请求播放器提供的原生嗅探，没有能力或没有结果时明确报错。需要私密请求头的网页应配置服务器解析；没有实现通用网页解析或 DRM 解密。115 与光鸭统一登录与分享播放由前述网盘模块提供，默认向客户端返回直链及必要User-Agent；源站不可用仍可能导致播放失败。
-
-## Emby 兼容入口
-
-在后台“订阅管理”打开某条订阅的“订阅链接”，选择 **Emby**，即可分别复制服务器根地址、用户名和密码。在 VidHub / Infuse 中填写可达的 `http://服务器IP:54058`，用户名固定 `coke`，密码为该订阅Token。无需另开服务、创建账号或媒体库；原 `/emby` 前缀保留兼容。
-
-首次读取自动准备订阅内启用源的推荐目录，分别显示电影和剧集；推荐为空时尝试首个分类。每源单次最多读取20部，累计缓存最多100部，访问时按需刷新。支持季集、多版本、收藏、已看、继续观看与下一集；播放器搜索覆盖已准备内容，不扫描全站。播放时重新取链，115/光鸭默认由客户端直连；普通源保留私密请求头代理，不提供转码。
-
-本机 Infuse 8.5.6 已实测订阅登录、自动电影/剧集目录、选第二集和本机生成MP4样片播放。VidHub、真实网盘在这些客户端的播放、异地公网和全编码仍需分别验证。配置、限制与备份见 [Emby 配置](docs/CONFIGURATION.md#emby-兼容服务)。
-
-## 安全边界（务必阅读）
-
-接手复核登记的 R1–R10 已修复并随 `sha-c2a1f21` 发布，包括旧数据框架升级、媒体票据、宿主出口策略、PHP 异常脱敏、私密配置权限、多层继承方法选择和 verify CLI 凭据输入。保留项与验证边界见 [SECURITY.md](SECURITY.md) 和 [接手文档](docs/AI_HANDOFF.md#7-当前状态与下一步待办)。本地测试通过不代表已发布镜像包含这些修改，也不能替代容器和外部站点验收。
-
-- 源脚本在服务器上以**与 CokeTV 相同的权限**执行：JS 源可直接调用 Node 的 `require`，Python/PHP 源可访问文件系统与网络。
-  **导入任何第三方源（尤其是来路不明的 TVBox 订阅链接）= 允许其在你的服务器上执行任意代码。**
-- 观影接口默认公开，管理密码只保护管理操作。公网部署若需限制观众，应在外部 HTTPS 网关增加访问鉴权和限流，并按 [安全策略](SECURITY.md) 收紧代理目标；只安装可信源。容器部署请参考 `compose.yaml` 的非 root/能力裁剪配置。
-- 管理后台（`/admin`）的访问密码是唯一的管理凭据，请使用独立强口令，并保护好 `data/` 备份（其中含管理凭据与源 ENV）。
-- **首次初始化完成前不要把新实例直接暴露公网**：未设密码时「首个成功设密者取得控制权」是本项目的既定模型。公网/无人值守部署请先设置 `ADMIN_PASSWORD`，或先用 Cloudflare Access / VPN / 仅内网限制管理入口。所有 `/admin/*` 写操作已统一做跨站来源校验。
-- **出站分「可信」与「订阅」两类**：管理员、内部源运行时与 URL 绑定票据按 `allowPrivateTargets` 决定能否访问内网；仅持订阅 Token 的调用方无论设置如何都**不能访问私网/回环地址**（只豁免 CokeTV 自身 origin），且**不能调用 `/http`**。链路本地（`169.254.0.0/16` 等）无条件禁止。
-- 源的 `data/runtime/json/` 参数文件默认不再匿名可读：外部匿名请求被拒绝，源自身的回环请求带内部凭据放行。
-
-## 兼容范围
-
-| 引擎 | 语言 | 执行入口 |
-| --- | --- | --- |
-| drpyS / JS | JavaScript | 原规则引擎及上下文注入 |
-| DR2 | JavaScript | TVBox客户端运行；订阅提供脚本及原版配套运行库 |
-| CatVod | JavaScript | 原 ESM 适配及 `assets://` 加载 |
-| HIPY | Python | 原 Python 桥接与按需 T4 守护进程 |
-| PHP | PHP | 原 PHP Spider 桥接 |
-
-保留原模块名 API/代理入口、网盘辅助库、WASM、源代理、Range/206、媒体流及 HLS 分片/key 地址改写。源引擎、Python 与辅助服务按需启动。
-
-执行兼容基线固定为 drpy-node 2.0.6，文件来源、哈希和必要的Coke补丁登记在 `engine/UPSTREAM.json`。旧播放器、音乐控制台、在线终端等外围页面未纳入 CokeTV。CatVod 此处指服务器支持的 JS 模块，不是 Android JAR 运行器。支持自动识别 `__jsEvalReturn`、`export default` 及默认导出别名/重导出；导入、初始化、参数传递和首页合并按原版脚本契约验证，保留异步 `req` 与包含 `ext` 的初始化对象。固定样本协议通过不等于所有第三方站点当前可播放。
-
-DR2订阅使用type3客户端脚本方式，与原版保持一致；脚本和运行库地址受有效订阅Token保护，脚本下载还检查源是否启用及属于该订阅，不下发源ENV或网盘账号。DR2客户端运行能力不能自动等同于网页/Emby服务端可执行；旧服务端drpyS尝试入口保留。原版XBPQ空样例也无法初始化，Coke保留占位实现，不将其列为可用引擎。
-
-## 数据与配置
-
-用户运行数据在 `data/`，不进入 Git。
-
-```text
-data/admin.json                    访问密码配置
-data/state.json                    源实例、订阅与设置
-data/netdisk/115.json               统一 115 登录凭据（如已登录）
-data/netdisk/guangya.json           光鸭授权与按需转存选项（如已登录）
-data/runtime/                      运行内核副本、源与辅助资源
-data/runtime/config/source-env/    按源实例保存的环境变量
-data/revisions/                    脚本历史版本
-```
-
-首次启动准备引擎辅助库和空源目录，不添加站点源；后续启动刷新 libs/libs_drpy/utils/controllers，并按 `src/runtime-files.js` 的框架保留路径清单原子更新 `runtime/spider` 中的桥接、基类和兼容辅助库，包括旧数据目录。清单以外的用户源、辅助文件、ENV、订阅、配置和脚本历史保留，不需要删除运行目录。框架修改应进入 `engine/`，运行副本中的框架保留路径会随启动刷新。备份整个 `data/` 可保留服务器数据——**其中可能含管理凭据哈希、网盘登录凭据、源 ENV、源参数和订阅 Token，请妥善保管**；使用环境变量提供的配置和浏览器本地历史/收藏需另外备份。管理配置导出 API 不包含脚本、插件二进制或统一网盘账号，界面已移除配置导入/导出入口，详见 [备份与恢复](docs/CONFIGURATION.md#备份与恢复)。
-
-详见 [配置与源包](docs/CONFIGURATION.md) 和 [开发说明](docs/DEVELOPMENT.md)。
-
-## 开发
+- [配置、脚本、升级与备份](docs/CONFIGURATION.md)
+- [开发与验收](docs/DEVELOPMENT.md)
+- [网盘源开发](docs/NETDISK_DEVELOPMENT.md)
+- [第三方来源与许可](docs/THIRD_PARTY.md)
+- [项目交接](docs/AI_HANDOFF.md)
 
 ```sh
 npm run check
 npm run build
-TEST_PYTHON=python3 TEST_PHP=php npm test
+npm test
+npm run verify -- <源实例ID> [服务地址] --password-stdin
 ```
 
-测试覆盖源协议、环境隔离、订阅、代理、执行进程回收与 UI 操作。多语言测试使用真实 Python/PHP；可通过 `TEST_PYTHON`、`TEST_PHP` 指定路径。
-
-GitHub Actions执行相同检查，Docker工作流通过后才发布镜像。AI接手先读 [AGENTS.md](AGENTS.md) 和 [AI接手文档](docs/AI_HANDOFF.md)。
-
-## 项目目录
-
-```text
-src/          HTTP 服务、源调度、管理数据、订阅
-web/          Vue 管理界面与 UI 组件
-engine/       drpy-node 兼容内核和辅助库，无预置站点
-tests/        固定样本、协议与 UI 回归
-scripts/      检查与验证工具
-docs/         正式配置及开发文档
-.github/      持续集成配置
-```
-
-本机运行数据、工具、依赖、构建输出、调研历史和截图由 `.gitignore` 排除。
-
-## 许可证
-
-保留原内核的 GPL-3.0，见 [LICENSE](LICENSE)。第三方依赖和 UI 组件保留各自许可，见 [来源说明](docs/THIRD_PARTY.md)。
+上游引擎来源为 [hjdhnx/drpy3](https://github.com/hjdhnx/drpy3)，固定版本与哈希见 `engine/UPSTREAM.json`。CokeTV 按根目录 GPL-3.0 许可证分发，第三方组件保留各自许可。

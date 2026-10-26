@@ -116,7 +116,7 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
     const register=(methods,url,handler,{publicRoute=false,media=false}={})=>{
         const lower=url.split('/').map(part=>part.startsWith(':')?part:part.toLowerCase()).join('/');
         for(const route of new Set([url,lower,...[url,lower].map(p=>'/emby'+p)]))app.route({method:methods,url:route,handler:async(request,reply)=>{
-            reply.header('Cache-Control','private, no-store');checkUnsafeRequestOrigin(request,store.state.settings.publicUrl);
+            reply.header('Cache-Control','private, no-store');checkUnsafeRequestOrigin(request);
             if(!media)rate(request,'request',1200);
             await db.open();
             let ctx=publicRoute?null:authenticate(request);

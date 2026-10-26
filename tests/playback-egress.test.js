@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test, before, after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -62,7 +63,7 @@ before(async () => {
     await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: PASSWORD, confirmPassword: PASSWORD}});
     // §8 要求：必须使用与仓库现有 fixture 同型的「回显源」，证明针对的是真实兼容模式。
     const echo = `var rule={title:'回显源',host:'https://fixture.invalid',class_parse:async()=>({class:[]}),推荐:async()=>setResult([]),二级:async()=>({vod_name:'样本',vod_play_from:'线路一',vod_play_url:'第1集$one'}),play_parse:true,lazy:async (a, b) => ({parse: 0, url: b}),proxy_rule:async function(params){return [200,'video/mp4',params.target||'LAN-SECRET',{},3]}};`;
-    source = (await app.store.saveScript('js', '回显源.js', echo)).id;
+    source = (await app.store.saveScript('dr3', '回显源.js', ruleFixture(echo))).id;
     adminSource = source;
     await app.listen({host: '127.0.0.1', port: 0});
 });

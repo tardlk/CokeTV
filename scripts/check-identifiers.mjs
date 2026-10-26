@@ -23,6 +23,7 @@ export function undefinedIdentifiers(files) {
     host.fileExists = file => virtual.has(file) || exists(file);
     const program = ts.createProgram(roots, options, host), errors = [];
     for (const file of roots) {
+        if (file.endsWith('.min.js')) continue; // Bundled third-party code retains its upstream globals.
         const source = program.getSourceFile(file);
         for (const error of program.getSemanticDiagnostics(source)) {
             if (![2304, 2552].includes(error.code)) continue;
@@ -33,7 +34,6 @@ export function undefinedIdentifiers(files) {
 }
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
     const files = ['src', 'scripts', 'web'].flatMap(root => fs.readdirSync(root, {recursive: true}).filter(file => /\.(?:js|cjs|mjs|ts|vue)$/.test(file)).map(file => path.join(root, file)));
-    files.push('engine/controllers/ftp-proxy.js', 'engine/controllers/webdav-proxy.js');
     const errors = undefinedIdentifiers(files);
     for (const error of errors) console.error(`${error.file}: ${error.message}`);
     if (errors.length) process.exitCode = 1;

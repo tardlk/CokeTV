@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test, before, after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -44,7 +45,7 @@ before(async () => {
 after(async () => { upstreamRouting?.restore(); await app?.close(); await new Promise(resolve => upstream?.close(resolve)); await fs.rm(directory, {recursive: true, force: true}); });
 
 async function scriptWith(bytes, content, headers = sourceHeaders) {
-    const {id} = await app.store.saveScript('js', `代理头样本-${bytes}-${Math.random().toString(36).slice(2, 7)}.js`, proxyRule(content, headers).replace('BYTES', String(bytes)));
+    const {id} = await app.store.saveScript('dr3', `代理头样本-${bytes}-${Math.random().toString(36).slice(2, 7)}.js`, ruleFixture(proxyRule(content, headers).replace('BYTES', String(bytes))));
     return id;
 }
 // 取 302 的 Location（模拟浏览器收到重定向），再匿名跟随——票据在这个请求里生效。
@@ -150,7 +151,7 @@ test('没有显式业务头时，入站管理 Basic 和内部密钥不传外站�
 });
 test('源直接播放旧 mediaProxy URL：实际匿名跟随 GET/HEAD/Range/HLS，票据头不受调用方覆盖', async () => {
     const legacy = base + encodedQuery(b64(upstreamUrl + '/strict/master.m3u8'), {header: b64(JSON.stringify(business)), form: 'base64'});
-    const script = await app.store.saveScript('js', 'legacy-direct.js', `var rule={title:'legacy-direct',host:'https://fixture.invalid',play_parse:true,lazy:async()=>({parse:0,url:${JSON.stringify(legacy)}})};`);
+    const script = await app.store.saveScript('dr3', 'legacy-direct.js', ruleFixture(`var rule={title:'legacy-direct',host:'https://fixture.invalid',play_parse:true,lazy:async()=>({parse:0,url:${JSON.stringify(legacy)}})};`));
     const resolve = await fetch(base + `/watch/sources/${script.id}/play`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({play:'fixture'})});
     assert.equal(resolve.status, 200);
     const result = await resolve.json(), media = result.url;
@@ -206,29 +207,4 @@ test('decodeMediaTarget 规范化：主机大小写、默认端口与 href 形�
     assert.equal(decodeMediaTarget('http://example.com/a'), 'http://example.com/a');
     // 仍然只接受 HTTP/HTTPS
     assert.throws(() => decodeMediaTarget('ftp://example.com/a'), {statusCode: 400});
-});
-
-test('Python 基类媒体 URL 的 base64 加号保持兼容，真实辅助函数生成地址可拉流', async () => {
-    const {execFile} = await import('node:child_process');
-    const {promisify} = await import('node:util');
-    const {fileURLToPath} = await import('node:url');
-    const headers = {...business, 'X-Python': '~'.repeat(20)};
-    let target = upstreamUrl + '/strict/video.mp4?q=';
-    while (!b64(target).includes('+')) target += '~';
-    assert.ok(b64(JSON.stringify(headers)).includes('+'));
-    const {stdout} = await promisify(execFile)(process.env.TEST_PYTHON || 'python3', ['-c', `
-import importlib.util,json,sys,types
-spec=importlib.util.spec_from_file_location('fixture_base',sys.argv[1])
-m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
-fixture=types.SimpleNamespace(base64Encode=m.Spider.base64Encode)
-print(m.Spider.proxy_media_url(fixture,sys.argv[2],json.loads(sys.argv[3]),sys.argv[4]))
-`, fileURLToPath(new URL('../engine/spider/py/base/spider.py', import.meta.url)), target, JSON.stringify(headers), base+'/mediaProxy']);
-    const rawLegacy = base + '/mediaProxy?url=' + b64(target) + '&header=' + b64(JSON.stringify(headers)) + '&form=base64';
-    for (const url of [rawLegacy, stdout.trim()]) {
-        const response = await fetch(url, {headers:{authorization}});
-        assert.equal(response.status,200); await response.arrayBuffer();
-        assert.equal(seen.at(-1).url,new URL(target).pathname + new URL(target).search);
-        assert.equal(seen.at(-1).headers.cookie,business.Cookie);
-        assert.equal(seen.at(-1).headers['x-python'],headers['X-Python']);
-    }
 });

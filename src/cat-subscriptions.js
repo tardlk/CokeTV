@@ -1,3 +1,5 @@
+import {SOURCE_TIMEOUT} from './runtime-defaults.js';
+import {sourceAvailable} from './paths.js';
 import fs from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {createPlaybackSessions, mediaType} from './playback.js';
@@ -26,7 +28,7 @@ export function registerCatSubscriptions(app, {store, baseUrl, execute, play, se
         return sub;
     };
     const source = (request, sub) => {
-        const instance = store.state.instances.find(item => item.id === request.params.source && item.enabled && sub.instances.includes(item.id));
+        const instance = store.state.instances.find(item => item.id === request.params.source && sourceAvailable(store.state, item) && sub.instances.includes(item.id));
         if (!instance) throw fail('该源已停用或不在当前订阅中', 403);
         return store.resolve(instance.id);
     };
@@ -54,8 +56,8 @@ export function registerCatSubscriptions(app, {store, baseUrl, execute, play, se
     route('GET', '/manifest', async (request, reply) => {
         const sub = authorize(request);
         reply.header('Cache-Control', 'private, no-store');
-        return {timeout: store.state.settings.timeout, sites: sub.instances.flatMap(id => {
-            const instance = store.state.instances.find(item => item.id === id && item.enabled);
+        return {timeout: SOURCE_TIMEOUT, sites: sub.instances.flatMap(id => {
+            const instance = store.state.instances.find(item => item.id === id && sourceAvailable(store.state, item));
             if (!instance || !store.state.scripts.some(item => item.id === instance.scriptId)) return [];
             return [{id: instance.id, name: instance.name, searchable: !!instance.searchable, filterable: !!instance.filterable}];
         })};

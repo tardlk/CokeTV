@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -45,7 +46,7 @@ test('自定义订阅令牌用于TVBox和猫影视，修改立即撤销旧链接
 
 test('短订阅按唯一令牌选择源范围，停用、删除和旧备份重复令牌均拒绝', async t => {
     const f = await fixture(t);
-    const script = await f.app.store.saveScript('js', 'short.js', 'var rule={title:"短订阅样本"};');
+    const script = await f.app.store.saveScript('dr3', 'short.js', ruleFixture('var rule={title:"短订阅样本"};'));
     const id = f.app.store.state.instances.find(item => item.scriptId === script.id).id;
     const first = (await f.request('/admin/subscriptions', {...fields, token: 'first-short'})).json();
     const second = (await f.request('/admin/subscriptions', {...fields, token: 'second-short', instances: [id]})).json();

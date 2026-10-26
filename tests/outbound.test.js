@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -171,7 +172,7 @@ test('R6 /http 首跳允许、跳转 IP 被拒绝；无凭据或媒体票据不�
     assert.equal((await f.request({url})).statusCode, 403);
     assert.deepEqual(f.seen.map(entry => entry.url), ['/to-ip']);
     assert.equal((await f.app.inject({method: 'POST', url: '/http', payload: {url}})).statusCode, 403);
-    const script = await f.app.store.saveScript('js', 'HTTP票据.js', "var rule={title:'HTTP票据',host:'https://fixture.invalid',play_parse:true,lazy:async(a,b)=>({parse:0,url:b})};");
+    const script = await f.app.store.saveScript('dr3', 'HTTP票据.js', ruleFixture("var rule={title:'HTTP票据',host:'https://fixture.invalid',play_parse:true,lazy:async(a,b)=>({parse:0,url:b})};"));
     const play = await f.app.inject({method: 'POST', url: `/watch/sources/${script.id}/play`, payload: {play: url}});
     assert.equal(play.statusCode, 200, play.body);
     const token = play.json().url.split('/').at(-1);

@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test, before, after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -56,7 +57,7 @@ class_parse:async()=>({class:[{type_id:'m',type_name:'电影'}]}),
 play_parse:true,
 lazy:async (a, b) => ({parse: 0, url: b}),
 proxy_rule:async function(params){return [200,'video/mp4',params.target||'',{},3]}};`;
-    source = (await app.store.saveScript('js', '订阅回显源.js', echo)).id;
+    source = (await app.store.saveScript('dr3', '订阅回显源.js', ruleFixture(echo))).id;
     subscription = {id: 'sub-egress', name: '订阅出口', token: TOKEN, enabled: true, instances: [source]};
     app.store.state.subscriptions.push(subscription);
     await app.store.persist();

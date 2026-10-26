@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -111,7 +112,7 @@ test('统一光鸭管理鉴权、真实worker分享交接和三端直连，115�
     const imported=await app.inject({method:'POST',url:'/admin/netdisk/guangya/account',headers,payload:credentials});assert.equal(imported.statusCode,200,imported.body);assert.equal(imported.body.includes('fixture-access'),false);
     await app.netdisk.accounts.save115('UID=123; CID=fixture; SEID=private-115','web');const revision115=app.netdisk.status().revision;
     const code="var rule={title:'光鸭样本',host:'https://fixture.invalid',二级:async function(){return {vod_id:this.orId,vod_name:'视频',vod_play_from:'光鸭',vod_play_url:'分享$push://https%3A%2F%2Fwww.guangyapan.com%2Fs%2Fexample%3Fcode%3DAB12%23%2Fshare'};}};";
-    const script=await app.store.saveScript('js','光鸭样本.js',code);const id=app.store.state.instances.find(i=>i.scriptId===script.id).id;
+    const script=await app.store.saveScript('dr3','光鸭样本.js',ruleFixture(code));const id=app.store.state.instances.find(i=>i.scriptId===script.id).id;
     app.store.state.subscriptions.push({id:'gy-sub',token:'gy-token',enabled:true,instances:[id],name:'fixture'});
     const detail=await app.inject(`/watch/sources/${id}?ac=detail&ids=one`);assert.equal(detail.statusCode,200,detail.body);
     const ref=detail.json().list[0].vod_play_url.split('$')[1];assert.match(ref,/^coketv-netdisk:guangya:/);

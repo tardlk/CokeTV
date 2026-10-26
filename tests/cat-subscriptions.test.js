@@ -1,3 +1,4 @@
+import {moduleFixture, ruleFixture} from './helpers/drpy3-fixture.js';
 import {test, before, after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -24,8 +25,6 @@ const call = (id, action, body = {}) => json(`${clientBase}/spider/coketv_${id}/
 before(async () => {
     directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-cat-'));
     app = await createApp({directory, seed: false});
-    app.store.state.settings.pythonPath = process.env.TEST_PYTHON || path.join(ROOT, '.venv/bin/python3');
-    app.store.state.settings.phpPath = process.env.TEST_PHP || path.join(ROOT, '.tools/php/php');
     upstream = http.createServer((req, res) => {
         seen.push({url: req.url, headers: req.headers, method: req.method});
         if (req.url.startsWith('/strict/') && (req.headers.cookie !== secret || req.headers.authorization !== 'Bearer fixture' || req.headers.referer !== 'https://fixture.invalid/')) {
@@ -48,22 +47,21 @@ before(async () => {
     // 「公网地址映射到本地 fixture」；「订阅不能访问私网」由 subscription-egress.test.js 覆盖。
     upstreamRouting = installPublicUpstream(upstream.address().port);
     upstreamBase = upstreamRouting.url;
-    for (const engine of ['js', 'dr2', 'cat', 'py', 'php']) {
-        const suffix = engine === 'dr2' ? 'js' : engine === 'cat' ? 'cat.js' : engine;
-        const fixture = await fs.readFile(path.join(ROOT, 'tests/fixtures', `协议样本.${suffix}`), 'utf8');
-        const script = await app.store.saveScript(engine, `cat-${engine}.${['py', 'php'].includes(engine) ? engine : 'js'}`, fixture);
+    for (const engine of ['dr3']) {
+        const fixture = await fs.readFile(path.join(ROOT, 'tests/fixtures/协议样本.js'), 'utf8');
+        const script = await app.store.saveScript('dr3', 'cat-dr3.js', ruleFixture(fixture));
         ids[engine] = app.store.state.instances.find(item => item.scriptId === script.id).id;
     }
-    const rich = await app.store.saveScript('cat', 'cat-rich.js', `export function __jsEvalReturn(){return {
+    const rich = await app.store.saveScript('dr3', 'cat-rich.js', moduleFixture(`export function __jsEvalReturn(){return {
         init:async()=>{}, home:async()=>({class:[{type_id:'movie',type_name:'电影'}]}), homeVod:async()=>({list:[]}),
         category:async(t,pg,filter,ext)=>({page:pg,pagecount:3,list:[{vod_id:'one',vod_name:JSON.stringify(ext)}]}),
         search:async(wd,quick,pg)=>{if(wd==='fail')throw new Error('fixture upstream failed');return {page:pg,pagecount:3,list:[{vod_id:'one',vod_name:wd}]};},
         detail:async(id)=>({list:[{vod_id:String(id),vod_name:'多线样本',vod_play_from:'线路A$$$线路B',vod_play_url:'第一集$one#第二集$two$$$备选$backup'}]}),
         play:async(flag,id)=>id==='page'?{parse:1,url:'https://fixture.invalid/watch/one'}:{parse:0,url:id==='proxy'?getProxyUrl()+'&hls=1':id,header:{Cookie:${JSON.stringify(secret)},Authorization:'Bearer fixture',Referer:'https://fixture.invalid/'}},
         proxy:async()=>[200,'application/vnd.apple.mpegurl','#EXTM3U\\n'+${JSON.stringify(upstreamBase)}+'/strict/child.m3u8\\n']
-    };}`);
+    };}`));
     ids.rich = app.store.state.instances.find(item => item.scriptId === rich.id).id;
-    const excluded = await app.store.saveScript('cat', 'cat-excluded.js', 'export function __jsEvalReturn(){return {init:async()=>{},home:async()=>({class:[]}),homeVod:async()=>({list:[]})};}');
+    const excluded = await app.store.saveScript('dr3', 'cat-excluded.js', moduleFixture('export function __jsEvalReturn(){return {init:async()=>{},home:async()=>({class:[]}),homeVod:async()=>({list:[]})};}'));
     ids.excluded = app.store.state.instances.find(item => item.scriptId === excluded.id).id;
     app.store.state.instances.find(item => item.id === ids.rich).params = 'private-source-parameter';
     sub = {id:'cat-fixture',name:'猫影视测试',enabled:true,token:credential,instances:[ids.rich, ...Object.values(ids).filter(id => id !== ids.rich && id !== ids.excluded)]};
@@ -102,7 +100,7 @@ test('短猫影视入口四文件无需重定向，MD5正确，连接程序实�
         finally { if (previousFactory) globalThis.catServerFactory = previousFactory; else delete globalThis.catServerFactory; }
         const local = `http://127.0.0.1:${address.port}`;
         assert.equal((await json(local + '/config')).data.video.sites.length, sub.instances.length);
-        for (const engine of ['js', 'dr2', 'cat', 'py', 'php']) {
+        for (const engine of ['dr3']) {
             const prefix = `${local}/spider/coketv_${ids[engine]}/3/`;
             assert.equal((await json(prefix + 'init', {})).status, 200);
             assert.equal((await json(prefix + 'home', {})).data.class[0].type_id, 'movie');
@@ -147,8 +145,8 @@ test('短订阅入口共享公开限流预算，仅有效猫影视媒体GET和HE
     try { limited = await createApp({directory: path.join(directory, 'short-limited'), seed: false}); }
     finally { if (previous === undefined) delete process.env.RATE_LIMIT_PER_MINUTE; else process.env.RATE_LIMIT_PER_MINUTE = previous; }
     try {
-        const fixture = await fs.readFile(path.join(ROOT, 'tests/fixtures/协议样本.cat.js'), 'utf8');
-        const script = await limited.store.saveScript('cat', 'short-limited.js', fixture);
+        const fixture = await fs.readFile(path.join(ROOT, 'tests/fixtures/协议样本.js'), 'utf8');
+        const script = await limited.store.saveScript('dr3', 'short-limited.js', ruleFixture(fixture));
         const id = limited.store.state.instances.find(item => item.scriptId === script.id).id;
         limited.store.state.subscriptions.push({id: 'rate', token: 'short-rate', enabled: true, instances: [id]});
         await limited.listen({host: '127.0.0.1', port: 0});
@@ -211,7 +209,7 @@ test('站点发现保持订阅顺序，源增减不改变连接文件，刷新�
     } finally { sub.instances.unshift(removed); }
 });
 
-for (const engine of ['js','dr2','cat','py','php']) test(`猫影视连接程序实际调用 ${engine} 引擎及 Range 播放`, async () => {
+for (const engine of ['dr3']) test(`猫影视连接程序实际调用 ${engine} 引擎及 Range 播放`, async () => {
     const id = ids[engine];
     assert.deepEqual((await call(id,'init')).data,{});
     const home = await call(id,'home'); assert.equal(home.status,200); assert.equal(home.data.class[0].type_id,'movie');
@@ -287,8 +285,8 @@ test('猫影视有效媒体票据不耗尽接口预算，换票据或源不豁�
     try { limited=await createApp({directory:path.join(directory,'limited'),seed:false}); }
     finally { if(oldLimit===undefined)delete process.env.RATE_LIMIT_PER_MINUTE;else process.env.RATE_LIMIT_PER_MINUTE=oldLimit; }
     try {
-        const fixture=await fs.readFile(path.join(ROOT,'tests/fixtures/协议样本.cat.js'),'utf8');
-        const script=await limited.store.saveScript('cat','limited.js',fixture);
+        const fixture=await fs.readFile(path.join(ROOT,'tests/fixtures/协议样本.js'),'utf8');
+        const script=await limited.store.saveScript('dr3','limited.js',ruleFixture(fixture));
         const id=limited.store.state.instances.find(item=>item.scriptId===script.id).id;
         limited.store.state.subscriptions.push({id:'rate',name:'限流',enabled:true,token:'rate-token',instances:[id]});
         await limited.listen({host:'127.0.0.1',port:0});
@@ -309,21 +307,20 @@ test('猫影视有效媒体票据不耗尽接口预算，换票据或源不豁�
     } finally {await limited.close();}
 });
 
-test('反向代理子路径下的猫影视源代理媒体可实际读取',async()=>{
+test('保留访问Host的反向代理下，猫影视源代理媒体可实际读取',async()=>{
     const proxy=http.createServer((req,res)=>{
-        const outgoing=http.request(base+req.url.replace(/^\/gateway/,''),{method:req.method,headers:{...req.headers,host:new URL(base).host}},incoming=>{
+        const outgoing=http.request(base+req.url,{method:req.method,headers:req.headers},incoming=>{
             res.writeHead(incoming.statusCode,incoming.headers);incoming.pipe(res);
         });outgoing.on('error',()=>{res.writeHead(502);res.end();});req.pipe(outgoing);
     });
     await new Promise(resolve=>proxy.listen(0,'127.0.0.1',resolve));
-    const publicBase=`http://127.0.0.1:${proxy.address().port}/gateway`;
-    app.store.state.settings.publicUrl=publicBase;
+    const publicBase=`http://127.0.0.1:${proxy.address().port}`;
     try {
-        const play=await json(`${publicBase}/cat/${sub.id}/${credential}/api/${ids.js}/play`,{id:'proxy'});
+        const play=await json(`${publicBase}/cat/${sub.id}/${credential}/api/${ids.dr3}/play`,{id:'proxy'});
         assert.equal(play.status,200,JSON.stringify(play.data));
         assert.ok(play.data.url.startsWith(publicBase+'/cat/'));
         const response=await fetch(play.data.url);assert.equal(response.status,200);assert.equal(await response.text(),'hello');
-    }finally{app.store.state.settings.publicUrl='';proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));}
+    }finally{proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));}
 });
 
 test('HLS 清单 Range 探测仍返回完整改写清单，分片 Range 保留',async()=>{

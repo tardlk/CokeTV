@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -20,7 +21,7 @@ test('115网页和猫影视默认直连，保留客户端标识、账号与订�
         calls.push(options);return {status:200,data:{state:true,data:options.url.includes('/snap')?{count:1,list:[{fc:'1',fid:'1',n:'sample.mkv'}]}:{url:{url:media}}}};
     }});
     t.after(()=>app.close());await app.netdisk.accounts.save115(cookie,'web');
-    const script=await app.store.saveScript('js','direct.js','var rule={};');
+    const script=await app.store.saveScript('dr3','direct.js',ruleFixture('var rule={};'));
     const source=app.store.state.instances.find(i=>i.scriptId===script.id);
     const [file]=await app.netdisk.files(source.id,'https://115.com/s/fixture');
     const browserUA='FixtureBrowser/1.0';

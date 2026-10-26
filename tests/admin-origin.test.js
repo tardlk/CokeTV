@@ -10,12 +10,16 @@ const PASSWORD = 'origin-check-password';
 const AUTHORIZATION = `Basic ${Buffer.from(`:${PASSWORD}`).toString('base64')}`;
 const FOREIGN_ORIGIN = 'https://evil.example';
 const SAME_ORIGIN = 'http://localhost';
-const PUBLIC_URL = 'https://tv.example.com';
-const SCRIPT = name => ({engine: 'js', name, code: 'var rule = {title:"origin-probe"};'});
+const LEGACY_PUBLIC_URL = 'https://tv.example.com';
+const SCRIPT = name => ({engine: 'dr3', name, code: 'export default {meta:{title:"origin-probe"},rule:{}};'});
 
-async function boot({publicUrl, setup = true} = {}) {
+async function boot({publicUrl, setup = true, trustProxy = false} = {}) {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-origin-'));
-    const app = await createApp({directory, seed: false});
+    const previous = process.env.TRUST_PROXY;
+    process.env.TRUST_PROXY = trustProxy ? '1' : '0';
+    let app;
+    try { app = await createApp({directory, seed: false}); }
+    finally { if (previous === undefined) delete process.env.TRUST_PROXY; else process.env.TRUST_PROXY = previous; }
     if (publicUrl !== undefined) app.store.state.settings.publicUrl = publicUrl;
     if (setup) {
         const response = await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: PASSWORD, confirmPassword: PASSWORD}});
@@ -31,9 +35,9 @@ test('跨站 Origin 的管理写请求一律 403，且在进入业务 handler �
         const headers = {authorization: AUTHORIZATION, origin: FOREIGN_ORIGIN};
         // 若来源校验缺失，这三个请求都会命中业务逻辑（返回 200 或业务 4xx）。
         assert.equal((await app.inject({method: 'POST', url: '/admin/scripts', headers, payload: SCRIPT('cross-site.js')})).statusCode, 403);
-        assert.equal((await app.inject({method: 'POST', url: '/admin/instances', headers, payload: {name: 'cross', scriptId: 'nope', params: '', enabled: true}})).statusCode, 403);
+        assert.equal((await app.inject({method: 'PUT', url: '/admin/instances/missing', headers, payload: {name: 'cross', params: '', enabled: true}})).statusCode, 403);
         assert.equal((await app.inject({method: 'PUT', url: '/admin/settings', headers, payload: {}})).statusCode, 403);
-        assert.equal((await app.inject({method: 'POST', url: '/admin/scan', headers})).statusCode, 403);
+        assert.equal((await app.inject({method: 'POST', url: '/admin/scan', headers})).statusCode, 404);
         // 跨站写入必须没有任何副作用。
         assert.equal(scriptsOf(app), 0);
         assert.equal(app.store.state.instances.length, 0);
@@ -49,17 +53,30 @@ test('无 Origin 的 CLI / 自动化写请求保持可用（不强制要求 Orig
     } finally { await close(); }
 });
 
-test('同源 Origin 与 publicUrl 配置的 Origin 都能通过', async () => {
-    const {app, close} = await boot({publicUrl: PUBLIC_URL});
+test('同源Origin可写，旧publicUrl不能再额外授权其他Origin', async () => {
+    const {app, close} = await boot({publicUrl: LEGACY_PUBLIC_URL});
     try {
         assert.equal((await app.inject({method: 'POST', url: '/admin/scripts', headers: {authorization: AUTHORIZATION, origin: SAME_ORIGIN}, payload: SCRIPT('same-origin.js')})).statusCode, 200);
         // 显式写出默认端口与省略端口属于同一 origin，两侧归一化后必须相等。
         assert.equal((await app.inject({method: 'POST', url: '/admin/scripts', headers: {authorization: AUTHORIZATION, origin: 'http://localhost:80'}, payload: SCRIPT('same-origin-port.js')})).statusCode, 200);
-        assert.equal((await app.inject({method: 'POST', url: '/admin/scripts', headers: {authorization: AUTHORIZATION, origin: PUBLIC_URL}, payload: SCRIPT('public-url.js')})).statusCode, 200);
-        // 配了 publicUrl 之后，其他 origin 仍然被拒。
+        assert.equal((await app.inject({method: 'POST', url: '/admin/scripts', headers: {authorization: AUTHORIZATION, origin: LEGACY_PUBLIC_URL}, payload: SCRIPT('public-url.js')})).statusCode, 403);
+        // 旧字段不能为任何额外 Origin 提供授权。
         assert.equal((await app.inject({method: 'POST', url: '/admin/scripts', headers: {authorization: AUTHORIZATION, origin: FOREIGN_ORIGIN}, payload: SCRIPT('still-foreign.js')})).statusCode, 403);
-        assert.equal(scriptsOf(app), 3);
+        assert.equal(scriptsOf(app), 2);
     } finally { await close(); }
+});
+
+test('可信反代的协议与Host用于同源判定，默认不信任伪造转发头', async () => {
+    for (const trustProxy of [false, true]) {
+        const {app, close} = await boot({trustProxy});
+        try {
+            const forwarded = {'x-forwarded-proto':'https','x-forwarded-host':'tv.example.com:8443'};
+            const response = await app.inject({method:'POST',url:'/admin/scripts',headers:{authorization:AUTHORIZATION,origin:'https://tv.example.com:8443',...forwarded},payload:SCRIPT('proxy.js')});
+            assert.equal(response.statusCode,trustProxy ? 200 : 403,response.body);
+            const foreign = await app.inject({method:'POST',url:'/admin/scripts',headers:{authorization:AUTHORIZATION,origin:FOREIGN_ORIGIN,...forwarded},payload:SCRIPT('foreign.js')});
+            assert.equal(foreign.statusCode,403);
+        } finally { await close(); }
+    }
 });
 
 test('Sec-Fetch-Site: cross-site 即使不带 Origin 也拒绝', async () => {

@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test, before, after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -38,7 +39,7 @@ before(async () => {
     assert.equal((await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'security-password', confirmPassword: 'security-password'}})).statusCode, 200);
     authorization = `Basic ${Buffer.from(':security-password').toString('base64')}`;
     const code = `var rule={title:'安全样本',host:'https://fixture.invalid',class_parse:async()=>({class:[]}),推荐:async()=>setResult([]),二级:async()=>({vod_name:'样本',vod_play_from:'线路一',vod_play_url:'第1集$${upstreamUrl}/playlist.m3u8'}),play_parse:true,lazy:async(a,b)=>({parse:0,url:b})};`;
-    const script = await app.store.saveScript('js', '安全样本.js', code);
+    const script = await app.store.saveScript('dr3', '安全样本.js', ruleFixture(code));
     source = script.id;
     subscriptionToken = app.store.state.subscriptions[0].token;
     await app.listen({host: '127.0.0.1', port: 0});
@@ -67,7 +68,7 @@ test('C1 未授权写入请求被拒且不改动状态文件', async () => {
     const stateFile = path.join(directory, 'state.json');
     const before = await fs.readFile(stateFile, 'utf8');
     assert.equal((await app.inject({method: 'PUT', url: '/%61dmin/settings', payload: {}})).statusCode, 401);
-    assert.equal((await app.inject({method: 'POST', url: '/%61dmin/scripts', payload: {engine: 'js', name: 'rce.js', code: 'var a=1'}})).statusCode, 401);
+    assert.equal((await app.inject({method: 'POST', url: '/%61dmin/scripts', payload: {engine: 'dr3', name: 'rce.js', code: 'var a=1'}})).statusCode, 401);
     assert.equal((await app.inject({method: 'POST', url: '/%61dmin/verify/x', payload: {step: 'home'}})).statusCode, 401);
     assert.equal(await fs.readFile(stateFile, 'utf8'), before);
 });
@@ -169,7 +170,7 @@ test('H1 源参数文件默认不可匿名读取，内部凭据与订阅 Token �
     assert.ok([400, 403, 404].includes((await app.inject('/json/..%2fadmin.json')).statusCode));
 });
 test('G1 所有 /admin/* 响应统一 Cache-Control: private, no-store', async () => {
-    const target = await app.store.saveScript('js', '缓存样本.js', "var rule={title:'缓存样本'};");
+    const target = await app.store.saveScript('dr3', '缓存样本.js', ruleFixture("var rule={title:'缓存样本'};"));
     for (const url of ['/admin/state', `/admin/scripts/${target.id}`, '/admin/export', '/admin/logs', '/admin/health', '/admin/emby']) {
         const response = await app.inject({url, headers: {authorization}});
         assert.match(response.headers['cache-control'] || '', /private.*no-store/, url);

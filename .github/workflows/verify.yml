@@ -18,32 +18,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install PHP
-        run: sudo apt-get update && sudo apt-get install -y php-cli php-curl php-mbstring php-xml php-sqlite3
       - name: Install dependencies
         run: |
           npm ci --no-audit --no-fund
-          python -m pip install -r engine/spider/py/base/requirements.txt
       - run: npm run check
       - run: npm run build
       - run: npm test
-        env:
-          TEST_PYTHON: python
-          TEST_PHP: php
-      - name: Compare against pinned original drpy-node
-        run: npm run test:parity
-        env:
-          TEST_PYTHON: python
-          TEST_PHP: php
-          SOURCE_PARITY_REPORT_DIR: ${{ runner.temp }}/source-parity
-      - name: Source compatibility evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: source-parity-${{ github.sha }}
-          path: ${{ runner.temp }}/source-parity/
-          if-no-files-found: warn
-          retention-days: 7

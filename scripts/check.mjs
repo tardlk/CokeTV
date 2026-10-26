@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import {execFileSync} from 'child_process';
-const roots = ['src', 'scripts', 'engine/libs', 'engine/utils', 'engine/controllers', 'engine/libs_drpy'];
+const roots = ['src', 'scripts', 'engine/libs'];
 const files = [];
 function walk(directory) {
     for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {

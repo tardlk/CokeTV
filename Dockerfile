@@ -9,13 +9,8 @@ RUN npm run build && npm prune --omit=dev
 
 FROM node:22-trixie-slim
 WORKDIR /app
-ARG INSTALL_BROWSER=0
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-venv php-cli php-curl php-mbstring php-xml php-sqlite3 ffmpeg ca-certificates util-linux \
-    && if [ "$INSTALL_BROWSER" = "1" ]; then apt-get install -y --no-install-recommends chromium; fi \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates util-linux \
     && rm -rf /var/lib/apt/lists/*
-COPY engine/spider/py/base/requirements.txt /tmp/python-requirements.txt
-RUN python3 -m venv /opt/python && /opt/python/bin/pip install --no-cache-dir -r /tmp/python-requirements.txt
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
@@ -28,7 +23,7 @@ RUN chmod 755 /usr/local/bin/coketv-entrypoint && command -v setpriv
 RUN node scripts/check-shell.mjs
 # Startup fixes only data ownership/modes, then execs the service without root or capabilities.
 RUN mkdir -p /app/data && chown -R node:node /app/data
-ENV NODE_ENV=production TZ=Asia/Shanghai PORT=54058 HOST=0.0.0.0 PYTHON_PATH=/opt/python/bin/python3 PHP_PATH=php HOME=/home/node
+ENV NODE_ENV=production TZ=Asia/Shanghai PORT=54058 HOST=0.0.0.0 HOME=/home/node
 USER root
 ENTRYPOINT ["/usr/local/bin/coketv-entrypoint"]
 VOLUME /app/data

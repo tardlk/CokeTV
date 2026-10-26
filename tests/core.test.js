@@ -12,12 +12,12 @@ test('目录边界：拒绝同前缀兄弟目录、绝对路径和越界路径',
     assert.throws(() => inside('/app/data', '../database/file'));
     assert.throws(() => inside('/app/data', '/tmp/file'));
     assert.equal(inside('/app/data', 'json/源.json'), '/app/data/json/源.json');
-    assert.throws(() => validFilename('js', '../源.js'));
-    assert.throws(() => validFilename('js', '_lib.js'));
-    assert.equal(validFilename('py', '源.py'), '源.py');
+    assert.throws(() => validFilename('dr3', '../源.js'));
+    assert.throws(() => validFilename('dr3', '_lib.js'));
+    assert.equal(validFilename('dr3', '源.js'), '源.js');
 });
 test('订阅按实例顺序输出，排除停用源，Token 限定站点范围', () => {
-    const state = {scripts: [{id: 'script', engine: 'js'}], instances: [
+    const state = {scripts: [{id: 'script', engine: 'dr3'}], instances: [
         {id: 'a', scriptId: 'script', name: 'A', enabled: true, params: 'one', searchable: true},
         {id: 'b', scriptId: 'script', name: 'B', enabled: true, params: 'two'},
         {id: 'c', scriptId: 'script', name: 'C', enabled: false},

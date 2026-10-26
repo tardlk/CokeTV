@@ -5,8 +5,8 @@ import {registerUI} from '../../web/register-ui.js';
 vi.mock('../../web/WatchApp.vue', () => ({__esModule: true, default: {props: ['sources', 'api'], emits: ['close'], template: '<div class="public-watch"><button @click="$emit(\'close\')">管理后台</button><span v-for="source in sources">{{source.name}}</span></div>'}}));
 vi.mock('../../web/SourceWorkspace.vue', () => ({__esModule: true, default: {props: ['source'], template: '<div class="workspace-shell">编辑 {{source.name}}</div>'}}));
 let wrapper, requests, setup;
-const publicSources = [{id: 'source', name: '公开影视源', enabled: true, searchable: true, filterable: true, script: {engine: 'js'}}];
-const adminState = {scripts: [{id: 'script', engine: 'js', file: '源.js'}], instances: [{id: 'source', name: '公开影视源', scriptId: 'script', enabled: true}], subscriptions: [], settings: {publicUrl: '', timeout: 30000, env: {}, plugins: [], parses: [], lives: []}};
+const publicSources = [{id: 'source', name: '公开影视源', enabled: true, searchable: true, filterable: true, script: {engine: 'dr3'}}];
+const adminState = {scripts: [{id: 'script', engine: 'dr3', file: '源.js'}], instances: [{id: 'source', name: '公开影视源', scriptId: 'script', enabled: true}], subscriptions: [], settings: {env: {}, plugins: [], parses: [], lives: []}};
 beforeEach(() => {
     requests = []; setup = false; sessionStorage.clear(); history.replaceState({}, '', '/');
     window.matchMedia = vi.fn(() => ({matches: false, addEventListener() {}, removeEventListener() {}}));

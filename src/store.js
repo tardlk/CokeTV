@@ -1,8 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import {randomBytes, createHash} from 'crypto';
-import {ROOT, ENGINE_DIRS, EXTENSIONS, inside, validFilename} from './paths.js';
-import {SPIDER_FRAMEWORK_FILES} from './runtime-files.js';
+import {ROOT, ENGINE_DIRS, EXTENSIONS, LEGACY_DIRS, inside, validFilename} from './paths.js';
 
 export const token = () => randomBytes(24).toString('base64url');
 const stableId = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
@@ -10,9 +9,8 @@ export const metadata = (code, name) => {
     const title = code.match(/(?:title|标题)\s*:\s*['"]([^'"\n]+)['"]/)?.[1] || name;
     return {title, searchable: !/searchable\s*:\s*0/.test(code), filterable: /filterable\s*:\s*(?:1|true)/.test(code)};
 };
-const defaults = () => ({version: 1, scripts: [], instances: [], subscriptions: [], settings: {
-    publicUrl: '', timeout: 30000, pythonPath: process.env.PYTHON_PATH || 'python3', phpPath: process.env.PHP_PATH || 'php', browserPath: process.env.CHROME_PATH || '',
-    env: {}, plugins: [], parses: [], lives: [], jsonPublic: false, allowPrivateTargets: true, targetAllowlist: [],
+const defaults = () => ({version: 2, scripts: [], instances: [], subscriptions: [], settings: {
+    env: {}, parses: [], lives: [], jsonPublic: false, allowPrivateTargets: true, targetAllowlist: [],
 }});
 
 export class Store {
@@ -22,37 +20,24 @@ export class Store {
         this.stateFile = path.join(this.directory, 'state.json');
         this.tail = Promise.resolve();
     }
-    async init({seed = true} = {}) {
+    async init() {
         await fs.mkdir(this.directory, {recursive: true});
-        // 代码随版本更新，源与用户配置只在第一次复制。
-        for (const name of ['libs', 'libs_drpy', 'utils', 'controllers']) {
-            await fs.cp(path.join(ROOT, 'engine', name), path.join(this.runtime, name), {recursive: true});
-        }
-        for (const name of ['spider', 'json', 'jx', 'config', 'data']) {
-            const target = path.join(this.runtime, name);
-            try { await fs.access(target); }
-            catch { await fs.cp(path.join(ROOT, 'engine', name), target, {recursive: true}); }
-        }
-        // 已有 spider 目录也必须升级桥接/基类/辅助库；只覆盖发行清单中的
-        // 框架保留路径，不能递归覆盖用户源、用户辅助文件或配置目录。
-        for (const relative of SPIDER_FRAMEWORK_FILES) {
-            await this.atomic(inside(this.runtime, relative), await fs.readFile(path.join(ROOT, 'engine', relative)));
-        }
+        try { this.state = JSON.parse(await fs.readFile(this.stateFile, 'utf8')); }
+        catch (error) { if (error.code !== 'ENOENT') throw new Error('管理数据损坏，请恢复 data/state.json；不会自动覆盖'); }
+        // Back up old data before refreshing any runtime files.
+        if (this.state) await this.upgrade();
+        await fs.cp(path.join(ROOT, 'engine/libs/drpy3'), path.join(this.runtime, 'libs/drpy3'), {recursive: true});
+        for (const dir of ['json', 'jx', 'config', 'data']) await fs.mkdir(path.join(this.runtime, dir), {recursive: true});
         for (const dir of Object.values(ENGINE_DIRS)) await fs.mkdir(path.join(this.runtime, 'spider', dir), {recursive: true});
         await fs.writeFile(path.join(this.runtime, 'package.json'), '{"type":"module"}\n');
-        // DATA_DIR 可挂载到任意位置；引擎依赖始终使用发行包的安装结果。
-        const modules = path.join(this.runtime, 'node_modules');
-        const target = path.join(ROOT, 'node_modules');
+        const modules = path.join(this.runtime, 'node_modules'), target = path.join(ROOT, 'node_modules');
         try {
             const stat = await fs.lstat(modules);
             if (stat.isSymbolicLink() && await fs.readlink(modules) !== target) { await fs.unlink(modules); await fs.symlink(target, modules, 'junction'); }
         } catch (error) { if (error.code === 'ENOENT') await fs.symlink(target, modules, 'junction'); else throw error; }
-        try { this.state = JSON.parse(await fs.readFile(this.stateFile, 'utf8')); }
-        catch (error) {
-            if (error.code !== 'ENOENT') throw new Error('管理数据损坏，请恢复 data/state.json；不会自动覆盖');
+        if (!this.state) {
             this.state = defaults();
             this.state.subscriptions = [{id: stableId('default'), name: '默认订阅', token: token(), enabled: true, instances: []}];
-            if (seed) await this.scan();
             await this.persist();
         }
         await this.refreshEnvironment();
@@ -64,6 +49,61 @@ export class Store {
         const temporary = `${file}.${randomBytes(6).toString('hex')}.tmp`;
         try { await fs.writeFile(temporary, content, {flag: 'wx', ...(mode === undefined ? {} : {mode})}); await fs.rename(temporary, file); }
         finally { await fs.rm(temporary, {force: true}); }
+    }
+    async upgrade() {
+        if (this.state.version === 2) return;
+        if (this.state.version !== 1) throw new Error('不支持此管理数据版本');
+        const backup = path.join(this.directory, 'backups', `before-drpy3-${Date.now()}-${randomBytes(4).toString('hex')}`);
+        await fs.mkdir(backup, {recursive: true, mode: 0o700});
+        for (const name of await fs.readdir(this.directory)) {
+            if (name === 'backups') continue;
+            await fs.cp(path.join(this.directory, name), path.join(backup, name), {
+                recursive: true, verbatimSymlinks: true,
+                filter: file => file !== path.join(this.runtime, 'node_modules'),
+            });
+        }
+        const protect = async directory => {
+            await fs.chmod(directory, 0o700);
+            for (const item of await fs.readdir(directory, {withFileTypes: true})) {
+                const file = path.join(directory, item.name);
+                if (item.isSymbolicLink()) continue;
+                if (item.isDirectory()) await protect(file);
+                else { const mode = (await fs.stat(file)).mode; await fs.chmod(file, mode & 0o100 ? 0o700 : 0o600); }
+            }
+        };
+        await protect(backup);
+        await this.mutate(state => {
+            state.version = 2;
+            state.migration = {from: 1, backup: path.relative(this.directory, backup), at: new Date().toISOString()};
+            for (const instance of state.instances) {
+                const script = state.scripts.find(s => s.id === instance.scriptId);
+                if (script?.engine === 'dr3') continue;
+                instance.migrationRequired = true;
+                instance.preMigrationEnabled = !!instance.enabled;
+                instance.enabled = false;
+            }
+            for (const key of ['pythonPath', 'phpPath', 'browserPath', 'plugins']) delete state.settings[key];
+        });
+    }
+    async migrateScript(scriptId, name, code) {
+        validFilename('dr3', name);
+        const original = this.state.scripts.find(s => s.id === scriptId && s.engine !== 'dr3');
+        if (!original) throw Object.assign(new Error('未找到待迁移脚本'), {statusCode: 404});
+        return this.mutateFiles(async (state, write) => {
+            if (!state.instances.some(i => i.scriptId === scriptId)) throw Object.assign(new Error('此脚本没有待迁移实例'), {statusCode: 409});
+            const occupied = state.scripts.some(s => s.engine === 'dr3' && s.file === name) || await fs.access(inside(this.runtime, `spider/js_dr3/${name}`)).then(() => true).catch(error => { if (error.code === 'ENOENT') return false; throw error; });
+            if (occupied) name = `${name.slice(0, -3).slice(0, 160)}-${stableId(scriptId).slice(0, 8)}.js`;
+            const next = await this.writeScript(state, write, 'dr3', name, code, {createOnly: true});
+            // writeScript creates a new default instance; migration keeps the original identities.
+            state.instances = state.instances.filter(i => i.scriptId !== next.id);
+            for (const instance of state.instances.filter(i => i.scriptId === scriptId)) {
+                instance.scriptId = next.id;
+                instance.enabled = instance.preMigrationEnabled ?? false;
+                delete instance.migrationRequired;
+                delete instance.preMigrationEnabled;
+            }
+            return next;
+        });
     }
     async persist() { await this.atomic(this.stateFile, JSON.stringify(this.state, null, 2), {mode: 0o600}); }
     async mutate(fn, {rollback} = {}) {
@@ -118,7 +158,6 @@ export class Store {
     }
     async syncEnvironment() {
         await this.atomic(path.join(this.runtime, 'config/env.json'), JSON.stringify(this.state.settings.env, null, 2), {mode: 0o600});
-        await this.atomic(path.join(this.runtime, '.plugins.js'), `export default ${JSON.stringify(this.state.settings.plugins)};\n`, {mode: 0o600});
     }
     async refreshEnvironment() {
         let value;
@@ -137,54 +176,20 @@ export class Store {
         try { return JSON.parse(await fs.readFile(file, 'utf8')); }
         catch (error) { if (error.code === 'ENOENT') return {}; throw error; }
     }
-    scriptPath(script) { return inside(this.runtime, `spider/${ENGINE_DIRS[script.engine]}/${script.file}`); }
-    async scan() {
-        let added = 0;
-        for (const [engine, dir] of Object.entries(ENGINE_DIRS)) {
-            for (const name of await fs.readdir(path.join(this.runtime, 'spider', dir))) {
-                if (name.startsWith('_') || !name.endsWith(EXTENSIONS[engine])) continue;
-                const file = path.join(this.runtime, 'spider', dir, name);
-                if (!(await fs.stat(file)).isFile()) continue;
-                const code = await fs.readFile(file, 'utf8');
-                if (engine === 'py' && !/class\s+Spider\b/.test(code)) continue;
-                if (engine === 'php' && !/class\s+Spider\b/.test(code)) continue;
-                const id = stableId(`${engine}:${name}`);
-                if (this.state.scripts.some(s => s.id === id)) continue;
-                const info = metadata(code, name.slice(0, -EXTENSIONS[engine].length));
-                this.state.scripts.push({id, engine, file: name, name: info.title, updatedAt: new Date().toISOString()});
-                const instance = {id, scriptId: id, name: info.title, params: '', enabled: true, searchable: info.searchable, filterable: info.filterable};
-                this.state.instances.push(instance);
-                this.state.subscriptions[0]?.instances.push(id);
-                added++;
-            }
-        }
-        let mapping = '';
-        try { mapping = await fs.readFile(path.join(this.runtime, 'config/map.txt'), 'utf8'); } catch {}
-        for (const line of mapping.split(/\r?\n/)) {
-            if (!line.trim() || line.startsWith('#')) continue;
-            const [moduleName, rawParams, alias] = line.split('@@');
-            if (!rawParams) continue;
-            const script = this.state.scripts.find(s => s.file === moduleName + EXTENSIONS[s.engine]);
-            if (!script) continue;
-            const query = rawParams.startsWith('?') ? new URLSearchParams(rawParams.slice(1)) : null;
-            const params = query?.get('type') === 'url' ? query.get('params') || '' : rawParams;
-            const id = stableId(`${script.id}:${params}:${alias || moduleName}`);
-            if (this.state.instances.some(s => s.id === id)) continue;
-            const original = this.state.instances.find(s => s.scriptId === script.id);
-            this.state.instances.push({enabled: true, searchable: true, filterable: false, ...original, id, scriptId: script.id, params, name: alias || moduleName, migrated: true});
-            this.state.subscriptions[0]?.instances.push(id);
-            added++;
-        }
-        return added;
+    scriptPath(script) {
+        const dir = ENGINE_DIRS[script.engine] || LEGACY_DIRS[script.engine];
+        if (!dir || typeof script.file !== 'string' || /[\\/]/.test(script.file) || script.file.includes('..')) throw new Error('脚本路径无效');
+        return inside(this.runtime, `spider/${dir}/${script.file}`);
     }
     resolve(id, engine) {
         let instance = this.state.instances.find(s => s.id === id);
         let script = instance && this.state.scripts.find(s => s.id === instance.scriptId);
         if (!instance) {
-            script = this.state.scripts.find(s => s.engine === (engine || 'js') && s.file === `${id}${EXTENSIONS[s.engine]}`);
+            script = this.state.scripts.find(s => s.engine === (engine || 'dr3') && s.file === `${id}${EXTENSIONS[s.engine]}`);
             instance = script && this.state.instances.find(s => s.scriptId === script.id && s.enabled);
         }
         if (!script || !instance) throw Object.assign(new Error('源不存在'), {statusCode: 404});
+        if (script.engine !== 'dr3' || instance.migrationRequired) throw Object.assign(new Error('此源需要迁移到 drpy3'), {statusCode: 409});
         if (!instance.enabled) throw Object.assign(new Error('源已停用'), {statusCode: 403});
         return {script, instance, file: this.scriptPath(script)};
     }
@@ -219,16 +224,15 @@ export class Store {
         }
         return script;
     }
-    async deleteInstances(ids, {deleteScripts = false} = {}) {
-        if (!Array.isArray(ids) || !ids.length || ids.length > 10000 || ids.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(id)) || typeof deleteScripts !== 'boolean') throw Object.assign(new Error('删除参数无效'), {statusCode: 400});
+    async deleteScripts(ids) {
+        if (!Array.isArray(ids) || !ids.length || ids.length > 10000 || ids.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(id))) throw Object.assign(new Error('删除参数无效'), {statusCode: 400});
         const selected = new Set(ids);
         return this.mutateFiles(async (state, write, remove) => {
-            const instances = state.instances.filter(item => selected.has(item.id));
-            const scriptIds = new Set(instances.map(item => item.scriptId));
-            const remaining = state.instances.filter(item => !selected.has(item.id));
-            const remainingScriptIds = new Set(remaining.map(item => item.scriptId));
-            const scripts = state.scripts.filter(script => scriptIds.has(script.id));
-            const unused = deleteScripts ? scripts.filter(script => !remainingScriptIds.has(script.id)) : [];
+            const scripts = state.scripts.filter(script => selected.has(script.id));
+            const scriptIds = new Set(scripts.map(script => script.id));
+            const instances = state.instances.filter(item => scriptIds.has(item.scriptId));
+            const removedIds = new Set(instances.map(item => item.id));
+            const remaining = state.instances.filter(item => !removedIds.has(item.id));
             const root = await fs.realpath(this.directory);
             const removeOwned = async file => {
                 let parent;
@@ -238,17 +242,20 @@ export class Store {
                 if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error('拒绝删除数据目录之外的文件');
                 await remove(file);
             };
-            if (deleteScripts) for (const instance of instances) await removeOwned(inside(this.runtime, `config/source-env/${instance.id}.json`));
-            for (const script of unused) {
-                validFilename(script.engine, script.file);
+            const envIds = new Set([...removedIds, ...scripts.map(script => script.id).filter(id => !remaining.some(instance => instance.id === id))]);
+            for (const id of envIds) {
+                await removeOwned(inside(this.runtime, `config/source-env/${id}.json`));
+                await removeOwned(inside(this.runtime, `data/drpy3/${createHash('sha256').update(id).digest('hex')}.json`));
+            }
+            for (const script of scripts) {
+                if (script.engine === 'dr3') validFilename(script.engine, script.file);
                 await removeOwned(this.scriptPath(script));
                 await removeOwned(inside(this.directory, `revisions/${script.id}`));
             }
-            const removedScripts = new Set(unused.map(script => script.id));
             state.instances = remaining;
-            state.scripts = state.scripts.filter(script => !removedScripts.has(script.id));
-            for (const sub of state.subscriptions) sub.instances = sub.instances.filter(id => !selected.has(id));
-            return {deleted: instances.length, deletedScripts: unused.length, retainedScripts: scripts.length - unused.length};
+            state.scripts = state.scripts.filter(script => !scriptIds.has(script.id));
+            for (const sub of state.subscriptions) sub.instances = sub.instances.filter(id => !removedIds.has(id));
+            return {deleted: instances.length, deletedScripts: scripts.length};
         });
     }
     async importBundle(entries) {
@@ -257,8 +264,9 @@ export class Store {
             for (const entry of entries) {
                 const file = inside(this.runtime, entry.relative);
                 let previous;
-                try { previous = await fs.readFile(file, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-                if ((previous !== undefined && previous !== entry.code) || (planned.has(file) && planned.get(file).code !== entry.code)) {
+                try { previous = await fs.readFile(file); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+                const same = value => Buffer.from(value).equals(Buffer.from(entry.code));
+                if ((previous !== undefined && !same(previous)) || (planned.has(file) && !same(planned.get(file).code))) {
                     throw Object.assign(new Error(`源包文件冲突：${entry.relative}，不会覆盖已有文件`), {statusCode: 409});
                 }
                 planned.set(file, {...entry, exists: previous !== undefined});
@@ -272,53 +280,7 @@ export class Store {
                 if (entry.engine) await this.writeScript(state, write, entry.engine, path.basename(file), entry.code);
                 else await write(file, entry.code);
             }
-            await this.scan();
             return {files: entries.length, added: state.instances.length - before};
         });
-    }
-    async importSources(entries) {
-        const createdFiles = [];
-        return this.mutate(async state => {
-            const writes = new Map(), imported = [], existing = [];
-            const prepare = async (engine, file, code, library = false) => {
-                validFilename(engine, file, {library});
-                const target = inside(this.runtime, `spider/${ENGINE_DIRS[engine]}/${file}`);
-                let current;
-                try { current = await fs.readFile(target, 'utf8'); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-                if (current !== undefined && current !== code) return false;
-                if (writes.has(target) && writes.get(target) !== code) return false;
-                if (current === undefined) writes.set(target, code);
-                return true;
-            };
-            try {
-                for (const entry of entries) {
-                    let filename = entry.file;
-                    if (!await prepare(entry.engine, filename, entry.code)) {
-                        filename = filename.replace(/\.[^.]+$/, `-${stableId(entry.code).slice(0, 8)}${EXTENSIONS[entry.engine]}`);
-                        if (!await prepare(entry.engine, filename, entry.code)) throw new Error(`脚本文件冲突：${entry.name}`);
-                    }
-                    for (const dependency of entry.dependencies || []) {
-                        if (!await prepare(entry.engine, dependency.file, dependency.code, true)) throw new Error(`辅助库已有不同内容：${dependency.file}，不会覆盖`);
-                    }
-                    const scriptId = stableId(`${entry.engine}:${filename}`);
-                    if (!state.scripts.some(item => item.id === scriptId)) state.scripts.push({id: scriptId, engine: entry.engine, file: filename, name: entry.name, updatedAt: new Date().toISOString()});
-                    const identity = stableId(`tvbox:${scriptId}:${entry.key}:${entry.params}`);
-                    const found = state.instances.find(item => item.id === identity);
-                    if (found) { existing.push({id: found.id, name: found.name}); continue; }
-                    const instance = {id: identity, scriptId, name: entry.name, params: entry.params, enabled: true, searchable: entry.searchable, filterable: entry.filterable};
-                    state.instances.push(instance); imported.push({id: identity, name: entry.name});
-                }
-                // Validate the entire selection and collisions before creating files.
-                for (const [target, code] of writes) {
-                    await fs.mkdir(path.dirname(target), {recursive: true});
-                    try { await fs.writeFile(target, code, {flag: 'wx'}); createdFiles.push(target); }
-                    catch (error) { if (error.code !== 'EEXIST' || await fs.readFile(target, 'utf8') !== code) throw error; }
-                }
-                return {imported: imported.length, existing: existing.length, sources: imported, duplicates: existing};
-            } catch (error) {
-                for (const target of createdFiles) await fs.rm(target, {force: true});
-                throw error;
-            }
-        }, {rollback: async () => { for (const target of createdFiles) await fs.rm(target, {force: true}); }});
     }
 }

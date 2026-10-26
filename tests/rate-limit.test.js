@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -32,7 +33,7 @@ test('限流仅豁免 URL 匹配的代理票据；媒体票据驱动源代理仍
         routing = installPublicUpstream(upstream.address().port);
         const upstreamUrl = routing.url;
         app = await createApp({directory, seed: false});
-        const {id} = await app.store.saveScript('js', '限流样本.js', `var rule={title:'限流样本',host:'https://fixture.invalid',play_parse:true,lazy:async function(flag,id){return {parse:0,url:id,header:{Referer:'https://fixture.invalid/'}}},proxy_rule:async function(params){return params.redirect?[200,'video/mp4','${upstreamUrl}/video.mp4',{Referer:'https://fixture.invalid/'},2]:[200,'text/plain',params.text]}};`);
+        const {id} = await app.store.saveScript('dr3', '限流样本.js', ruleFixture(`var rule={title:'限流样本',host:'https://fixture.invalid',play_parse:true,lazy:async function(flag,id){return {parse:0,url:id,header:{Referer:'https://fixture.invalid/'}}},proxy_rule:async function(params){return params.redirect?[200,'video/mp4','${upstreamUrl}/video.mp4',{Referer:'https://fixture.invalid/'},2]:[200,'text/plain',params.text]}};`));
         await app.listen({host: '127.0.0.1', port: 0});
         const play = await app.inject({method: 'POST', url: `/watch/sources/${id}/play`, payload: {play: `${upstreamUrl}/playlist.m3u8`}});
         assert.equal(play.statusCode, 200, play.body);

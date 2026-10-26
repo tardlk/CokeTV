@@ -1,43 +1,38 @@
-# 来源说明
+# 来源与许可
 
-- **drpy-node**：最初从2.0.4提取，当前执行兼容基线已按2.0.6固定镜像逐文件核对和同步，来源、原版/Coke哈希及保留补丁登记于 `engine/UPSTREAM.json`。兼容执行内核和辅助库保留在 `engine/`，预置站点脚本、解析脚本和站点资源已移除。宿主和管理页面由CokeTV组织。原LICENSE保留在engine根目录，项目根目录保留相同GPL-3.0文本。
-- **shadcn-vue / Reka UI**：管理控件使用 shadcn-vue 官方组件源码和 Reka UI。组件源码在 `web/components/ui/`，依赖按各自许可证分发。
-- **Monaco Editor**：源代码编辑器，使用 Microsoft Monaco 的白底主题、行号与代码缩略图。
-- **Lucide / DM Sans**：图标和字体由 npm 包提供，保留包内许可。
-- **ArtPlayer / HLS.js / mpegts.js**：网页播放器及 HLS、FLV/TS 加载，按需加载；各包的许可证随 npm 依赖保留。
-- **OmniBox**：管理、影视站与播放页面的布局和交互参考，未引入 OmniBox SDK、源执行器或前台代码。
-- **CatPawOpen 接口参考**：猫影视连接程序独立实现，参考 [入口与宿主桥接](https://github.com/CatPawApp/CatPawOpen/blob/b956aedabe5f624f1e96c8d21c8866617a0f71c1/nodejs/src/index.js)、站点发现与视频 POST 接口；研究时静态读取 Darklessing/catvod 的发布包（提交 `60cc98cf277224797f0bf39415e394c26c46673a`）作为远程 T4 转接的对照，没有执行、复制或分发其完整 bundle、站点或网盘代码。`src/cat-client.cjs` 无第三方运行依赖。
+CokeTV 按根目录 GPL-3.0 许可证分发。第三方组件保留各自许可；移除旧执行器不会取消现有宿主代码的来源与许可义务。
 
-其他运行依赖及版本记录在 `package.json` / `package-lock.json`。用户导入的源可能依赖站点账号、外部插件或各自辅助资源；源执行协议兼容不代表第三方站点始终可用。
+## drpy3
 
-### 115 验证模块的协议参考
+唯一源执行引擎取自 [hjdhnx/drpy3](https://github.com/hjdhnx/drpy3/tree/e5b89fd779de2a7552feec74d5bd020962ccd2f2)，版本 0.1.0，提交 `e5b89fd779de2a7552feec74d5bd020962ccd2f2`。以下四文件从 `dist/` 原样保存到 `engine/libs/drpy3/`：
 
-`src/netdisk/` 的扫码与分享接口流程参考 [SheltonZhu/115driver v1.3.5](https://github.com/SheltonZhu/115driver/tree/v1.3.5) 的 `pkg/driver/qrcode.go`、`share.go`、`download.go` 和 `api.go`；`m115.js` 将其 `pkg/crypto/m115` 的协议编解码适配为 Node 内置 crypto，用于兼容 App 分享接口。MIT License、版权和作者特别声明完整保留在 [LICENSES/115driver.txt](../LICENSES/115driver.txt)。没有内嵌或执行 Go SDK，没有复制 MoonTVPlus/LitePan 的网盘程序，无新增依赖。实际网盘授权和播放仍须按当前平台接口验证。
+- drpy3.js
+- drpy3-peer.js
+- drpy3-globals-capture.js
+- drpy-core-lite.min.js
 
-### 光鸭模块的协议参考
+MIT 文本保存在 LICENSES/drpy3-MIT.txt，原库包内的第三方声明保留，SHA-256 登记于 engine/UPSTREAM.json。上游内置的 load2x 不作删改，但产品不提供独立DR2入口。没有复制或预装上游示例站点。
 
-独立实现官方光鸭网页使用的分享、个人目录、转存与取链流程；对照 [LitePan](https://github.com/Ponphil/LitePan/tree/e0e29c0e4c7fb4bc172d9bb66cb0292911b6693b/drivers/Guangya) 的OAuth设备授权/刷新协议和 [OpenList](https://github.com/OpenListTeam/OpenList/tree/482464c2affc5eeba5d4a25bb272aeb352ec5918/drivers/guangyapan) 的目录/取链字段。LitePan为PolyForm Noncommercial，OpenList为AGPL-3.0；没有复制、执行或随包分发两者实现。另对照MIT许可的 [ChenyangGao/guangyapan](https://github.com/ChenyangGao/guangyapan) 接口字段。平台协议参考不代表平台授权或永久可用。
+## 独立宿主辅助库
 
-新增npm运行依赖 `qrcode` 1.5.4（MIT）在服务器生成登录二维码，不依赖外部二维码服务；其许可证及传递依赖许可随npm包保留。
+`src/host/htmlParser.js`、`jsonpathplus.min.js` 和 FTP/WebDAV/源环境/代理工具，源自此前固定的 [hjdhnx/drpy-node](https://github.com/hjdhnx/drpy-node) 2.0.6 宿主辅助代码。解析器去除旧内核工具链依赖，使用 Node URL 拼接与独立日志；ENV保留本源作用域和0600原子写入。链接导入专用的采集源生成器已删除。来源和本地文件哈希见 UPSTREAM.json 的 hostFiles；根许可证与 engine/LICENSE 保留。
 
-### go-emby 协议适配
+drpyS、独立DR2客户端库、CatVod、HIPY/Python、PHP执行器、桥接、旧源专用辅助包与自动插件启动已从发行树移除。产品没有新增旧脚本自动翻译运行层；测试中的样本生成工具只用于迁移既有协议回归，不进入生产镜像。
 
-`src/emby/` 的客户端登录格式、PascalCase DTO、媒体库/季集与经鉴权的播放入口，以及 Infuse/播放器回归场景，按项目所有者授权从 [sd87671067/go-emby](https://github.com/sd87671067/go-emby/tree/75e68aa7d1834cd9f04fcfac686cf67917c5df70) 的 `main.go`、`compat.go`、`browsing.go`、`login_compat.go` 和相关测试适配为 Node.js。CokeTV 自行实现源目录映射、SQLite 事务、观看令牌和网盘桥接；未引入 Go 二进制、PostgreSQL、STRM 扫描器或其联网运行授权 SDK。上游运行授权模块与本次源码移植授权是不同事项，第三方依赖继续遵守其随附声明。
+## 界面与播放
 
-## 随附 bundle
+Vue、shadcn-vue/Reka UI、Monaco Editor、Lucide、DM Sans、ArtPlayer、HLS.js 和 mpegts.js 按各包许可使用；对应许可随npm包或组件源码保留。OmniBox仅为既有页面布局与交互参考，没有接入其SDK或源执行器。
 
-`engine/libs_drpy/**` 与 `engine/spider/catLib/**` 是随内核一同分发的第三方 bundle，均随上游 drpy-node 2.0.4 引入，来源为 `https://github.com/hjdhnx/drpy-node`（版权归其作者）：
+## 网盘模块
 
-| 位置 | 内容 | 许可 |
-| --- | --- | --- |
-| `engine/libs_drpy/crypto-js.js`、`engine/libs_drpy/crypto-js-wasm.js` | CryptoJS / 其 WASM 版 | MIT |
-| `engine/libs_drpy/underscore-esm.js`、`engine/libs_drpy/underscore-esm.min.js` | Underscore | MIT |
-| `engine/libs_drpy/_dist/node-rsa.js` | node-rsa | MIT |
-| `engine/libs_drpy/_dist/json5.js`、`engine/libs_drpy/pako.min.js`、`engine/libs_drpy/hls-parser.js`、`engine/libs_drpy/drpyCustom.js` 等 | JSON5 / pako / hls-parser 等 | 各自包许可（MIT/Apache-2.0） |
-| `engine/spider/catLib/cat.js`（约 486KB）、`cheerio.min.js`、`mod.js`、`spider.js`、`http.js`、`similarity.js`、`sortName.js` | CatVod 运行时 bundle | 随上游，按原包许可 |
+115扫码/分享协议及m115编解码参考 [SheltonZhu/115driver v1.3.5](https://github.com/SheltonZhu/115driver/tree/v1.3.5)；MIT许可与作者声明保留在 LICENSES/115driver.txt。没有引入Go运行环境。
 
-许可口径以各 bundle 文件内保留的版权声明为准。`engine/utils/api_validate.js` 生成的版权头曾标注 "LGPL3 (github.com/hjdhnx/drpy-node)"，与本仓库 GPL-3.0-only 声明不一致；以根 `LICENSE` 与实际文件头的作者声明为准，冲突时以上游仓库为准并在此登记。
+光鸭模块独立实现网页分享、个人目录、转存与取链流程；协议字段参考 LitePan（PolyForm Noncommercial）、OpenList（AGPL-3.0）及MIT许可的ChenyangGao/guangyapan。没有复制、执行或分发LitePan/OpenList驱动。账号权限和流量限制按平台规则处理。
 
-`engine/spider/js/_lib.*` 是供用户源经 `$.require('./_lib.x.js')` 引用的兼容辅助库（含央视/抖音/斗鱼等站点专用逻辑与扫码登录端点），保留以维持兼容；它们不是可独立播放的成品源，上游来源与版权按原库说明。
+## 猫影视与Emby
 
-`engine/client/drpy/drpy2.min.js`及`engine/client/dist/drpy-core-lite.min.js`原样来自固定2.0.6镜像的`public/drpy/`、`public/dist/`，原版哈希在UPSTREAM清单，随附许可声明保留。两文件为DR2客户端执行内核及打包依赖，不含预置站点清单；通过受订阅鉴权的路径提供给客户端，配套相对import路径保持不变。源码载荷合计782215字节，不代表Docker压缩层增量。
+`src/cat-client.cjs` 为独立实现的轻量Node连接程序，参考CatPawOpen宿主接口；客户端不携带服务器源脚本或账号配置。
+
+`src/emby/` 的协议与相关行为按项目所有者授权参考 [sd87671067/go-emby](https://github.com/sd87671067/go-emby/tree/75e68aa7d1834cd9f04fcfac686cf67917c5df70)。CokeTV自行实现源目录映射、SQLite存储、订阅身份与媒体桥接，没有引入Go二进制、PostgreSQL、STRM扫描器或联网运行授权SDK。
+
+其余实际依赖记录在package.json与package-lock.json。node-forge、TypeScript及测试直接使用的undici归开发依赖；Cheerio等生产包所需的传递依赖仍按锁文件安装。

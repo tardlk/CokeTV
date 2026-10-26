@@ -11,7 +11,7 @@ beforeEach(()=>{
     global.ResizeObserver=class{observe(){}unobserve(){}disconnect(){}};
     values={quark_cookie:'private',retry:0,enabled:false};
     api=vi.fn(async(url,body)=>{
-        if(url==='/admin/scripts/script')return {id:'script',file:'样本.js',engine:'js',code:'var rule={};',revisions:[]};
+        if(url==='/admin/scripts/script')return {id:'script',file:'样本.js',engine:'dr3',code:'var rule={};',revisions:[]};
         if(url==='/admin/state')return {instances:[{...source,params:'',enabled:false,searchable:true,filterable:false,tags:['电影']}]};
         if(url==='/admin/instances/instance')return {...body};
         if(body)values=body.values;
@@ -25,6 +25,21 @@ async function start(){
 }
 const button=text=>wrapper.findAll('button').find(item=>item.text().trim()===text);
 describe('本源配置表单',()=>{
+    it('旧源禁止验证，改写保存后通过迁移入口保留实例',async()=>{
+        const native="export default {meta:{lang:'dr3'},rule:{}};";
+        const original=api;
+        api=vi.fn(async(url,body)=>{
+            if(url==='/admin/scripts/script')return {id:'script',file:'old.php',engine:'php',code:'old-code',revisions:[]};
+            if(url==='/admin/scripts/script/migrate')return {id:'native'};
+            if(url==='/admin/scripts/native')return {id:'native',file:'old.js',engine:'dr3',code:native,revisions:[]};
+            return original(url,body);
+        });
+        await start();expect(wrapper.text()).toContain('旧源待迁移');expect(button('执行验证').attributes('disabled')).toBeDefined();
+        wrapper.findComponent({name:'CodeEditor'}).vm.$emit('update:modelValue',native);await flushPromises();
+        await button('保存为 drpy3').trigger('click');await flushPromises();
+        expect(api).toHaveBeenCalledWith('/admin/scripts/script/migrate',{name:'old.js',code:native});
+        expect(button('执行验证').attributes('disabled')).toBeUndefined();expect(wrapper.emitted('saved')).toHaveLength(1);
+    });
     it('脚本页保存实例参数，保留其他配置并阻止未保存验证',async()=>{
         await start();await button('扩展参数').trigger('click');await flushPromises();
         await wrapper.find('#source-params').setValue('https://example.invalid/config.json');

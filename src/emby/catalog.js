@@ -1,3 +1,4 @@
+import {sourceAvailable} from '../paths.js';
 import {digest,fail,text} from './auth.js';
 
 const object=value=>{if(typeof value==='string')value=JSON.parse(value);if(!value||typeof value!=='object')throw fail('源返回了无效目录',502);return value;};
@@ -15,13 +16,13 @@ function episodeNumber(name) {
 export class Catalog {
     constructor(db,store,content) {this.db=db;this.store=store;this.content=content;this.jobs=new Map();this.queue=Promise.resolve();this.closed=false;this.autoQueue=Promise.resolve();this.pending=new Map();this.recent=new Map();}
     status(subscription) {
-        const sourceIds=subscription.instances.filter(id=>this.store.state.instances.some(i=>i.id===id&&i.enabled));
+        const sourceIds=subscription.instances.filter(id=>this.store.state.instances.some(i=>i.id===id&&sourceAvailable(this.store.state,i)));
         const selected=this.db.all('libraries').filter(l=>sourceIds.includes(l.sourceId));
         return {sources:sourceIds.length,ready:selected.filter(l=>l.syncedAt).length,preparing:selected.filter(l=>this.pending.has(l.id)).length,failed:selected.filter(l=>l.attemptedAt&&!l.syncedAt&&!this.pending.has(l.id)).length};
     }
     prepare(request,subscription) {
         if(this.closed)throw fail('服务正在关闭',503);
-        const sources=subscription.instances.flatMap(id=>{const source=this.store.state.instances.find(i=>i.id===id&&i.enabled);return source?[source]:[];});
+        const sources=subscription.instances.flatMap(id=>{const source=this.store.state.instances.find(i=>i.id===id&&sourceAvailable(this.store.state,i));return source?[source]:[];});
         const libraries=this.db.all('libraries');
         for(const source of sources) {
             let selected=libraries.filter(l=>l.sourceId===source.id);
@@ -59,10 +60,10 @@ export class Catalog {
         }finally{clearTimeout(timer);}
     }
     source(library) {
-        const instance=this.store.state.instances.find(i=>i.id===library.sourceId&&i.enabled);
+        const instance=this.store.state.instances.find(i=>i.id===library.sourceId&&sourceAvailable(this.store.state,i));
         if(!instance)throw fail('源不存在或已停用',409);return this.store.resolve(instance.id);
     }
-    catalogs(subscription) {return this.db.all('libraries').filter(l=>subscription.instances.includes(l.sourceId)&&this.store.state.instances.some(i=>i.id===l.sourceId&&i.enabled));}
+    catalogs(subscription) {return this.db.all('libraries').filter(l=>subscription.instances.includes(l.sourceId)&&this.store.state.instances.some(i=>i.id===l.sourceId&&sourceAvailable(this.store.state,i)));}
     projections(library) {
         return library.kind==='Mixed'?['Movie','Series'].map(kind=>({...library,id:this.db.id(JSON.stringify(['source-view',library.id,kind])),catalogId:library.id,kind,name:library.name+(kind==='Movie'?' · 电影':' · 剧集')})):[library];
     }

@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test, before, after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -32,8 +33,8 @@ before(async () => {
     await app.inject({method: 'POST', url: '/admin/access/setup', payload: {password: 'watch-password', confirmPassword: 'watch-password'}});
     authorization = `Basic ${Buffer.from(':watch-password').toString('base64')}`;
     const code = `var rule = {title:'网页样本',host:'https://fixture.invalid',class_parse:async()=>({class:[{type_id:'movie',type_name:'电影'}]}),推荐:async()=>setResult([{title:'样本',url:'one'}]),二级:async function(){return {vod_name:'样本',vod_play_from:'线路一$$$线路二',vod_play_url:'第一集$${upstreamUrl}/video.mp4#第二集$${upstreamUrl}/playlist.m3u8$$$备用$${upstreamUrl}/video.mp4'}},play_parse:true,lazy:async function(flag,id){return {parse:id==='vip'?1:0,url:id==='vip'?'https://fixture.invalid/vip':id,header:{Referer:'https://fixture.invalid/'}}},proxy_rule:async()=>[200,'text/plain','own-proxy']};`;
-    source = (await app.store.saveScript('js', '网页样本.js', code)).id;
-    other = (await app.store.saveScript('js', '其他样本.js', code)).id;
+    source = (await app.store.saveScript('dr3', '网页样本.js', ruleFixture(code))).id;
+    other = (await app.store.saveScript('dr3', '其他样本.js', ruleFixture(code))).id;
     await app.listen({host: '127.0.0.1', port: 0});
 });
 after(async () => { await app?.close(); routing?.restore(); await new Promise(resolve => upstream?.close(resolve)); await fs.rm(directory, {recursive: true, force: true}); });
@@ -56,7 +57,7 @@ test('公开选源列表不暴露参数、ENV、脚本或订阅凭据，停用�
         entry.params = 'private-source-params'; entry.enabled = false;
         const response = await app.inject('/watch/sources');
         assert.equal(response.statusCode, 200);
-        assert.deepEqual(response.json(), [{id: source, name: '网页样本', enabled: true, searchable: true, filterable: false, script: {engine: 'js'}}]);
+        assert.deepEqual(response.json(), [{id: source, name: '网页样本', enabled: true, searchable: true, filterable: false, script: {engine: 'dr3'}}]);
         assert.equal((await app.inject(`/watch/sources/${other}`)).statusCode, 403);
         assert.equal((await app.inject({method: 'POST', url: `/watch/sources/${other}/play`, payload: {play: `${upstreamUrl}/video.mp4`}})).statusCode, 403);
         for (const url of ['/admin/state', `/admin/scripts/${source}`, `/admin/instances/${source}/environment`, '/admin/export', '/admin/logs']) assert.equal((await app.inject(url)).statusCode, 401);
@@ -70,7 +71,7 @@ test('全新部署未创建管理密码也能匿名浏览源，首次设置仅�
     let fresh;
     try {
         fresh = await createApp({directory: freshDirectory, seed: false});
-        const script = await fresh.store.saveScript('js', '首次观影.js', "var rule={title:'首次观影',host:'https://fixture.invalid',class_parse:async()=>({class:[]}),推荐:async()=>setResult([{title:'免费浏览',url:'one'}])};");
+        const script = await fresh.store.saveScript('dr3', '首次观影.js', ruleFixture("var rule={title:'首次观影',host:'https://fixture.invalid',class_parse:async()=>({class:[]}),推荐:async()=>setResult([{title:'免费浏览',url:'one'}])};"));
         assert.equal((await fresh.inject('/watch/sources')).statusCode, 200);
         const home = await fresh.inject(`/watch/sources/${script.id}`);
         assert.equal(home.statusCode, 200, home.body); assert.equal(home.json().list[0].vod_name, '免费浏览');
@@ -94,7 +95,7 @@ test('网页媒体短期凭证保留请求头和 Range，不携带访问密码',
 test('R2 匿名播放和 HLS 票据不泄露 ENV 凭据，实际媒体/分片/key 仍带源返回的头', async () => {
     const cookie = 'private-cookie-fixture', bearer = 'Bearer private-auth-fixture';
     const code = `var rule={title:'私密媒体样本',host:'https://fixture.invalid',play_parse:true,lazy:async function(flag,id){return {parse:0,url:id,header:{Referer:'https://fixture.invalid/',Cookie:ENV.get('private_cookie'),Authorization:ENV.get('private_auth')}}}};`;
-    const script = await app.store.saveScript('js', '私密媒体样本.js', code);
+    const script = await app.store.saveScript('dr3', '私密媒体样本.js', ruleFixture(code));
     const envFile = app.store.sourceEnvPath(script.id);
     await fs.mkdir(path.dirname(envFile), {recursive: true});
     await fs.writeFile(envFile, JSON.stringify({private_cookie: cookie, private_auth: bearer}));
@@ -130,7 +131,7 @@ test('R2 匿名播放和 HLS 票据不泄露 ENV 凭据，实际媒体/分片/ke
 test('R7 长签名 URL 和长请求头实际转发成功，Range/HEAD 保留完整上游数据', async () => {
     const target = `${upstreamUrl}/video.mp4?signature=${'s'.repeat(4000)}`;
     const longHeader = 'h'.repeat(5000);
-    const script = await app.store.saveScript('js', '长媒体样本.js', `var rule={title:'长媒体样本',host:'https://fixture.invalid',play_parse:true,lazy:async function(flag,id){return {parse:0,url:id,header:{Referer:'https://fixture.invalid/','X-Fixture':${JSON.stringify(longHeader)}}}}};`);
+    const script = await app.store.saveScript('dr3', '长媒体样本.js', ruleFixture(`var rule={title:'长媒体样本',host:'https://fixture.invalid',play_parse:true,lazy:async function(flag,id){return {parse:0,url:id,header:{Referer:'https://fixture.invalid/','X-Fixture':${JSON.stringify(longHeader)}}}}};`));
     const response = await app.inject({method: 'POST', url: `/watch/sources/${script.id}/play`, payload: {play: target}});
     assert.equal(response.statusCode, 200, response.body);
     const result = response.json();

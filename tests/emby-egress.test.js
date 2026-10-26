@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -48,7 +49,7 @@ async function fixture(t) {
     t.after(() => { lan.closeAllConnections?.(); new Promise(resolve => lan.close(resolve)); });
     const lanUrl = `http://127.0.0.1:${lan.address().port}/secret`;
 
-    const script = await app.store.saveScript('js', 'emby-egress.js', 'var rule={};');
+    const script = await app.store.saveScript('dr3', 'emby-egress.js', ruleFixture('var rule={};'));
     const source = app.store.state.instances.find(item => item.scriptId === script.id);
     app.store.state.subscriptions.push({id: 'viewer-sub', name: '观看范围', token: 'subscription-secret', enabled: true, instances: [source.id]});
     await app.store.persist();
@@ -77,7 +78,7 @@ async function provision(f) {
     const user = {id: login.json().User.Id}, emby = {'x-emby-token': login.json().AccessToken};
     await f.app.listen({host: '127.0.0.1', port: 0});
     const base = `http://127.0.0.1:${f.app.server.address().port}`;
-    f.app.store.state.settings.publicUrl = base;
+    emby.host = new URL(base).host;
     const episodes = await f.app.inject({url: '/Items?IncludeItemTypes=Episode&Recursive=true', headers: emby});
     assert.equal(episodes.statusCode, 200, episodes.body);
     const item = episodes.json().Items[0];

@@ -8,7 +8,7 @@ import {playlists} from '../../web/watch-model.js';
 let wrapper, api, pending;
 // 轻量替身：真实 WebPlayer 会拉起 ArtPlayer/HLS.js，这里只暴露 media prop 供断言。
 const PlayerStub = defineComponent({name: 'WebPlayer', props: ['media', 'resume', 'previous', 'next'], template: '<div class="player-stub" />'});
-const sources = [{id: 'a', name: '测试源', enabled: true, searchable: true, filterable: true, script: {engine: 'js'}}, {id: 'disabled', name: '停用源', enabled: false, script: {engine: 'py'}}];
+const sources = [{id: 'a', name: '测试源', enabled: true, searchable: true, filterable: true, script: {engine: 'dr3'}}, {id: 'disabled', name: '停用源', enabled: false, script: {engine: 'py'}}];
 const detail = {vod_id: 'one', vod_name: '样本电影', vod_content: '<p>影片简介</p>', vod_play_from: '主线$$$备用', vod_play_url: '第1集$https://fixture.invalid/1.m3u8#第2集$https://fixture.invalid/2.mp4$$$正片$https://fixture.invalid/backup.mp4'};
 beforeEach(() => {
     localStorage.clear(); history.replaceState({}, '', '/watch?source=a');
@@ -71,6 +71,46 @@ describe('网页观影流程', () => {
         expect(wrapper.find('.watch-video-card').text()).toBe('搜索成功');
         expect(wrapper.find('.watch-error').exists()).toBe(false);
         expect(api).toHaveBeenLastCalledWith('/watch/sources/a?wd=%E6%88%90%E5%8A%9F&pg=1');
+    });
+    it('无首页目录的源引导搜索，并显示来源限制；返回首页不会残留搜索提示', async () => {
+        api.mockImplementation(async url => url.includes('wd=')
+            ? {list: [{vod_id: 'one', vod_name: '希望'}], pagecount: 1, notice: '仅提供前7条搜索建议。'}
+            : {class: [], list: [], notice: '网站验证阻止首页读取，搜索仍可使用。'});
+        await start();
+        expect(wrapper.text()).toContain('网站验证阻止首页读取，搜索仍可使用。');
+        expect(wrapper.text()).not.toContain('暂无影片');
+        await button('搜索影片').trigger('click'); await flushPromises();
+        expect(document.activeElement).toBe(wrapper.find('[aria-label="搜索影片"]').element);
+        expect(api).toHaveBeenCalledTimes(1);
+        await wrapper.find('[aria-label="搜索影片"]').setValue('希望');
+        await wrapper.find('form').trigger('submit'); await flushPromises();
+        expect(wrapper.find('.watch-video-card').text()).toBe('希望');
+        expect(wrapper.text()).toContain('仅提供前7条搜索建议。');
+        expect(wrapper.text()).not.toContain('网站验证阻止首页读取');
+        await button('返回首页').trigger('click'); await flushPromises();
+        expect(wrapper.text()).toContain('网站验证阻止首页读取');
+        expect(wrapper.text()).not.toContain('仅提供前7条搜索建议。');
+    });
+    it('无分类的空首页提供搜索入口，普通空分类和不可搜索源保留切换源提示', async () => {
+        api.mockResolvedValue({class: [], list: []});
+        await start();
+        expect(wrapper.text()).toContain('此源暂未提供首页影片，请输入片名搜索。');
+        expect(button('搜索影片')).toBeDefined();
+        await wrapper.setProps({sources: [{...sources[0], searchable: false}]});
+        expect(button('搜索影片')).toBeUndefined();
+        expect(wrapper.text()).toContain('暂无影片');
+        wrapper.unmount(); document.body.innerHTML = '';
+        api.mockResolvedValue({class: [{type_id: 'movie', type_name: '电影'}], list: []});
+        await start('/watch?source=a&category=movie');
+        expect(button('搜索影片')).toBeUndefined();
+        expect(wrapper.text()).toContain('选择其他分类，或更换源。');
+    });
+    it('源的浏览提示只作为文本显示，拒绝将 HTML 注入页面', async () => {
+        api.mockResolvedValue({class: [], list: [], notice: '<img src=x onerror="alert(1)">请输入片名搜索。'});
+        await start();
+        expect(wrapper.text()).toContain('请输入片名搜索。');
+        expect(wrapper.find('img[src="x"]').exists()).toBe(false);
+        expect(wrapper.find('[onerror]').exists()).toBe(false);
     });
     it('空搜索打开输入提示，不触发重复首页请求；不可搜索源提示切换', async () => {
         await start(); api.mockClear();

@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -36,7 +37,7 @@ test('兼容代理模式的多层网盘 HLS 的清单、KEY/MAP、分片跨代�
     const app = await createApp({directory, seed: false, netdiskRequest: async options => ({status: 200, data: {state: true, data: options.url.includes('/snap') ? {count: 1, list: [{fc: '1', fid: '1', n: 'sample.mp4'}]} : {url: {url: media}}}})});
     t.after(() => app.close());
     await app.netdisk.accounts.save115(cookie, 'web');
-    const script = await app.store.saveScript('js', 'scope.js', 'var rule={};');
+    const script = await app.store.saveScript('dr3', 'scope.js', ruleFixture('var rule={};'));
     const source = app.store.state.instances.find(item => item.scriptId === script.id);
     const [reference] = await app.netdisk.files(source.id, 'https://115.com/s/fixture');
     const played = await app.inject({method: 'POST', url: `/watch/sources/${source.id}/play`, payload: {play: reference.reference, delivery: 'proxy'}});
@@ -64,54 +65,54 @@ test('兼容代理模式的多层网盘 HLS 的清单、KEY/MAP、分片跨代�
 for (const existing of [false, true]) test(`脚本${existing ? '更新' : '新建'}在 state 写入失败后恢复文件与历史`, async t => {
     const directory = await temporary(t), store = await new Store(directory).init({seed: false});
     if (existing) {
-        await store.saveScript('js', 'saved.js', 'var rule={title:"older"};');
-        await store.saveScript('js', 'saved.js', 'var rule={title:"old"};');
+        await store.saveScript('dr3', 'saved.js', ruleFixture('var rule={title:"older"};'));
+        await store.saveScript('dr3', 'saved.js', ruleFixture('var rule={title:"old"};'));
     }
     const state = JSON.stringify(store.state), diskState = await fs.readFile(store.stateFile);
-    const file = path.join(store.runtime, 'spider/js/saved.js');
+    const file = path.join(store.runtime, 'spider/js_dr3/saved.js');
     const persist = store.persist.bind(store);
     store.persist = async () => { throw Object.assign(new Error('simulated full disk'), {code: 'ENOSPC'}); };
-    await assert.rejects(store.saveScript('js', 'saved.js', 'var rule={title:"new"};'), /full disk/);
+    await assert.rejects(store.saveScript('dr3', 'saved.js', ruleFixture('var rule={title:"new"};')), /full disk/);
     assert.equal(JSON.stringify(store.state), state);
     assert.deepEqual(await fs.readFile(store.stateFile), diskState);
-    if (existing) assert.equal(await fs.readFile(file, 'utf8'), 'var rule={title:"old"};');
+    if (existing) assert.equal(await fs.readFile(file, 'utf8'), ruleFixture('var rule={title:"old"};'));
     else await assert.rejects(fs.access(file), {code: 'ENOENT'});
     const revisions = await fs.readdir(path.join(directory, 'revisions'), {recursive: true}).catch(() => []);
     assert.equal(revisions.filter(name => name.endsWith('.txt')).length, existing ? 1 : 0, '失败操作不增加或删除原历史版本');
-    if (existing) assert.equal(await fs.readFile(path.join(directory, 'revisions', revisions.find(name => name.endsWith('.txt'))), 'utf8'), 'var rule={title:"older"};');
+    if (existing) assert.equal(await fs.readFile(path.join(directory, 'revisions', revisions.find(name => name.endsWith('.txt'))), 'utf8'), ruleFixture('var rule={title:"older"};'));
     store.persist = persist;
-    await store.saveScript('js', 'saved.js', 'var rule={title:"retry"};');
-    assert.equal(await fs.readFile(file, 'utf8'), 'var rule={title:"retry"};', '写入恢复后可再次保存');
+    await store.saveScript('dr3', 'saved.js', ruleFixture('var rule={title:"retry"};'));
+    assert.equal(await fs.readFile(file, 'utf8'), ruleFixture('var rule={title:"retry"};'), '写入恢复后可再次保存');
 });
 
 for (const failure of ['file', 'state']) test(`混合 ZIP 在${failure}写入失败时整包撤回，原配置和文件保留`, async t => {
     const directory = await temporary(t), store = await new Store(directory).init({seed: false});
-    await store.saveScript('js', 'existing.js', 'var rule={title:"existing"};');
+    await store.saveScript('dr3', 'existing.js', ruleFixture('var rule={title:"existing"};'));
     const state = JSON.stringify(store.state), diskState = await fs.readFile(store.stateFile);
     const zip = new AdmZip();
-    const entries = {'first.js': 'var rule={title:"first"};', 'json/resource.json': '{"value":1}', 'spider/catLib/_helper.js': 'export default 1;', 'jx/parser.js': 'var jx={};', 'second.js': 'var rule={title:"second"};'};
-    for (const [name, code] of Object.entries(entries)) zip.addFile(name, Buffer.from(code));
+    const entries = {'first.js': 'var rule={title:"first"};', 'json/resource.json': '{"value":1}', 'spider/js_dr3/lib/_helper.js': 'export default 1;', 'jx/parser.js': 'export default {meta:{},rule:{}};', 'second.js': 'var rule={title:"second"};'};
+    for (const [name, code] of Object.entries(entries)) zip.addFile(name, Buffer.from(name==='first.js'||name==='second.js'?ruleFixture(code):code));
     const atomic = store.atomic.bind(store);
     store.atomic = async (file, ...args) => {
         if ((failure === 'file' && file.endsWith('/second.js')) || (failure === 'state' && file === store.stateFile)) throw new Error('simulated failed write');
         return atomic(file, ...args);
     };
-    await assert.rejects(importBundle(store, 'js', zip.toBuffer()), /failed write/);
+    await assert.rejects(importBundle(store, zip.toBuffer()), /failed write/);
     assert.equal(JSON.stringify(store.state), state);
     assert.deepEqual(await fs.readFile(store.stateFile), diskState);
-    assert.equal(await fs.readFile(path.join(store.runtime, 'spider/js/existing.js'), 'utf8'), 'var rule={title:"existing"};');
-    for (const name of Object.keys(entries)) await assert.rejects(fs.access(path.join(store.runtime, name.includes('/') ? name : 'spider/js/' + name)), {code: 'ENOENT'});
+    assert.equal(await fs.readFile(path.join(store.runtime, 'spider/js_dr3/existing.js'), 'utf8'), ruleFixture('var rule={title:"existing"};'));
+    for (const name of Object.keys(entries)) await assert.rejects(fs.access(path.join(store.runtime, name.includes('/') ? name : 'spider/js_dr3/' + name)), {code: 'ENOENT'});
 });
 test('ZIP 同名不同内容在写入前拒绝，不覆盖已有源或参数资源', async t => {
     const directory = await temporary(t), store = await new Store(directory).init({seed: false});
-    await store.saveScript('js', 'existing.js', 'var rule={title:"original"};');
+    await store.saveScript('dr3', 'existing.js', ruleFixture('var rule={title:"original"};'));
     const state = JSON.stringify(store.state), zip = new AdmZip();
-    zip.addFile('new.js', Buffer.from('var rule={};'));
-    zip.addFile('existing.js', Buffer.from('var rule={title:"replacement"};'));
-    await assert.rejects(importBundle(store, 'js', zip.toBuffer()), /冲突|已存在/);
+    zip.addFile('new.js', Buffer.from(ruleFixture('var rule={};')));
+    zip.addFile('existing.js', Buffer.from(ruleFixture('var rule={title:"replacement"};')));
+    await assert.rejects(importBundle(store, zip.toBuffer()), /冲突|已存在/);
     assert.equal(JSON.stringify(store.state), state);
-    assert.equal(await fs.readFile(path.join(store.runtime, 'spider/js/existing.js'), 'utf8'), 'var rule={title:"original"};');
-    await assert.rejects(fs.access(path.join(store.runtime, 'spider/js/new.js')), {code: 'ENOENT'});
+    assert.equal(await fs.readFile(path.join(store.runtime, 'spider/js_dr3/existing.js'), 'utf8'), ruleFixture('var rule={title:"original"};'));
+    await assert.rejects(fs.access(path.join(store.runtime, 'spider/js_dr3/new.js')), {code: 'ENOENT'});
 });
 test('首次并发 HTTP 网关请求都完成，FTP 与 WebDAV 健康检查均可用', {timeout: 6000}, async t => {
     const directory = await temporary(t), app = await createApp({directory, seed: false});

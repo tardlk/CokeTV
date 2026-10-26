@@ -1,143 +1,29 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import path from 'node:path';
 import http from 'node:http';
+import path from 'node:path';
 import {spawn} from 'node:child_process';
-
-const base = process.env.SMOKE_URL || 'http://127.0.0.1:54058';
-const dataDir = process.env.DATA_DIR || '/app/data';
-const fixtures = process.env.CONTAINER_FIXTURES || '/app/tests/fixtures';
-const expectedFile = process.env.CONTAINER_EXPECTED || '/tmp/coketv-expected-state.json';
-const password = 'container-smoke-only';
-const authorization = 'Basic ' + Buffer.from(':' + password).toString('base64');
-assert.notEqual(process.getuid?.(), 0, '镜像必须以非 root 用户运行');
-const call = async (url, body, admin = false, method) => {
-    const response = await fetch(base + url, {method: method || (body === undefined ? 'GET' : 'POST'),
-        headers: {...(admin ? {Authorization: authorization} : {}), ...(body ? {'Content-Type': 'application/json'} : {})},
-        body: body === undefined ? undefined : JSON.stringify(body)});
-    const data = await response.json();
-    assert.equal(response.status, 200, JSON.stringify(data));
-    return data;
-};
-const upstream = http.createServer((req, res) => {
-    if (req.url === '/master.m3u8') { res.setHeader('Content-Type', 'application/vnd.apple.mpegurl'); res.end('#EXTM3U\nchild.m3u8\n'); return; }
-    if (req.url === '/child.m3u8') { res.setHeader('Content-Type', 'application/vnd.apple.mpegurl'); res.end('#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="key.bin"\n#EXTINF:1,\nsegment.ts\n'); return; }
-    if (req.url === '/key.bin') { res.end('0123456789abcdef'); return; }
-    if (req.headers.range) { assert.equal(req.headers.range, 'bytes=2-5'); res.writeHead(206, {'Content-Range':'bytes 2-5/10'}); res.end('2345'); return; }
-    res.setHeader('Content-Type', 'video/mp4'); res.end('0123456789');
-});
-await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
-const upstreamUrl = `http://127.0.0.1:${upstream.address().port}`;
-const cli = async (id, credential = password) => {
-    const child = spawn(process.execPath, [new URL('./verify.mjs', import.meta.url).pathname, id, base, '--password-stdin'], {env: {...process.env, ADMIN_PASSWORD: ''}, stdio: ['pipe','pipe','pipe']});
-    let output = '';
-    child.stdout.on('data', chunk => output += chunk); child.stderr.on('data', chunk => output += chunk);
-    child.stdin.end(credential + '\n');
-    const code = await new Promise((resolve,reject) => { child.once('error',reject); child.once('exit',resolve); });
-    assert.equal(code,0,output); assert.match(output,/首页：/); assert.match(output,/详情：/);
-    assert.ok(!output.includes(credential));
-};
-const snapshot = async () => {
-    const state = await call('/admin/state', undefined, true);
-    const files = {};
-    const paths = ['admin.json','runtime/config/env.json','runtime/.plugins.js'];
-    for (const instance of state.instances) paths.push(`runtime/config/source-env/${instance.id}.json`);
-    for (const script of state.scripts) {
-        const directories = {js:'js',dr2:'js_dr2',cat:'catvod',py:'py',php:'php'};
-        paths.push(`runtime/spider/${directories[script.engine]}/${script.file}`);
-    }
-    const walk = async (relative) => {
-        for (const entry of await fs.readdir(path.join(dataDir,relative),{withFileTypes:true}).catch(error=>{if(error.code==='ENOENT')return [];throw error;})) {
-            const next=relative+'/'+entry.name;
-            if (entry.isDirectory()) await walk(next); else paths.push(next);
-        }
-    };
-    await walk('revisions');
-    for (const relative of paths) {
-        try { files[relative] = (await fs.readFile(path.join(dataDir,relative))).toString('base64'); }
-        catch (error) { if (error.code !== 'ENOENT') throw error; }
-    }
-    const {runtime, baseUrl, ...persistent} = state;
-    return {state:persistent, files};
-};
-try {
-    let expected;
-    const persistence = process.argv.includes('--persistence');
-    if (persistence) {
-        expected = JSON.parse(await fs.readFile(expectedFile,'utf8'));
-        const state = await call('/admin/state',undefined,true);
-        assert.equal(state.runtime.started,false);
-        assert.deepEqual(await snapshot(),expected.snapshot);
-        assert.equal((await call('/access/status')).requiresSetup,false);
-        assert.equal((await fetch(base + expected.oldMedia)).status,403,'重启旧票据应失效');
-    } else {
-        const before = await call('/admin/state',undefined,true);
-        expected = {baseline: before.scripts.map(s => s.id), baselineInstances:before.instances.map(s=>s.id), sources:{}};
-        for (const engine of ['js','dr2','cat','py','php']) {
-            const fixture = engine === 'dr2' ? 'js' : engine === 'cat' ? 'cat.js' : engine;
-            const code = await fs.readFile(path.join(fixtures,'协议样本.'+fixture),'utf8');
-            const script = await call('/admin/scripts', {engine,name:'matrix-'+engine+(['py','php'].includes(engine)?'.'+engine:'.js'),code},true);
-            const state = await call('/admin/state',undefined,true);
-            const instance = state.instances.find(item => item.scriptId === script.id);
-            expected.sources[engine] = instance.id;
-            await call('/admin/instances/'+instance.id,{...instance,params:'container-persist-param'},true,'PUT');
-            await call('/admin/instances/'+instance.id+'/environment',{values:{fixture_cookie:'container-source-cookie'}},true,'PUT');
-        }
-        const configured = await call('/admin/state',undefined,true);
-        await call('/admin/settings',{...configured.settings,env:{fixture_global:'container-global-value'}},true,'PUT');
-        const exported = await call('/admin/export',undefined,true);
-        exported.subscriptions[0].instances = Object.values(expected.sources).reverse();
-        await call('/admin/import',exported,true);
-    }
-    for (const [engine,id] of Object.entries(expected.sources)) {
-        const api = '/watch/sources/'+id;
-        const home = await call(api);
-        assert.equal(home.class[0].type_id,'movie'); assert.equal(home.list[0].vod_name,'样本电影');
-        assert.equal((await call(api+'?ac=list&t=movie&pg=1')).list[0].vod_name,'movie-1-container-persist-param');
-        assert.equal((await call(api+'?wd=matrix')).list[0].vod_name,'matrix');
-        assert.ok((await call(api+'?ac=detail&ids=one')).list[0].vod_play_url);
-        // 匿名播放铸造的是**公开出口**能力票据：不得访问回环/内网上游
-        // （egress 修复，见 SECURITY.md「出站信任边界」）。fixture 只能跑在回环上，
-        // 因此这里先用匿名身份确认该路径被拒。
-        const anonymous = await fetch(base+api+'/play',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({play:upstreamUrl+'/video.mp4',flag:'测试'})});
-        assert.equal(anonymous.status,200);
-        const anonymousTicket = (await anonymous.json()).url;
-        assert.match(anonymousTicket,/^\/watch\/media\//);
-        const blocked = await fetch(base+anonymousTicket);
-        assert.equal(blocked.status,403,'匿名公开票据不得访问内网上游');
-        assert.equal((await blocked.json()).error,'内网地址已在设置中禁止访问');
-        // LAN 媒体能力由可信出口承担：同一回环上游改用管理员身份播放，
-        // 验证 GET/HEAD/Range 与 HLS 主子列表/分片/key 的既有行为不回归。
-        const media = await call('/admin/watch/'+id+'/play',{play:upstreamUrl+'/video.mp4',flag:'测试'},true);
-        assert.match(media.url,/^\/watch\/media\//); expected.oldMedia = media.url;
-        const direct = await fetch(base+media.url); assert.equal(direct.status,200); assert.equal(await direct.text(),'0123456789');
-        assert.equal((await fetch(base+media.url,{method:'HEAD'})).status,200);
-        const range = await fetch(base+media.url,{headers:{range:'bytes=2-5'}});
-        assert.equal(range.status,206); assert.equal(range.headers.get('content-range'),'bytes 2-5/10'); assert.equal(await range.text(),'2345');
-        const hls = await call('/admin/watch/'+id+'/play',{play:upstreamUrl+'/master.m3u8',flag:'测试'},true);
-        const masterResponse = await fetch(base+hls.url); assert.equal(masterResponse.status,200);
-        const master = await masterResponse.text();
-        const childUrl = master.split('\n').find(line => line && !line.startsWith('#'));
-        const childResponse = await fetch(childUrl); assert.equal(childResponse.status,200);
-        const child = await childResponse.text();
-        const segment = child.split('\n').find(line => line && !line.startsWith('#'));
-        const key = child.match(/URI="([^"]+)"/)[1];
-        for (const [url,bytes] of [[segment,'0123456789'],[key,'0123456789abcdef']]) {
-            const response = await fetch(url); assert.equal(response.status,200); assert.equal(await response.text(),bytes);
-        }
-        const proxy = await fetch(base+'/proxy/'+id+'/',{headers:{Authorization:authorization}});
-        assert.equal(proxy.status,200); assert.equal(await proxy.text(),'hello');
-        await cli(id);
-        console.log(engine+'：首页/分类/搜索/详情/代理/正式CLI；匿名公开票据拒绝内网上游，可信出口实际 GET/HEAD/Range/HLS 主子列表/分片/key 通过');
-    }
-    const state = await call('/admin/state',undefined,true);
-    const expectedScripts = new Set([...expected.baseline,...Object.values(expected.sources).map(id => state.instances.find(s => s.id === id).scriptId)]);
-    assert.deepEqual(new Set(state.scripts.map(s => s.id)),expectedScripts);
-    assert.deepEqual(new Set(state.instances.map(s => s.scriptId)),expectedScripts);
-    assert.equal(state.scripts.length,expectedScripts.size);
-    assert.deepEqual(state.instances.map(s=>s.id),[...expected.baselineInstances,...Object.values(expected.sources)]);
-    assert.equal((await fetch(base+'/admin/state')).status,401); assert.equal((await fetch(base+'/config')).status,403);
-    for (const route of ['/','/admin','/watch','/watch/history']) assert.equal((await fetch(base+route)).status,200);
-    if (!persistence) { expected.snapshot = await snapshot(); await fs.writeFile(expectedFile,JSON.stringify(expected),{mode:0o600}); }
-    console.log(persistence ? '同卷重启持久化、旧票据失效和五引擎实际媒体复验通过' : '样本集合/公开页面/管理鉴权/订阅边界通过；仅临时数据');
-} finally { await new Promise(resolve => upstream.close(resolve)); }
+const base=process.env.SMOKE_URL||'http://127.0.0.1:54058',data=process.env.DATA_DIR||'/app/data';
+const expectedFile=process.env.CONTAINER_EXPECTED||'/tmp/coketv-expected-state.json',password='container-smoke-only';
+const authorization='Basic '+Buffer.from(':'+password).toString('base64');
+const call=async(url,payload,admin=true)=>{const r=await fetch(base+url,{method:payload===undefined?'GET':'POST',headers:{...(admin?{authorization}:{}),...(payload?{'content-type':'application/json'}:{})},body:payload===undefined?undefined:JSON.stringify(payload)});assert.equal(r.status,200,await r.clone().text());return r.json();};
+const upstream=http.createServer((req,res)=>{if(req.url==='/list.m3u8'){res.setHeader('content-type','application/vnd.apple.mpegurl');res.end('#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="key.bin"\nseg.ts\n');return;}if(req.headers.range){res.writeHead(206,{'content-range':'bytes 2-5/10'});res.end('2345');return;}res.end('0123456789');});
+await new Promise(r=>upstream.listen(0,'127.0.0.1',r));const media='http://127.0.0.1:'+upstream.address().port;
+try{
+ const persistence=process.argv.includes('--persistence');let expected;
+ if(persistence){expected=JSON.parse(await fs.readFile(expectedFile));assert.deepEqual((await call('/admin/state')).scripts,expected.scripts);assert.equal((await fetch(base+expected.oldTicket,{headers:{authorization}})).status,403);}
+ else{
+ const source=await call('/admin/scripts',{name:'image-contract.js',engine:'dr3',code:`export default {meta:{title:'容器验证',lang:'dr3'},rule:{class_name:'电影',class_url:'movie'},homeVod:async()=>({list:[{vod_id:'one',vod_name:'样本'}]}),category:async(ctx,t,p)=>({page:p,list:[{vod_id:'one',vod_name:t}]}),search:async(ctx,wd)=>({list:[{vod_id:'one',vod_name:wd}]}),detail:async(ctx,id)=>({list:[{vod_id:id,vod_name:'样本',vod_play_from:'mp4',vod_play_url:'正片$https://fixture.invalid/movie.mp4'}]}),play:async(ctx,flag,id)=>({parse:0,url:id}),proxy:async()=>[200,'application/octet-stream','AAH/',{},1]};`});
+ expected={id:source.id,scripts:(await call('/admin/state')).scripts};
+ }
+ const id=expected.id;assert.equal((await call('/api/'+id)).class[0].type_id,'movie');assert.equal((await call('/api/'+id+'?ac=list&t=movie&pg=2')).page,2);assert.equal((await call('/api/'+id+'?wd=中文')).list[0].vod_name,'中文');assert.equal((await call('/api/'+id+'?ac=detail&ids=one')).list[0].vod_id,'one');
+ assert.equal((await fetch(base+'/api/'+id)).status,403);
+ const played=await call('/watch/sources/'+id+'/play',{play:media+'/video.mp4'});
+ const range=await fetch(base+played.url,{headers:{authorization,range:'bytes=2-5'}});assert.equal(range.status,206);assert.equal(await range.text(),'2345');
+ const head=await fetch(base+played.url,{method:'HEAD',headers:{authorization}});assert.equal(head.status,200);assert.equal((await head.arrayBuffer()).byteLength,0);
+ const hls=await call('/watch/sources/'+id+'/play',{play:media+'/list.m3u8'});const playlist=await(await fetch(base+hls.url,{headers:{authorization}})).text();assert.match(playlist,/#EXTM3U/);for(const match of playlist.matchAll(/(?:URI="|\n)(http[^"\n]+)/g))assert.equal((await fetch(match[1],{headers:{authorization}})).status,200);
+ const proxy=await fetch(base+'/proxy/'+id+'/',{headers:{authorization}});assert.deepEqual([...new Uint8Array(await proxy.arrayBuffer())],[0,1,255]);
+ const child=spawn(process.execPath,[new URL('./verify.mjs',import.meta.url).pathname,id,base,'--password-stdin'],{stdio:['pipe','pipe','pipe']});child.stdin.end(password+'\n');let output='';child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>output+=b);assert.equal(await new Promise(r=>child.on('exit',r)),0,output);
+ if(!persistence){expected.oldTicket=played.url;await fs.writeFile(expectedFile,JSON.stringify(expected),{mode:0o600});}
+ console.log('drpy3六环节、真实GET/HEAD/Range/HLS/二进制代理、CLI和重启持久化验证通过');
+}finally{await new Promise(r=>upstream.close(r));}

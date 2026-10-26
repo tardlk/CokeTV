@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -39,9 +40,9 @@ test('兼容代理模式：网盘账号只在后台管理；源详情自动展�
         assert.equal(connected.statusCode, 200, connected.body);
         assert.equal(connected.body.includes('private-netdisk-cookie'), false);
         const sourceCode = `var rule={title:'网盘测试',host:'https://fixture.invalid',二级:async function(){return {vod_id:this.orId,vod_name:'样本',vod_play_from:'115$$$普通线路',vod_play_url:'分享$push://https%3A%2F%2F115.com%2Fs%2Ffixture%3Fpassword%3DAB12$$$普通$${mediaURL}'}},play_parse:true,lazy:async function(flag,id){if(id.startsWith('coketv-netdisk:'))throw Error('不应交回源');return {parse:0,url:id}}};`;
-        const script = await app.store.saveScript('js', '网盘测试.js', sourceCode);
+        const script = await app.store.saveScript('dr3', '网盘测试.js', ruleFixture(sourceCode));
         const source = app.store.state.instances.find(item => item.scriptId === script.id).id;
-        const otherScript = await app.store.saveScript('js', '另一源.js', sourceCode);
+        const otherScript = await app.store.saveScript('dr3', '另一源.js', ruleFixture(sourceCode));
         const other = app.store.state.instances.find(item => item.scriptId === otherScript.id).id;
         app.store.state.subscriptions.push({id: 'netdisk-sub', name: '网盘订阅', token: 'netdisk-token', enabled: true, instances: [source]});
         const before = JSON.stringify(app.store.state);

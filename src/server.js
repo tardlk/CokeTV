@@ -1,3 +1,4 @@
+import {SOURCE_TIMEOUT} from './runtime-defaults.js';
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 import formbody from '@fastify/formbody';
@@ -5,33 +6,28 @@ import staticPlugin from '@fastify/static';
 import fs from 'fs/promises';
 import path from 'path';
 import net from 'net';
-import {execFile} from 'child_process';
-import {promisify} from 'util';
 import {pathToFileURL} from 'url';
 import dotenv from 'dotenv';
 import {Store, token} from './store.js';
 import {Runner} from './runner.js';
-import {ROOT, ENGINE_DIRS, EXTENSIONS, inside, validFilename} from './paths.js';
+import {ROOT, ENGINE_DIRS, EXTENSIONS, sourceAvailable, inside, validFilename} from './paths.js';
 import {createAuth} from './auth.js';
 import {buildSubscription, authorizedSubscription, uniqueSubscriptionByToken} from './subscriptions.js';
-import {registerDr2Routes} from './dr2.js';
 import {buildContext} from './context.js';
 import {localToken, rewritePlaylist, streamMedia} from './media.js';
-import {syntaxCheck, importBundle, decodeSource, detectSourceEngine} from './sources.js';
+import {syntaxCheck, importBundle} from './sources.js';
 import {sourceTemplate} from './source-templates.js';
 import {createPlaybackSessions, playbackUrl, playbackHeaders, mediaType, childEgress, createChildMint} from './playback.js';
 import {assertTargetAllowed} from './ssrf.js';
 import {guardedHttp, httpResponseLimit} from './outbound.js';
 import {decodeMediaTarget, decodeMediaHeaders, unwrapMediaProxy} from './media-params.js';
-import {createTvboxImporter} from './tvbox-import.js';
 import {registerCatSubscriptions} from './cat-subscriptions.js';
 import {NetdiskService} from './netdisk/service.js';
 import {createContent} from './content.js';
 import {registerEmby} from './emby/index.js';
-import {checkUnsafeRequestOrigin} from './origin.js';
+import {checkUnsafeRequestOrigin, requestOrigin} from './origin.js';
 
 dotenv.config();
-const exec = promisify(execFile);
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
 const checkString = (value, max = 200) => typeof value === 'string' && value.trim() && value.length <= max;
 function validateEnvironment(values) {
@@ -43,13 +39,12 @@ function validateEnvironment(values) {
     }
 }
 
-export async function createApp({directory, seed = true, netdiskRequest, guangyaRequest} = {}) {
-    const store = await new Store(directory).init({seed});
+export async function createApp({directory, netdiskRequest, guangyaRequest} = {}) {
+    const store = await new Store(directory).init();
     const runner = new Runner(store);
     const auth = await createAuth(store);
     const netdisk = await NetdiskService.create(store.directory, netdiskRequest, guangyaRequest);
     const playback = createPlaybackSessions();
-    const tvboxImporter = createTvboxImporter(store);
     // 派生票据（HLS 子清单/KEY/MAP/分片、源代理目标）只能继承父票据的 egress，
     // 永不提升：公开票据派生出的所有子能力仍是 public。
     const proxyMint = (headers, scope = {}) => createChildMint(playback, headers, scope);
@@ -98,7 +93,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         if (!ADMIN_ROUTES.test(route)) return;
         // 所有 /admin/* 的非安全方法统一做跨站来源校验（netdisk/emby 不再各自实现）。
         // 首次 setup 也覆盖：避免设密页被跨站自动提交，但不改变 first-writer 初始化模型。
-        checkUnsafeRequestOrigin(request, store.state.settings.publicUrl);
+        checkUnsafeRequestOrigin(request);
         if (route === '/admin/access/setup') return;
         const ip = request.ip || request.raw?.socket?.remoteAddress || 'local';
         // /admin/* 一并限流：密码校验（scrypt）再便宜也不该被未鉴权请求无限触发。
@@ -112,7 +107,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
     app.post('/admin/access/setup', async request => auth.setup(request));
     app.addHook('onClose', async () => runner.close());
     netdisk.register(app);
-    const baseUrl = request => store.state.settings.publicUrl.replace(/\/$/, '') || `${request.protocol}://${request.headers.host}`;
+    const baseUrl = requestOrigin;
     const contextFor = (request, instance, script, extra) => ({...buildContext(baseUrl(request), instance, script, extra), sourceEnvPath: store.state.instances.some(s => s.id === instance.id) ? store.sourceEnvPath(instance.id) : null, localPort: app.server.address()?.port || Number(process.env.PORT) || 54058});
     // 默认出口取最严的 publicTargetGuard：任何忘记显式传 guard 的调用点都必须
     // 退化为公开出口，而不是悄悄获得 trusted。可信调用点显式传 trustedTargetGuard。
@@ -231,7 +226,8 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         throw fail('媒体访问凭证无效或已过期', 403);
     };
     const sourceFor = request => {
-        const engine = Object.keys(ENGINE_DIRS).includes(request.query.do) ? request.query.do : 'js';
+        if (request.query.do && request.query.do !== 'dr3') throw fail('只支持 drpy3 源', 422);
+        const engine = 'dr3';
         const result = store.resolve(request.params.module, engine);
         if (request.query.extend) {
             const instance = store.state.instances.find(s => s.scriptId === result.script.id && s.enabled && s.params === request.query.extend);
@@ -276,10 +272,10 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         if (rateBuckets.size > 20000) rateBuckets.clear();
         if (!allowRequest(`public:${request.ip || request.raw?.socket?.remoteAddress || 'local'}`)) reply.code(429).send({error: '请求过于频繁，请稍后再试'});
     });
-    app.get('/health', async () => ({ok: true, version: '0.1.0'}));
-    app.get('/admin/health', async () => ({ok: true, version: '0.1.0', memory: process.memoryUsage(), runtime: runner.status()}));
-    app.get('/admin/state', async request => { await store.refreshEnvironment(); return {...store.state, runtime: runner.status(), baseUrl: baseUrl(request)}; });
-    app.get('/watch/sources', async () => store.state.instances.filter(instance => instance.enabled).flatMap(instance => {
+    app.get('/health', async () => ({ok: true, version: '0.2.0'}));
+    app.get('/admin/health', async () => ({ok: true, version: '0.2.0', memory: process.memoryUsage(), runtime: runner.status()}));
+    app.get('/admin/state', async () => { await store.refreshEnvironment(); return {...store.state, runtime: runner.status()}; });
+    app.get('/watch/sources', async () => store.state.instances.filter(instance => sourceAvailable(store.state, instance)).flatMap(instance => {
         const script = store.state.scripts.find(item => item.id === instance.scriptId);
         return script ? [{id: instance.id, name: instance.name, enabled: true, searchable: instance.searchable, filterable: instance.filterable, script: {engine: script.engine}}] : [];
     }));
@@ -330,7 +326,6 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
     }});
     await registerEmby(app, {store, content, baseUrl, serveMedia, isNetdiskCurrent: revision => netdisk.current(revision), targetGuard});
     app.get('/admin/logs', async request => runner.logs.filter(entry => !request.query.source || entry.source === request.query.source).slice(-150));
-    app.post('/admin/scan', async () => ({added: await store.mutate(() => store.scan())}));
     app.get('/admin/instances/:id/environment', async request => {
         await store.refreshEnvironment();
         return {values: await store.readSourceEnvironment(request.params.id), defaults: store.state.settings.env};
@@ -348,11 +343,11 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         if (!script) throw fail('脚本不存在', 404);
         let revisions = [];
         try { revisions = (await fs.readdir(path.join(store.directory, 'revisions', script.id))).sort().reverse().slice(0, 20); } catch {}
-        return {...script, code: await decodeSource(script.engine, await fs.readFile(store.scriptPath(script), 'utf8')), revisions};
+        return {...script, code: await fs.readFile(store.scriptPath(script), 'utf8'), revisions};
     });
     app.post('/admin/scripts/create', async request => {
-        const {type, name} = request.body || {};
-        if (!['js', 'py', 'php'].includes(type) || !checkString(name, 176)) throw fail('请选择类型并填写脚本名');
+        const {type = 'dr3', name} = request.body || {};
+        if (type !== 'dr3' || !checkString(name, 176)) throw fail('请选择类型并填写脚本名');
         const scriptName = name.trim();
         const file = scriptName + EXTENSIONS[type];
         validFilename(type, file);
@@ -361,12 +356,22 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         return store.saveScript(type, file, code, {createOnly: true});
     });
     app.post('/admin/scripts', async request => {
-        const {engine, name, code} = request.body || {};
+        const {engine = 'dr3', name, code} = request.body || {};
         validFilename(engine, name);
         if (typeof code !== 'string' || !code.trim()) throw fail('脚本内容不能为空');
         await syntaxCheck(engine, name, code, store.state.settings);
         const result = await store.saveScript(engine, name, code);
         runner.reset('脚本已更新');
+        return result;
+    });
+    app.post('/admin/scripts/:id/migrate', async request => {
+        const script = store.state.scripts.find(s => s.id === request.params.id);
+        if (!script) throw fail('脚本不存在', 404);
+        const {code, name = script.file.replace(/\.[^.]+$/, '') + '.js'} = request.body || {};
+        if (typeof code !== 'string' || !code.trim()) throw fail('请填写 drpy3 脚本');
+        await syntaxCheck('dr3', name, code, store.state.settings);
+        const result = await store.migrateScript(script.id, name, code);
+        runner.reset('源已迁移到 drpy3');
         return result;
     });
     app.post('/admin/scripts/:id/restore', async request => {
@@ -380,17 +385,16 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         return {ok: true};
     });
     app.post('/admin/upload', async request => {
-        let engine = 'auto'; let file;
+        const engine = 'dr3'; let file;
         for await (const part of request.parts()) {
             if (part.type === 'file') file = {name: part.filename, bytes: await part.toBuffer()};
-            else if (part.fieldname === 'engine') engine = part.value;
+            else if (part.fieldname === 'engine' && part.value !== engine) throw fail('只支持 drpy3 源');
         }
         if (!file) throw fail('请选择文件');
         let result;
-        if (/\.zip$/i.test(file.name)) result = await importBundle(store, engine, file.bytes);
+        if (/\.zip$/i.test(file.name)) result = await importBundle(store, file.bytes);
         else {
             const code = file.bytes.toString('utf8');
-            if (engine === 'auto') engine = await detectSourceEngine(file.name, code);
             validFilename(engine, file.name, {library: true});
             await syntaxCheck(engine, file.name, code, store.state.settings);
             if (file.name.startsWith('_')) {
@@ -400,31 +404,18 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         }
         runner.reset('源包已更新'); return result;
     });
-    app.post('/admin/import/tvbox/preview', async request => tvboxImporter.preview(request.body?.url));
-    app.post('/admin/import/tvbox', async request => {
-        const result = await tvboxImporter.commit(request.body);
-        if (result.imported) runner.reset('TVBox 源已导入');
-        return result;
-    });
     const instanceFields = body => {
         if (!checkString(body.name)) throw fail('站点名称不能为空');
         if (typeof body.params !== 'string' || body.params.length > 50000) throw fail('参数必须为文本，且小于 50KB');
         return {name: body.name.trim(), params: body.params, enabled: !!body.enabled, searchable: !!body.searchable,
             filterable: !!body.filterable};
     };
-    app.post('/admin/instances', async request => {
-        const body = request.body || {}; const fields = instanceFields(body);
-        if (!store.state.scripts.some(s => s.id === body.scriptId)) throw fail('脚本不存在');
-        return store.mutate(state => {
-            const instance = {id: token().slice(0, 16), scriptId: body.scriptId, ...fields};
-            state.instances.push(instance); return instance;
-        });
-    });
     app.put('/admin/instances/:id', async request => {
         const fields = instanceFields(request.body || {});
         const result = await store.mutate(state => {
             const instance = state.instances.find(s => s.id === request.params.id);
             if (!instance) throw fail('站点不存在', 404);
+            if (fields.enabled && instance.migrationRequired) throw fail('请先迁移到 drpy3');
             Object.assign(instance, fields); return instance;
         });
         runner.reset('站点参数已更新'); return result;
@@ -432,19 +423,17 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
     app.post('/admin/instances/batch', async request => {
         const {ids, enabled} = request.body || {};
         if (!Array.isArray(ids) || typeof enabled !== 'boolean') throw fail('批量参数无效');
-        await store.mutate(state => { for (const instance of state.instances) if (ids.includes(instance.id)) instance.enabled = enabled; });
+        await store.mutate(state => { for (const instance of state.instances) if (ids.includes(instance.id)) { if (enabled && instance.migrationRequired) throw fail('请先迁移到 drpy3'); instance.enabled = enabled; } });
         return {ok: true};
     });
-    app.delete('/admin/instances/batch', async request => {
-        const ids = request.body?.ids;
-        if (!Array.isArray(ids) || !ids.length || ids.length > 10000 || ids.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(id))) throw fail('请选择需要删除的源');
-        const result = await store.deleteInstances(ids, {deleteScripts: request.body?.deleteScripts ?? false});
-        if (result.deleted) runner.reset('所选源已删除');
+    app.delete('/admin/scripts/batch', async request => {
+        const result = await store.deleteScripts(request.body?.ids);
+        if (result.deletedScripts) runner.reset('脚本及关联源已删除');
         return {ok: true, ...result};
     });
-    app.delete('/admin/instances/:id', async request => {
-        const result = await store.deleteInstances([request.params.id], {deleteScripts: request.body?.deleteScripts ?? false});
-        if (result.deleted) runner.reset('源已删除');
+    app.delete('/admin/scripts/:id', async request => {
+        const result = await store.deleteScripts([request.params.id]);
+        if (result.deletedScripts) runner.reset('脚本及关联源已删除');
         return {ok: true, ...result};
     });
     app.post('/admin/verify/:id', async request => {
@@ -501,20 +490,9 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
     });
     app.put('/admin/settings', async request => {
         const value = request.body || {};
-        if (value.publicUrl && !/^https?:\/\/[^\s]+$/.test(value.publicUrl)) throw fail('对外地址须为 http:// 或 https:// 地址');
-        if (!Number.isInteger(value.timeout) || value.timeout < 1000 || value.timeout > 300000) throw fail('超时范围为 1–300 秒');
-        if (!checkString(value.pythonPath, 1000) || !checkString(value.phpPath, 1000)) throw fail('解释器路径不能为空');
-        if (!value.env || Array.isArray(value.env) || typeof value.env !== 'object' || !Array.isArray(value.plugins) || !Array.isArray(value.parses) || !Array.isArray(value.lives)) throw fail('运行配置须为合法 JSON 对象/数组');
-        await store.mutate(state => { state.settings = {publicUrl: value.publicUrl || '', timeout: value.timeout, pythonPath: value.pythonPath, phpPath: value.phpPath, browserPath: value.browserPath || '', env: value.env, plugins: value.plugins, parses: value.parses, lives: value.lives, jsonPublic: value.jsonPublic === true, allowPrivateTargets: value.allowPrivateTargets !== false, targetAllowlist: Array.isArray(value.targetAllowlist) ? value.targetAllowlist.filter(item => typeof item === 'string').slice(0, 200) : (state.settings.targetAllowlist || [])}; });
+        if (!value.env || Array.isArray(value.env) || typeof value.env !== 'object' || !Array.isArray(value.parses) || !Array.isArray(value.lives)) throw fail('运行配置须为合法 JSON 对象/数组');
+        await store.mutate(state => { state.settings = {env: value.env, parses: value.parses, lives: value.lives, jsonPublic: value.jsonPublic === undefined ? state.settings.jsonPublic === true : value.jsonPublic === true, allowPrivateTargets: value.allowPrivateTargets === undefined ? state.settings.allowPrivateTargets !== false : value.allowPrivateTargets !== false, targetAllowlist: Array.isArray(value.targetAllowlist) ? value.targetAllowlist.filter(item => typeof item === 'string').slice(0, 200) : (state.settings.targetAllowlist || [])}; });
         await store.syncEnvironment(); runner.reset('运行配置已更新'); return {ok: true};
-    });
-    app.get('/admin/dependencies', async () => {
-        const probe = async (file, args) => {
-            try { const {stdout, stderr} = await exec(file, args, {timeout: 5000}); return {ok: true, version: (stdout || stderr).split('\n')[0]}; }
-            catch (error) { return {ok: false, error: error.code === 'ENOENT' ? '未找到可执行文件' : error.message}; }
-        };
-        const settings = store.state.settings;
-        return {node: {ok: true, version: process.version}, python: await probe(settings.pythonPath, ['--version']), php: await probe(settings.phpPath, ['-v']), runtime: runner.status()};
     });
     app.get('/admin/export', async (_, reply) => {
         await store.refreshEnvironment();
@@ -523,7 +501,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
     });
     app.post('/admin/import', async request => {
         const value = request.body;
-        if (value?.version !== 1 || !Array.isArray(value.instances) || !Array.isArray(value.subscriptions)) throw fail('管理配置格式不正确');
+        if (![1, 2].includes(value?.version) || !Array.isArray(value.instances) || !Array.isArray(value.subscriptions)) throw fail('管理配置格式不正确');
         for (const item of value.instances) {
             instanceFields(item);
             if (!/^[a-zA-Z0-9_-]{1,100}$/.test(item.id || '') || !store.state.scripts.some(s => s.id === item.scriptId)) throw fail('导入配置引用了不存在的脚本，请先导入源包');
@@ -539,7 +517,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
             }
         }
         await store.mutate(async state => {
-            state.instances = value.instances; state.subscriptions = value.subscriptions;
+            state.instances = value.instances.map(instance => { const old = state.instances.find(i => i.id === instance.id); const script = state.scripts.find(s => s.id === instance.scriptId); return script.engine === 'dr3' ? {...instance, migrationRequired: false} : {...instance, enabled: false, migrationRequired: true, preMigrationEnabled: old?.preMigrationEnabled ?? instance.enabled}; }); state.subscriptions = value.subscriptions;
             for (const [id, variables] of Object.entries(value.environments || {})) {
                 const file = store.sourceEnvPath(id);
                 await store.atomic(file, JSON.stringify(variables, null, 2), {mode: 0o600}); await fs.chmod(file, 0o600);
@@ -561,7 +539,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         return buildSubscription(store.state, sub, baseUrl(request));
     };
     app.get('/tvbox/:credential', shortSubscriptionHandler);
-    registerDr2Routes(app, store);
+
     app.get('/s/:credential', shortSubscriptionHandler);
     app.get('/config', subscriptionHandler); app.get('/config/1', subscriptionHandler);
     app.route({method: ['GET', 'POST'], url: '/api/:module', handler: async request => {
@@ -638,7 +616,7 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
         if (!(await auth.isAdmin(request) || request.headers['x-drpy-runtime'] === runner.internalKey)) throw fail('HTTP 辅助接口仅供管理员和源内部调用', 403);
         const {url, method = 'GET', headers = {}, params = {}, data, responseType, maxRedirects} = request.body || {};
         if (!/^https?:/.test(url || '')) throw fail('HTTP 请求地址无效');
-        const response = await guardedHttp({url, method, headers, params, data, responseType, maxRedirects, timeout: store.state.settings.timeout, maxContentLength: httpResponseLimit()}, trustedTargetGuard);
+        const response = await guardedHttp({url, method, headers, params, data, responseType, maxRedirects, timeout: SOURCE_TIMEOUT, maxContentLength: httpResponseLimit()}, trustedTargetGuard);
         return reply.code(response.status).send({status: response.status, headers: response.headers, data: response.data});
     });
     app.get('/req/*', async (request, reply) => {
@@ -669,10 +647,10 @@ export async function createApp({directory, seed = true, netdiskRequest, guangya
     app.get('/parse/:jx', async request => {
         const sub = await authorize(request);
         const name = request.params.jx;
-        validFilename('js', `${name}.js`);
+        validFilename('dr3', `${name}.js`);
         const file = inside(store.runtime, `jx/${name}.js`);
-        const env = contextFor(request, {id: name, params: request.query.extend || ''}, {engine: 'js', file: `${name}.js`}, {token: sub?.token});
-        return runner.run({engine: 'js', file, instanceId: name}, request.query, env, 'parse');
+        const env = contextFor(request, {id: name, params: request.query.extend || ''}, {engine: 'dr3', file: `${name}.js`}, {token: sub?.token});
+        return runner.run({engine: 'dr3', file, instanceId: name}, request.query, env, 'parse');
     });
 
     // H1：data/runtime/json/ 里的参数文件可能含 Cookie/Token，默认不再匿名可读。

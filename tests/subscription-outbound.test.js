@@ -1,3 +1,4 @@
+import {ruleFixture} from './helpers/drpy3-fixture.js';
 import {test, before, after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -25,11 +26,10 @@ before(async () => {
     runtimeKey = app.runner.internalKey;
     token = app.store.state.subscriptions[0].token;
     const code = "var rule={title:'出口样本',host:'https://fixture.invalid',class_parse:async()=>({class:[]}),推荐:async()=>setResult([]),play_parse:true,lazy:async(a,b)=>({parse:0,url:b})};";
-    const own = await app.store.saveScript('js', '出口样本-own.js', code);
-    const other = await app.store.saveScript('js', '出口样本-other.js', code);
-    const create = scriptId => app.inject({method: 'POST', url: '/admin/instances', headers: {authorization}, payload: {name: `站点-${scriptId}`, scriptId, params: '', enabled: true, searchable: true, filterable: false}});
-    ownInstance = (await create(own.id)).json().id;
-    otherInstance = (await create(other.id)).json().id;
+    const own = await app.store.saveScript('dr3', '出口样本-own.js', ruleFixture(code));
+    const other = await app.store.saveScript('dr3', '出口样本-other.js', ruleFixture(code));
+    ownInstance = own.id;
+    otherInstance = other.id;
     // 只把 ownInstance 放进订阅：用于验证「自己订阅的源 vs 别人的源」。
     await app.store.mutate(state => { state.subscriptions[0].instances = [ownInstance]; });
     await app.listen({host: '127.0.0.1', port: 0});
@@ -100,8 +100,8 @@ test('订阅出口豁免 CokeTV 自身 origin，可进入既有代理链；但�
 });
 
 test('订阅只能访问自己订阅内的源；订阅外的源 403', async () => {
-    assert.equal((await app.inject(`/api/${ownInstance}?token=${token}&do=js`)).statusCode, 200, '订阅内的源应可用');
-    assert.equal((await app.inject(`/api/${otherInstance}?token=${token}&do=js`)).statusCode, 403, '订阅外的源必须拒绝');
+    assert.equal((await app.inject(`/api/${ownInstance}?token=${token}&do=dr3`)).statusCode, 200, '订阅内的源应可用');
+    assert.equal((await app.inject(`/api/${otherInstance}?token=${token}&do=dr3`)).statusCode, 403, '订阅外的源必须拒绝');
     // 管理员不受订阅归属限制。
-    assert.equal((await app.inject({url: `/api/${otherInstance}?do=js`, headers: {authorization}})).statusCode, 200);
+    assert.equal((await app.inject({url: `/api/${otherInstance}?do=dr3`, headers: {authorization}})).statusCode, 200);
 });

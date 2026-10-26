@@ -1,25 +1,15 @@
-import {pathToFileURL} from 'url';
-import path from 'path';
-import net from 'net';
-import http from 'http';
-import {spawn} from 'child_process';
 import util from 'util';
-import {access} from 'fs/promises';
+import http from 'node:http';
 import {sourceOperation} from './source-operation.js';
 
 const root = process.env.ROOT;
 process.chdir(root);
-const importRuntime = file => import(pathToFileURL(path.join(root, file)).href);
-await importRuntime('utils/esm-register.mjs');
-const {withSourceEnvironment, redactSourceSecrets} = await importRuntime('utils/source-env.js');
-const engines = new Map();
-let python = null;
-let pythonReady = null;
+const {withSourceEnvironment, redactSourceSecrets} = await import('./host/utils/source-env.js');
+let drpy3Engine = null;
 let currentSource = null;
-let wsServer = null;
-let wsPort = null;
 let gateway = null;
 let gatewayStarting = null;
+let wsServer = null;
 
 async function startGateway() {
     if (gateway) return gateway.server.address().port;
@@ -32,7 +22,7 @@ async function createGateway() {
     const server = Fastify({logger: false});
     const options = {rootDir: root, PORT: Number(process.env.DRPY_HTTP_PORT) || 54058};
     for (const name of ['webdav-proxy', 'ftp-proxy']) {
-        const controller = await importRuntime(`controllers/${name}.js`);
+        const controller = await import(`./host/controllers/${name}.js`);
         server.register(controller.default, options);
     }
     try { await server.listen({host: '127.0.0.1', port: 0}); }
@@ -41,94 +31,26 @@ async function createGateway() {
     return server.server.address().port;
 }
 
-const report = () => process.send?.({kind: 'stats', memory: process.memoryUsage(), engines: [...engines.keys()], pythonPid: python?.pid || null});
+const report = () => process.send?.({kind: 'stats', memory: process.memoryUsage(), engines: drpy3Engine ? ['dr3'] : []});
 setInterval(report, 10000).unref();
 for (const level of ['log', 'warn', 'error']) console[level] = (...args) => process.send?.({kind: 'log', level: level === 'log' ? 'info' : level, source: currentSource, message: redactSourceSecrets(util.format(...args)).slice(0, 8192)});
 
-let pythonFailures = 0;
-async function startPython() {
-    // 守护进程可能已退出（源调 os._exit、段错误、被 kill）：命中缓存前先确认进程仍在。
-    if (pythonReady && python && python.exitCode === null && !python.killed) return pythonReady;
-    if (pythonReady || python) { python = null; pythonReady = null; }
-    pythonReady = (async () => {
-        python = spawn(process.env.PYTHON_PATH || 'python3', [path.join(root, 'spider/py/core/t4_daemon.py')], {
-            cwd: path.join(root, 'spider/py'), env: process.env, stdio: ['ignore', 'pipe', 'pipe'],
-        });
-        let failure;
-        python.once('error', error => { failure = error; });
-        python.once('exit', code => { failure = new Error(`Python 服务退出 (${code})`); python = null; pythonReady = null; });
-        for (const output of [python.stdout, python.stderr]) output.on('data', bytes => console.log(bytes.toString().trim()));
-        const end = Date.now() + 10000;
-        while (Date.now() < end) {
-            if (failure) throw failure;
-            const ready = await new Promise(resolve => {
-                const socket = net.connect(Number(process.env.DRPY_PY_PORT), '127.0.0.1');
-                socket.once('connect', () => { socket.destroy(); resolve(true); });
-                socket.once('error', () => resolve(false));
-                socket.setTimeout(250, () => { socket.destroy(); resolve(false); });
-            });
-            if (ready) { pythonFailures = 0; return; }
-            await new Promise(resolve => setTimeout(resolve, 80));
-        }
-        throw new Error('Python 守护进程启动超时，请检查解释器和源依赖');
-    })().catch(async error => {
-        python?.kill(); python = null; pythonReady = null;
-        // 退避重启：连续失败时逐步拉长等待，避免瞬时崩溃造成紧密重启循环。
-        pythonFailures = Math.min(pythonFailures + 1, 5);
-        await new Promise(resolve => setTimeout(resolve, 200 * pythonFailures));
-        throw error;
-    });
-    return pythonReady;
-}
-
 async function getEngine(name) {
-    const key = name === 'dr2' ? 'js' : name;
-    // 先确保 Python 守护进程存活再命中引擎缓存：守护进程死了要能自动重启，
-    // 否则之后所有 Python 源会持续连接失败直到 worker 被超时回收。
-    if (key === 'py') await startPython();
-    if (engines.has(key)) return engines.get(key);
-    if (key === 'cat') {
-        // The original server always imports drpyS before registering CatVod.
-        // Cat sources use its shared globals and String.parseX even when no
-        // drpyS source has run (for example BaseSpider.fetch().data).
-        await importRuntime('libs/drpyS.js');
+    if (name !== 'dr3') throw new Error('此源需要迁移到 drpy3');
+    if (!drpy3Engine) {
+        const {createDrpy3Engine} = await import('./drpy3.js');
+        drpy3Engine = await createDrpy3Engine(root);
+        report();
     }
-    const filenames = {js: 'drpyS', py: 'hipy', php: 'php', cat: 'catvod'};
-    if (!filenames[key]) throw new Error(`不支持的执行引擎: ${name}`);
-    const module = await importRuntime(`libs/${filenames[key]}.js`);
-    const engine = module.default || module;
-    engines.set(key, engine);
-    report();
-    return engine;
+    return drpy3Engine;
 }
-
 async function hydrateEnv(raw, source) {
     if (!wsServer) {
-        wsServer = http.createServer((req, res) => { res.writeHead(404); res.end(); });
+        wsServer = http.createServer((request, reply) => { reply.writeHead(404); reply.end(); });
         await new Promise(resolve => wsServer.listen(0, '127.0.0.1', resolve));
-        wsPort = wsServer.address().port;
-        process.send?.({kind: 'ws', port: wsPort});
+        process.send?.({kind: 'ws', port: wsServer.address().port});
     }
-    const env = {...raw, sourceInstanceId: source.instanceId, fServer: wsServer, getProxyUrl: () => raw.proxyUrl};
-    env.getRule = async moduleName => {
-        // 相同引擎内的跨规则调用保留原模块名。
-        const target = path.join(path.dirname(source.file), `${moduleName}${path.extname(source.file)}`);
-        try { await access(target); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
-        const engine = await getEngine(source.engine);
-        const proxy = new URL(raw.proxyUrl);
-        proxy.pathname = `/proxy/${encodeURIComponent(moduleName)}/`;
-        const targetEnv = {...env, proxyUrl: proxy.href, getProxyUrl: () => proxy.href};
-        const moduleObject = await engine.init(target, targetEnv);
-        moduleObject.callRuleFn = (method, args = []) => {
-            const functions = {'一级': 'category', '二级': 'detail', '搜索': 'search', lazy: 'play', 推荐: 'homeVod', class_parse: 'home', proxy_rule: 'proxy', action: 'action'};
-            // Original unknown methods resolve to null; custom methods are returned
-            // as functions by withTimeout rather than invoked by this helper.
-            return functions[method] ? engine[functions[method]](target, targetEnv, ...args) :
-                typeof moduleObject[method] === 'function' ? moduleObject[method] : null;
-        };
-        return moduleObject;
-    };
-    return env;
+    return {...raw, sourceInstanceId: source.instanceId, fServer: wsServer, getProxyUrl: () => raw.proxyUrl};
 }
 
 process.on('message', async message => {
@@ -140,7 +62,7 @@ process.on('message', async message => {
     if (message.kind !== 'run') return;
     const {id, source, query, env: rawEnv, operation} = message;
     currentSource = source.instanceId;
-    await withSourceEnvironment({file: rawEnv.sourceEnvPath, params: rawEnv.ext, privatePaths: [root, source.file, process.env.PHP_PATH]}, async () => {
+    await withSourceEnvironment({file: rawEnv.sourceEnvPath, params: rawEnv.ext, privatePaths: [root, source.file]}, async () => {
     try {
         process.env.DRPY_PUBLIC_URL = rawEnv.requestHost;
         process.env.DRPY_HTTP_PORT = String(rawEnv.localPort || new URL(rawEnv.requestHost).port || 54058);
@@ -151,7 +73,7 @@ process.on('message', async message => {
         const method = sourceOperation(query, operation);
         let result;
         if (method === 'proxy') result = await engine.proxy(file, env, query);
-        else if (method === 'parse') result = await engine.jx(file, env, query);
+        else if (method === 'parse') result = await engine.play(file, env, query.flag || '', query.url || query.input || '');
         else if (method === 'play') result = await engine.play(file, env, query.flag, query.play);
         else if (method === 'category') {
             let filter = {};
@@ -172,16 +94,12 @@ process.on('message', async message => {
         }
         process.send?.({kind: 'result', id, result});
     } catch (error) {
-        const message = source.engine === 'php' && error.code === 'PHP_SOURCE_FAILED' ? 'PHP 源执行失败' : redactSourceSecrets(error.message);
+        const message = redactSourceSecrets(error.message);
         process.send?.({kind: 'result', id, error: message});
     } finally { currentSource = null; report(); }
     });
 });
 
-process.on('disconnect', () => { python?.kill(); wsServer?.close(); process.exit(); });
-process.on('SIGTERM', () => { python?.kill(); wsServer?.close(); process.exit(); });
-if (process.env.DRPY_PLUGINS === '1') {
-    const manager = await importRuntime('utils/pluginManager.js');
-    manager.startAllPlugins(root);
-}
+process.on('disconnect', () => { wsServer?.close(); process.exit(); });
+process.on('SIGTERM', () => { wsServer?.close(); process.exit(); });
 process.send?.({kind: 'ready'});

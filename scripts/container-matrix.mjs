@@ -63,9 +63,13 @@ const wait = async name => {
     throw new Error('临时容器启动超时：'+name);
 };
 const inject = name => {
-    run(['cp',path.join(root,'tests'),name+':/app/tests']);
-    for (const script of ['container-smoke.mjs','image-verify.mjs','source-parity-probe.mjs']) run(['cp',path.join(root,'scripts',script),name+':/app/scripts/'+script]);
+    // Only after checking the actual distribution: tests and their dev-only tools
+    // are copied into disposable verification containers, never into the image.
+    for (const folder of ['tests','scripts','docs','.github']) run(['cp',path.join(root,folder),name+':/app/'+folder]);
+    run(['cp',path.join(root,'Dockerfile'),name+':/app/Dockerfile']);
+    for (const dependency of ['node-forge','undici']) run(['cp',path.join(root,'node_modules',dependency),name+':/app/node_modules/'+dependency]);
 };
+
 try {
     const clean = create('clean'); await wait(clean);
     assertServiceIdentity(clean);
@@ -73,25 +77,26 @@ try {
     inside(clean,['node','scripts/check-shell.mjs']);
     inside(clean,['node','-e',"const fs=require('fs'); for(const p of ['/app/tests','/app/.tools','/app/.venv','/app/HANDOFF.md','/app/scripts/container-smoke.mjs','/app/scripts/image-verify.mjs']) if(fs.existsSync(p)) throw Error('非发行文件进入镜像：'+p); if(process.getuid()===0) throw Error('root'); console.log(JSON.stringify({uid:process.getuid(),node:process.version,arch:process.arch}));"]);
     inside(clean,['node','scripts/verify.mjs','--help']);
-    report.runtime = {node:inside(clean,['node','--version']).trim(),python:inside(clean,['/opt/python/bin/python3','--version']).trim(),php:inside(clean,['php','-v']).split('\n')[0],uid:inside(clean,['id','-u']).trim()};
+    report.runtime = {node:inside(clean,['node','--version']).trim(),uid:inside(clean,['id','-u']).trim()};
     assert.equal(report.runtime.uid,'1000','README 的卷属主修正需与实际 UID 一致');
+    inside(clean,['sh','-c','! command -v python3 && ! command -v php']);
     inject(clean);
     inside(clean,['node','scripts/container-smoke.mjs']); report.checks.push('empty-data/setup/auth/templates/non-root/zero-sources/CLI-distribution');
-    inside(clean,['node','scripts/image-verify.mjs']); report.checks.push('five-engines/real-GET-HEAD-Range-HLS-key/CLI');
+    inside(clean,['node','scripts/image-verify.mjs']); report.checks.push('drpy3/real-GET-HEAD-Range-HLS-key/CLI');
     run(['restart',clean]); await wait(clean);
-    inside(clean,['node','scripts/image-verify.mjs','--persistence']); report.checks.push('same-volume-restart/snapshot/old-ticket-invalid/five-engine-media-replay');
+    inside(clean,['node','scripts/image-verify.mjs','--persistence']); report.checks.push('same-volume-restart/snapshot/old-ticket-invalid/drpy3-media-replay');
 
     // Every regression creates its own temporary data; no test mutates /app/data.
     const regressions = create('regressions'); await wait(regressions); inject(regressions);
-    const files = ['container-data','runtime-parity','dr2-delivery','source-compatibility','source-deletion','source-deletion-api','emby','emby-engines','emby-storage','core','access','subscription-tokens','integration','tvbox-import','cat-subscriptions','cat-client','netdisk-115','netdisk-cipher','netdisk-integration','netdisk-direct','netdisk-guangya','review-regressions','shell','runtime-upgrade','bridge','private-data','source-env','playback-capabilities','playback','outbound','ssrf','proxy-headers','rate-limit','security','verify-cli'];
+    const files = (await fs.readdir(path.join(root,'tests'))).filter(file=>file.endsWith('.test.js') && file!=='check-identifiers.test.js').map(file=>file.slice(0,-8));
     let tap;
-    try { tap = inside(regressions,['env','TEST_PYTHON=/opt/python/bin/python3','TEST_PHP=php','node','--test','--test-reporter=tap',...files.map(file=>'tests/'+file+'.test.js')]); }
+    try { tap = inside(regressions,['node','--test','--test-reporter=tap',...files.map(file=>'tests/'+file+'.test.js')]); }
     catch (error) { await fs.writeFile(path.join(output,'regressions.tap'),error.output || error.message); throw error; }
     await fs.writeFile(path.join(output,'regressions.tap'),tap);
     assert.match(tap,/# fail 0\s/); assert.match(tap,/# skipped 0\s/); assert.doesNotMatch(tap,/^not ok /m);
     report.backendTests = Number(tap.match(/# tests (\d+)/)?.[1]);
     assert.ok(report.backendTests > 0); report.regressionFiles = files;
-    report.checks.push('frozen-ae89c27-upgrade/pickle-rejection/user-content-preservation/headers/tickets/SSRF/private-0600/PHP-errors/CLI-v2-legacy-pty');
+    report.checks.push('drpy3/legacy-data-migration/user-content-preservation/headers/tickets/SSRF/private-0600/CLI');
 
     // Startup errors must retain the exact corrupt input; use independent volumes.
     for (const relative of ['state.json','runtime/config/env.json']) {
