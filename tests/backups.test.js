@@ -49,13 +49,17 @@ test('快照包含状态、脚本、ENV、KV 与网盘凭据，跳过符号链�
 
 test('调用方提供的一致副本（Emby VACUUM INTO）可并入快照', async () => {
     const {directory, outside} = await fixture();
-    const backups = new Backups(directory, {extraFiles: async () => [{name: 'emby/emby.sqlite', bytes: Buffer.from('consistent-sqlite-copy')}]});
+    await fs.mkdir(path.join(directory, 'emby'), {recursive: true});
+    const copy = path.join(directory, 'emby/emby.sqlite');
+    await fs.writeFile(copy, 'consistent-sqlite-copy');
+    const backups = new Backups(directory, {extraFiles: async () => [{name: 'emby/emby.sqlite', path: copy, cleanup: true}]});
     try {
         const item = await backups.create();
         const zip = new AdmZip(path.join(directory, 'backups', item.name));
         const entry = zip.getEntry('emby/emby.sqlite');
         assert.ok(entry);
         assert.equal(entry.getData().toString(), 'consistent-sqlite-copy');
+        await assert.rejects(fs.access(copy), {code: 'ENOENT'});
         await backups.setExtraFiles(null);
         const second = await backups.create();
         assert.equal(new AdmZip(path.join(directory, 'backups', second.name)).getEntry('emby/emby.sqlite'), null);

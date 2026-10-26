@@ -2,7 +2,7 @@
 
 ## 启动配置
 
-Node.js 22 是唯一语言运行环境。`HOST` 默认 `0.0.0.0`，`PORT` 默认 `54058`，`DATA_DIR` 默认项目内 `data/`；`TZ` 可设 `Asia/Shanghai`。`ADMIN_PASSWORD` 仅在未创建密码时生效。`TRUST_PROXY=1` 只用于可信且会覆写转发头的反向代理。
+Node.js 22 是唯一语言运行环境。`HOST` 默认 `0.0.0.0`，`PORT` 默认 `54058`，`DATA_DIR` 默认项目内 `data/`；`TZ` 可设 `Asia/Shanghai`。`SOURCE_WORKERS` 控制源执行 worker 池大小（1–4，默认 2）：同一源串行，不同源可并行；worker 0 同时承载网关/WS。`ADMIN_PASSWORD` 仅在未创建密码时生效。`TRUST_PROXY=1` 只用于可信且会覆写转发头的反向代理。
 
 Docker 使用 `PUID`/`PGID`（默认 1000:1000，禁止 0/空值/非数字）准备专用数据目录，随后普通账号执行。卷应仅包含 CokeTV 数据；入口不跟随符号链接，拒绝硬链接、特殊文件与跨文件系统挂载，避免权限修复影响其他文件。显式 Docker `user` 跳过权限初始化。
 
@@ -73,7 +73,7 @@ v1 状态首次升级到 v2 时，先将专用数据目录复制到 `data/backup
 
 ## 数据快照与恢复
 
-服务启动 60 秒后检查一次快照，之后按 `BACKUP_INTERVAL_HOURS`（默认 24 小时）自动创建，保留最近 `BACKUP_KEEP`（默认 7）份，位于 `data/backups/`；快照文件 0600、目录 0700，不含可重建的 `runtime/libs` 与 `node_modules` 链接，也不含日志（`logs/`）和快照目录（`backups/`）本身。
+服务启动 60 秒后检查一次快照，之后按 `BACKUP_INTERVAL_HOURS`（默认 24 小时）自动创建，保留最近 `BACKUP_KEEP`（默认 7）份，位于 `data/backups/`；快照文件 0600、目录 0700，不含可重建的 `runtime/libs` 与 `node_modules` 链接，也不含日志（`logs/`）和快照目录（`backups/`）本身；zip 压缩与文件读取在独立 worker 线程完成，不阻塞 HTTP/播放主循环。
 
 快照内容包括 `state.json`、`admin.json`、`revisions/`、`netdisk/`、`runtime/spider/`、`runtime/config/`、`runtime/data/`、`runtime/json/` 和 `runtime/jx/`，覆盖管理状态、凭据哈希、源脚本与历史、源 ENV、持久 KV、参数文件、解析脚本以及 115/光鸭授权。Emby 的 `emby/emby.sqlite` 通过 SQLite `VACUUM INTO` 生成一致性副本后加入，避免直接拷贝打开中的数据库。源脚本和凭据都在其中，下载或转存时按私密数据保管。
 

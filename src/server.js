@@ -361,7 +361,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
             const temporary = path.join(store.directory, 'backups', `.emby-${randomBytes(6).toString('hex')}.sqlite`);
             try {
                 if (!(await emby.db.backupTo(temporary))) return [];
-                return [{name: 'emby/emby.sqlite', bytes: await fs.readFile(temporary)}];
+                return [{name: 'emby/emby.sqlite', path: temporary, cleanup: true}];
             } catch (error) {
                 runner.log({level: 'warn', source: 'backup', message: `Emby 快照失败，已跳过：${error.message}`});
                 return [];

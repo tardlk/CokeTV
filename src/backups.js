@@ -1,7 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
-import AdmZip from 'adm-zip';
 import {logStamp} from './logging.js';
 
 // Everything needed to rebuild a running installation: state, credentials,
@@ -13,6 +12,25 @@ const SNAPSHOT_NAME = /^coketv-\d{8}-\d{6}-[a-f0-9]{6}\.zip$/;
 const MAX_TOTAL_BYTES = 512 * 1024 * 1024;
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
+
+function runZipWorker(files, output) {
+    return new Promise((resolve, reject) => {
+        // Imported lazily so backups.js stays cheap for callers which only list snapshots.
+        import('node:worker_threads').then(({Worker}) => {
+            const worker = new Worker(new URL('./backup-worker.mjs', import.meta.url), {workerData: {files, output}});
+            let settled = false;
+            const finish = error => {
+                if (settled) return;
+                settled = true;
+                worker.terminate().catch(() => {});
+                if (error) reject(error); else resolve();
+            };
+            worker.once('message', message => finish(message?.ok ? null : new Error(message?.error || '快照压缩失败')));
+            worker.once('error', finish);
+            worker.once('exit', code => { if (!settled) finish(new Error(`快照压缩进程退出 (${code})`)); });
+        }).catch(reject);
+    });
+}
 
 export class Backups {
     constructor(directory, {keep = 7, intervalMs = 24 * 3600000, maxTotalBytes = MAX_TOTAL_BYTES, now = Date.now, onLog, extraFiles} = {}) {
@@ -93,7 +111,8 @@ export class Backups {
         const name = `coketv-${logStamp(this.now())}-${randomBytes(3).toString('hex')}.zip`;
         const target = path.join(this.directory, name);
         const temporary = `${target}.${randomBytes(4).toString('hex')}.tmp`;
-        const zip = new AdmZip();
+        const files = [];
+        const cleanup = [];
         let total = 0;
         const add = async relative => {
             const file = path.join(this.root, relative);
@@ -108,19 +127,24 @@ export class Backups {
             if (!stat.isFile()) return;
             total += stat.size;
             if (total > this.maxTotalBytes) throw fail('数据目录过大，未创建快照', 507);
-            zip.addFile(relative.split(path.sep).join('/'), await fs.readFile(file));
+            files.push({name: relative.split(path.sep).join('/'), path: file, size: stat.size});
         };
         try {
             await fs.mkdir(this.directory, {recursive: true, mode: 0o700});
             for (const root of SNAPSHOT_ROOTS) await add(root);
             for (const item of await this.extraFiles?.() || []) {
-                if (!item || typeof item.name !== 'string' || !Buffer.isBuffer(item.bytes)) continue;
-                total += item.bytes.length;
+                if (!item || typeof item.name !== 'string' || typeof item.path !== 'string') continue;
+                let stat;
+                try { stat = await fs.stat(item.path); }
+                catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+                if (!stat.isFile()) continue;
+                total += stat.size;
                 if (total > this.maxTotalBytes) throw fail('数据目录过大，未创建快照', 507);
-                zip.addFile(item.name, item.bytes);
+                files.push({name: item.name.split(path.sep).join('/'), path: item.path, size: stat.size});
+                if (item.cleanup) cleanup.push(item.path);
             }
-            const bytes = zip.toBuffer();
-            await fs.writeFile(temporary, bytes, {mode: 0o600});
+            await runZipWorker(files, temporary);
+            await fs.chmod(temporary, 0o600);
             await fs.rename(temporary, target);
             await this.#prune();
             const stat = await fs.stat(target);
@@ -131,6 +155,8 @@ export class Backups {
             await fs.rm(temporary, {force: true}).catch(() => {});
             this.onLog({level: 'error', source: 'backup', message: `创建数据快照失败：${error.message}`});
             throw error;
+        } finally {
+            for (const file of cleanup) await fs.rm(file, {force: true}).catch(() => {});
         }
     }
 

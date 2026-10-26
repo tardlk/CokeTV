@@ -1,12 +1,12 @@
 # CokeTV 接手记录
 
-更新：2026-10-26。当前源码版本 **0.2.3**，用户已明确 **只保留 drpy3 一个源执行引擎**；工作方式继续直接在 `main` 工作，不主动创建分支或 PR。
+更新：2026-10-26。当前源码版本 **0.2.4**，用户已明确 **只保留 drpy3 一个源执行引擎**；工作方式继续直接在 `main` 工作，不主动创建分支或 PR。
 
 ## 0. 当前接手入口（先看本节）
 
 - **先读顺序**：`AGENTS.md`（用户已确认的产品与安全决定）→ 本文件 → `README.md`、`SECURITY.md`、`docs/CONFIGURATION.md`、`docs/DEVELOPMENT.md`。
-- **当前验证**（2026-10-26，macOS arm64 / Node 22.23.4）：`npm run check`、`npm run build` 通过；`npm test` 为后端 264 项（253 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 77 项，共 341 项。
-- **镜像（2026-10-26 已发布）**：`ghcr.io/tardlk/coketv:0.2.3`、`:0.2`、`:latest`、`:sha-a4f972b` 指向同一 manifest digest `sha256:cf988f4b8ed76c73b583fddae88421743a9759f66816d17df1bdf1ac3bf4cda7`（image ID `sha256:303e4007c277a4aadb314b202fc11f1b0471b7f9aeefe5d1dde71dc7f2c8a690`），源码提交 `a4f972b`。GitHub Release：https://github.com/tardlk/CokeTV/releases/tag/v0.2.3 。上一版 0.2.2 为 `:sha-40b1303`（manifest `sha256:fb303b356f2a4c7e35d2d89603052c42f3e8b31f7f1f3f31da0c67fed5b48c4c`），0.2.1 为 `:sha-cce9666`，0.2.0 为 `:sha-70bcf98`；0.2.0 未单独打 Git tag。
+- **当前验证**（2026-10-26，macOS arm64 / Node 22.23.4）：`npm run check`、`npm run build` 通过；`npm test` 为后端 265 项（254 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 77 项，共 342 项。
+- **镜像（0.2.3 已发布，0.2.4 待本轮发布）**：`ghcr.io/tardlk/coketv:0.2.3`、`:0.2`、`:latest`、`:sha-a4f972b` 指向 manifest digest `sha256:cf988f4b8ed76c73b583fddae88421743a9759f66816d17df1bdf1ac3bf4cda7`（源码 `a4f972b`）。0.2.4 的 worker 池与备份线程化要等本次推送后的 Verify + Docker amd64 成功；成功前不要宣称 `latest` 已包含 0.2.4。上一版 0.2.2 为 `:sha-40b1303`，0.2.1 为 `:sha-cce9666`，0.2.0 为 `:sha-70bcf98`；0.2.0 未单独打 Git tag。GitHub Release：https://github.com/tardlk/CokeTV/releases/tag/v0.2.3 。
 - **发布门禁**：推送 `main`/`v*` 触发 `.github/workflows/docker.yml`；候选镜像先在原生 amd64 跑容器矩阵，再用同一镜像（不重建）发布 GHCR。本机没有 Docker，容器结论只能来自 Actions。
 - **本机私有**：`HANDOFF.md`、`.tools/`、`data/` 不入库；不要拿正式用户 data 做删除、迁移或恢复实验。
 
@@ -14,7 +14,7 @@
 
 - `engine/libs/drpy3/`：上游 e5b89fd779de2a7552feec74d5bd020962ccd2f2 四文件原包，MIT；engine/UPSTREAM.json 登记哈希。内置 load2x 保持原样，CokeTV 不提供独立 DR2 入口。
 - `src/drpy3.js`、`drpy3-loader.mjs`：HostEnv、标准库投影、ESM/CJS 和字节资产、持久 KV、多个详情 ID 聚合、多清晰度默认地址。源调用自己的服务地址时改走内部回环，重定向移除内部凭据。
-- `src/worker.js` / `runner.js`：按需 drpy3 子进程、串行队列、超时回收与脱敏日志；无 Python 守护或旧插件启动。FTP/WebDAV 和源自定义 WS 仍按需提供宿主能力。
+- `src/worker.js` / `runner.js`：按需 drpy3 worker 池（`SOURCE_WORKERS`，默认 2）、每源串行、超时回收与脱敏日志；worker 0 保留网关/WS，无 Python 守护或旧插件启动。FTP/WebDAV 和源自定义 WS 仍按需提供宿主能力。
 - `src/host/`：独立 HTML 解析、JSONPath、ENV 及网关辅助；来源与本地哈希在 UPSTREAM。宿主修改进入 src，不修改官方引擎原包。
 - `src/store.js`：数据版本 v2、事务/历史、v1 预备份与旧源标记、显式代码迁移。数据只在 data，发行始终零预置源。
 - `src/logging.js`、`src/backups.js`：stdio + 轮转文件日志（脱敏）、data 快照（定时/手动、保留份数、下载）。
@@ -42,6 +42,8 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 
 网页观影对没有分类和首页影片、但可以搜索的源显示“请搜索影片”与直接聚焦搜索框的按钮，不再一律显示“暂无影片”。首页/搜索响应可选的 notice 仅按纯文本显示（最多 500 字符），用于说明站点浏览限制；切换查询时清除旧提示，不修改官方引擎。站点脚本和登录资料仍仅保存在忽略的本机运行目录。
 
+2026-10-26（0.2.4，并发与备份线程化）：源执行从全局单队列改为 worker 池（`SOURCE_WORKERS`，1–4，默认 2）；每个源固定一个 worker 且串行，不同源可并行，任一 worker 超时/崩溃只回收该 worker，worker 0 保留网关/WS，含 `fServer`/`ws` 的源固定到 worker 0。备份 zip 改由 `worker_threads` 生成，主进程只做目录遍历、容量校验与原子重命名；Emby `VACUUM INTO` 副本以文件路径交给压缩线程并在结束后清理。新增 runner-pool 并发/同源串行回归。
+
 2026-10-26（0.2.3，冗余清理）：移除 `src/host/utils/` 中无调用方的约 450 行死代码（proxy-util 的 verifyAuth/decodeParam/makeRemoteRequest 链/isInternalIp 等、proxy-common 的 rewriteM3u8、两个 client 工厂、pathHelper 的 resolvePath/isSafePath），同步更新 `engine/UPSTREAM.json` 的宿主文件哈希；运行时版本改为从 `package.json` 读取（`src/version.js`），前端由 Vite/Vitest `define` 注入 `__APP_VERSION__`，消除服务端/前端/侧栏的版本号重复。复核网关日志：worker 已在入口把 `console.log/warn/error` 重定向为 IPC 日志，实际进入统一 sink，无需再改 host log.js。
 
 2026-10-26（0.2.2，安全修复）：图片上传收紧为管理员/源内部，仅接受 PNG/JPEG/GIF/WebP 并按魔数校验，SVG 与订阅 Token 上传被拒绝，/image 响应加 CSP；WebDAV/FTP 网关的 /config 测试接口只允许管理员/源内部，其他请求剥离 body 中的 config，堵住订阅 Token 驱动的内网 SSRF；数据快照补 `netdisk/` 与 Emby `VACUUM INTO` 一致副本；日志脱敏覆盖 JSON 形态的 token/password/cookie/authorization，并在内存日志入口统一脱敏；`/api`、`/parse`、`/image`、`/json`、`/webdav`、`/ftp` 纳入公开限流；实现文档中的 `LOG_STDOUT=0`。生产依赖执行 `npm audit fix --omit=dev`（undici 7.30.1、fastify 5.12.7、fast-uri 4.2.3），`npm audit --omit=dev` 为 0；开发依赖仍有 vitest/tinypool 等 6 项，见 SECURITY。新增 hardening 回归，补充快照/Emby 备份/脱敏/限速测试。
@@ -54,7 +56,7 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 
 本机为 macOS arm64 / Node 22.23.4。0.2.2 完整 `npm test` 通过后端 264 项（253 通过、11 项 data 站点脚本在空壳下跳过）和界面 77 项，合计 341 项；`npm run check` 与 `npm run build` 通过。新增回归覆盖图片上传权限/SVG/魔数、WebDAV/FTP 配置越权阻断、日志 JSON 脱敏与 stdout 开关、快照含网盘凭据与 Emby 一致副本、`/api` 限流，以及原有日志/快照/维护接口/静态资源用例。
 
-2026-10-26 的 `70bcf98` 已在 GitHub Actions 原生 Linux amd64 上通过 Verify 与 Docker 候选矩阵（12 项容器检查、容器内 237 项回归 fail 0 / skipped 0），并用同一镜像发布 `ghcr.io/tardlk/coketv:latest` 与 `:sha-70bcf98`（manifest digest 见 §0）。0.2.1 的 `cce9666`、0.2.2 的 `40b1303` 与 0.2.3 的 `a4f972b` 均在 Verify 与 Docker amd64 上全绿，0.2.3 的 `:latest`、`:0.2.3`、`:0.2` 与 `:sha-a4f972b` 指向同一 manifest digest（见 §0）；本机仍无 Docker 及原生 amd64 环境，真实站点、真实 WASM 解密、异地客户端和 NAS 实机不在本轮验证范围。
+2026-10-26 的 `70bcf98` 已在 GitHub Actions 原生 Linux amd64 上通过 Verify 与 Docker 候选矩阵（12 项容器检查、容器内 237 项回归 fail 0 / skipped 0），并用同一镜像发布 `ghcr.io/tardlk/coketv:latest` 与 `:sha-70bcf98`（manifest digest 见 §0）。0.2.1 的 `cce9666`、0.2.2 的 `40b1303`、0.2.3 的 `a4f972b` 均在 Verify 与 Docker amd64 上全绿。0.2.4 本机 `npm test` 为后端 265 项（254 通过/11 跳过）+ 界面 77 项 = 342 项，新增 runner-pool 覆盖不同源并行/同源串行与 WS 源固定 worker 0；容器结果以本次推送后的 Actions 为准。0.2.3 的 `:latest`、`:0.2.3`、`:0.2` 与 `:sha-a4f972b` 曾指向同一 manifest digest（见 §0）；本机仍无 Docker 及原生 amd64 环境，真实站点、真实 WASM 解密、异地客户端和 NAS 实机不在本轮验证范围。
 
 上游百忙无果1、央视频-1 仅在临时目录经 CokeTV HTTP 接口运行上游固定响应；六环节、多清晰度、m3u8 与 WASM 桩 TS 代理通过，示例未进入发行树。完整真实 GET/HEAD/Range/HLS/二进制代理、CLI 和重启持久化脚本也在本机服务验证；另以仅安装生产依赖的独立临时副本复验。以上不等于原生 Linux amd64 Docker 验收、真实站点/真实 WASM 解密或异地客户端验收。
 
