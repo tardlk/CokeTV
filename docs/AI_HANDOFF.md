@@ -4,7 +4,7 @@
 
 ## 0. 当前接手入口（先看本节）
 
-- **先读顺序**：`AGENTS.md`（用户已确认的产品与安全决定）→ 本文件 → `README.md`、`SECURITY.md`、`docs/CONFIGURATION.md`、`docs/DEVELOPMENT.md`。
+- **先读顺序**：`AGENTS.md`（用户已确认的产品与安全决定）→ 本文件 → `README.md`、`SECURITY.md`。原 CONFIGURATION/DEVELOPMENT/NETDISK_DEVELOPMENT/THIRD_PARTY 已并入 README 与本文件后删除。
 - **当前验证**（2026-10-26，macOS arm64 / Node 22.23.4）：`npm run check`、`npm run build` 通过；`npm test` 为后端 265 项（254 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 77 项，共 342 项。
 - **镜像（2026-10-26 已发布）**：`ghcr.io/tardlk/coketv:0.2.4`、`:0.2`、`:latest`、`:sha-cc3cb77` 指向同一 manifest digest `sha256:d3c42efe844207c0fb2b2735220a3125142f2beab1ed852b4c6dc298ab6dd480`（image ID `sha256:62ce39420b4ed1c73f1879cb404c5ae17e8090049e98f3ae202a6c740f9e1050`），源码提交 `cc3cb77`。GitHub Release：https://github.com/tardlk/CokeTV/releases/tag/v0.2.4 。上一版 0.2.3 为 `:sha-a4f972b`，0.2.2 为 `:sha-40b1303`，0.2.1 为 `:sha-cce9666`，0.2.0 为 `:sha-70bcf98`；0.2.0 未单独打 Git tag。
 - **发布门禁**：推送 `main`/`v*` 触发 `.github/workflows/docker.yml`；候选镜像先在原生 amd64 跑容器矩阵，再用同一镜像（不重建）发布 GHCR。本机没有 Docker，容器结论只能来自 Actions。
@@ -19,6 +19,35 @@
 - `src/store.js`：数据版本 v2、事务/历史、v1 预备份与旧源标记、显式代码迁移。数据只在 data，发行始终零预置源。
 - `src/logging.js`、`src/backups.js`：stdio + 轮转文件日志（脱敏）、data 快照（定时/手动、保留份数、下载）。
 - 网页、TVBox、猫影视、Emby 和 115/光鸭继续通过统一内容服务。CatVod 执行器已删除，猫影视连接程序保留；TVBox 配置链接导入和采集 JSON/XML 脚本生成器已移除。
+
+## 网盘开发契约
+
+CokeTV 只有 drpy3 源引擎；网盘账号、分享展开与取播放地址由独立宿主服务管理。源负责搜索和返回用户有权访问的分享链接，宿主负责按账号读取目录和获取临时媒体地址。
+
+drpy3 详情返回标准分享即可：
+
+```js
+export default {
+    meta: {title: '我的资源源', lang: 'dr3'},
+    rule: {},
+    async detail(ctx, id) {
+        return {list: [{
+            vod_id: id,
+            vod_name: '资源名称',
+            vod_play_from: '网盘',
+            vod_play_url: '分享$' + id,
+        }]};
+    },
+};
+```
+
+支持 115 与光鸭的标准分享链接，以及既有 `push://` 编码分享形式。不要将账号 Cookie 或 Token 塞入播放地址、vod_id、图片 URL 或日志。详情返回分享后，宿主展开为作用域内的分集引用；`coketv-netdisk:` 等内部引用由宿主处理，不重新交给源拼接。
+
+账号通过管理后台配置，存放在 `data/netdisk`，文件 0600。网页、TVBox、猫影视和 Emby 复用宿主账号，源无需实现平台登录或将凭据下发客户端；账号更新/移除后旧引用失效。115 默认使用与客户端匹配的 User-Agent 取临时地址，Cookie 不下发；光鸭保留平台账号权限与流量限制。网页视频元素不能随意设置 User-Agent，跨浏览器/IP/客户端应分别验证。
+
+默认由客户端直连临时地址。`delivery: 'proxy'` 是显式中转模式，仍需符合票据和出口权限；失败不自动回退代理。光鸭按需转存默认关闭，开启后只在 CokeTV 专用目录添加所选视频副本并复用，不移动、删除或覆盖原内容。
+
+调试与验收使用独立临时数据目录，不拿正式账号文件做删除实验；固定样本覆盖分页、目录、临时地址、平台错误、账号撤销、引用作用域和播放权限。可用 `node scripts/netdisk-verify.mjs` 启动本机临时验证入口，按脚本要求设置独立 `NETDISK_TEST_DIR`、`NETDISK_TEST_PASSWORD` 和可选端口；不要公开该调试服务或在日志里记录账号凭据。
 
 ## 旧数据处理
 
@@ -48,7 +77,7 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 
 2026-10-26（0.2.2，安全修复）：图片上传收紧为管理员/源内部，仅接受 PNG/JPEG/GIF/WebP 并按魔数校验，SVG 与订阅 Token 上传被拒绝，/image 响应加 CSP；WebDAV/FTP 网关的 /config 测试接口只允许管理员/源内部，其他请求剥离 body 中的 config，堵住订阅 Token 驱动的内网 SSRF；数据快照补 `netdisk/` 与 Emby `VACUUM INTO` 一致副本；日志脱敏覆盖 JSON 形态的 token/password/cookie/authorization，并在内存日志入口统一脱敏；`/api`、`/parse`、`/image`、`/json`、`/webdav`、`/ftp` 纳入公开限流；实现文档中的 `LOG_STDOUT=0`。生产依赖执行 `npm audit fix --omit=dev`（undici 7.30.1、fastify 5.12.7、fast-uri 4.2.3），`npm audit --omit=dev` 为 0；开发依赖仍有 vitest/tinypool 等 6 项，见 SECURITY。新增 hardening 回归，补充快照/Emby 备份/脱敏/限速测试。
 
-2026-10-26（0.2.1）：运行日志改为 stdio 单行 JSON + `data/logs/coketv.log`（0600，5 MiB × 3 个历史文件），写入前隐藏 URL token、Authorization/Cookie 与 password 类赋值；后台新增“运行维护”页，可看最近 400 条、按级别过滤、下载日志。新增进程内数据快照：启动 60 秒后检查，默认每 24 小时创建、保留 7 份，zip 0600，包含状态/凭据/脚本与历史/ENV/KV/参数文件/解析脚本，不含运行库；后台可立即创建与下载；删除脚本、批量迁移、导入配置前自动补快照（10 分钟节流，失败不阻断）。恢复步骤写入 CONFIGURATION。静态资源启用 gzip/br（阈值 1 KiB）与一年 immutable 缓存，HTML 统一 no-cache。版本升至 0.2.1；新增 logging/backups/maintenance-api/static-delivery 测试与运行维护 UI 测试。
+2026-10-26（0.2.1）：运行日志改为 stdio 单行 JSON + `data/logs/coketv.log`（0600，5 MiB × 3 个历史文件），写入前隐藏 URL token、Authorization/Cookie 与 password 类赋值；后台新增“运行维护”页，可看最近 400 条、按级别过滤、下载日志。新增进程内数据快照：启动 60 秒后检查，默认每 24 小时创建、保留 7 份，zip 0600，包含状态/凭据/脚本与历史/ENV/KV/参数文件/解析脚本，不含运行库；后台可立即创建与下载；删除脚本、批量迁移、导入配置前自动补快照（10 分钟节流，失败不阻断）。恢复步骤写入 README「数据快照与恢复」。静态资源启用 gzip/br（阈值 1 KiB）与一年 immutable 缓存，HTML 统一 no-cache。版本升至 0.2.1；新增 logging/backups/maintenance-api/static-delivery 测试与运行维护 UI 测试。
 
 生产依赖只保留宿主所需包，前端构建工具和测试库归开发依赖；新增 `@fastify/compress` 为生产依赖。Docker 不安装 Python/PHP、浏览器或 ffmpeg，保留证书和权限初始化工具。GitHub Verify 与原生 amd64 候选矩阵已同步；发布仍须核对同一 artifact/image ID/revision，不能重建后直接发布。
 
@@ -60,4 +89,4 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 
 上游百忙无果1、央视频-1 仅在临时目录经 CokeTV HTTP 接口运行上游固定响应；六环节、多清晰度、m3u8 与 WASM 桩 TS 代理通过，示例未进入发行树。完整真实 GET/HEAD/Range/HLS/二进制代理、CLI 和重启持久化脚本也在本机服务验证；另以仅安装生产依赖的独立临时副本复验。以上不等于原生 Linux amd64 Docker 验收、真实站点/真实 WASM 解密或异地客户端验收。
 
-历史版本的 NAS 部署、镜像 digest 和过程记录留在 Git 历史。当前正式说明为 README、SECURITY、CONFIGURATION、DEVELOPMENT、NETDISK_DEVELOPMENT、THIRD_PARTY；私密 HANDOFF 和 .tools 不提交。
+历史版本的 NAS 部署、镜像 digest 和过程记录留在 Git 历史。当前正式说明为 `README.md`、`SECURITY.md`、`docs/AI_HANDOFF.md` 与代理约定 `AGENTS.md`；私密 HANDOFF 和 .tools 不提交。
