@@ -77,7 +77,7 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 
 2026-10-26（0.2.2，安全修复）：图片上传收紧为管理员/源内部，仅接受 PNG/JPEG/GIF/WebP 并按魔数校验，SVG 与订阅 Token 上传被拒绝，/image 响应加 CSP；WebDAV/FTP 网关的 /config 测试接口只允许管理员/源内部，其他请求剥离 body 中的 config，堵住订阅 Token 驱动的内网 SSRF；数据快照补 `netdisk/` 与 Emby `VACUUM INTO` 一致副本；日志脱敏覆盖 JSON 形态的 token/password/cookie/authorization，并在内存日志入口统一脱敏；`/api`、`/parse`、`/image`、`/json`、`/webdav`、`/ftp` 纳入公开限流；实现文档中的 `LOG_STDOUT=0`。生产依赖执行 `npm audit fix --omit=dev`（undici 7.30.1、fastify 5.12.7、fast-uri 4.2.3），`npm audit --omit=dev` 为 0；开发依赖仍有 vitest/tinypool 等 6 项，见 SECURITY。新增 hardening 回归，补充快照/Emby 备份/脱敏/限速测试。
 
-2026-10-26（0.2.5，导航源与聚合搜索）：新增导航源标记（`meta.navigation: true`，保存时解析、管理列表显示“导航”）；网页观影支持点击导航源条目后对全部启用且可搜索的非导航源执行 `/watch/search` 聚合搜索，结果按源分组并可切换到结果所属源播放；单次最多 12 个源、单源 6 秒超时、30 秒缓存，失败/超时返回部分结果。TVBox/Emby 不提供跨源交互。新增后端导航聚合与网页导航源回归。
+2026-10-26（0.2.5，导航源与聚合搜索）：新增导航源标记（`meta.navigation: true`，保存时解析、管理列表显示“导航”）；网页观影支持点击导航源条目后对全部启用且可搜索的非导航源执行 `/watch/search` 聚合搜索，结果按源分组并可切换到结果所属源播放；单次最多 12 个源、单源 6 秒超时、每组最多 50 条、30 秒缓存，失败/超时返回部分结果。TVBox/Emby 不提供跨源交互。新增后端导航聚合与网页导航源回归。
 
 2026-10-26（文档收敛）：README 吸收配置与使用、开发与验证、第三方与许可；网盘开发契约并入本文件；删除 CONFIGURATION/DEVELOPMENT/NETDISK_DEVELOPMENT/THIRD_PARTY 四个独立文档，当前保留 README、SECURITY、AGENTS、AI_HANDOFF 与源开发指南 SOURCE_DEVELOPMENT。
 

@@ -70,6 +70,7 @@ const inject = name => {
     // 目录式 docker cp 会在其下再嵌一层 scripts/scripts，故逐个文件覆盖。
     for (const file of readdirSync(path.join(root,'scripts'))) run(['cp',path.join(root,'scripts',file),name+':/app/scripts/'+file]);
     for (const folder of ['tests','docs','.github']) run(['cp',path.join(root,folder),name+':/app/'+folder]);
+    run(['cp',path.join(root,'README.md'),name+':/app/README.md']);
     run(['cp',path.join(root,'Dockerfile'),name+':/app/Dockerfile']);
     for (const dependency of ['node-forge','undici']) run(['cp',path.join(root,'node_modules',dependency),name+':/app/node_modules/'+dependency]);
     inside(name,['node','-e',"if(!require('fs').existsSync('scripts/container-smoke.mjs')) throw Error('注入失败：scripts/ 未落到 /app/scripts')"]);
