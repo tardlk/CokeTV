@@ -6,7 +6,7 @@
 
 - **先读顺序**：`AGENTS.md`（用户已确认的产品与安全决定）→ 本文件 → `README.md`、`SECURITY.md`、`docs/CONFIGURATION.md`、`docs/DEVELOPMENT.md`。
 - **当前验证**（2026-10-26，macOS arm64 / Node 22.23.4）：`npm run check`、`npm run build` 通过；`npm test` 为后端 259 项（248 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 77 项，共 336 项。
-- **镜像**：`ghcr.io/tardlk/coketv:latest` 当前对应 0.2.0 提交 `70bcf98`，manifest digest `sha256:49742ce391ff294cd6baeb7f35e606f253c307c00ee7da05a0275ec83df9d61b`（image ID `sha256:688ac9b7c831df85182ad535dfc3281f2d1ba55f9cd9b380b3f151699a74ae91`）。0.2.1 的镜像要等本次推送后的 Verify + Docker amd64 成功；成功前不要宣称 `latest` 已包含 0.2.1。
+- **镜像（2026-10-26 已发布）**：`ghcr.io/tardlk/coketv:0.2.1`、`:0.2`、`:latest`、`:sha-cce9666` 指向同一 manifest digest `sha256:26412dbf3d5df18c42e6da8f89e9db02c16b5468cbbed74414a40547a7674d6e`（image ID `sha256:725346ef5680561df3e30cd100e5ae99079cf833779ffbb13ff6b4e058f88148`），源码提交 `cce9666e`。GitHub Release：https://github.com/tardlk/CokeTV/releases/tag/v0.2.1 。上一版 0.2.0 镜像保留 `:sha-70bcf98`（manifest `sha256:49742ce391ff294cd6baeb7f35e606f253c307c00ee7da05a0275ec83df9d61b`）；0.2.0 未单独打 Git tag，回退优先用 sha 标签。
 - **发布门禁**：推送 `main`/`v*` 触发 `.github/workflows/docker.yml`；候选镜像先在原生 amd64 跑容器矩阵，再用同一镜像（不重建）发布 GHCR。本机没有 Docker，容器结论只能来自 Actions。
 - **本机私有**：`HANDOFF.md`、`.tools/`、`data/` 不入库；不要拿正式用户 data 做删除、迁移或恢复实验。
 
