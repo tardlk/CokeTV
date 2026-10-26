@@ -16,7 +16,7 @@ npm start
 
 打开 [http://127.0.0.1:54058](http://127.0.0.1:54058) 直接观影；管理入口为 `/admin`。首次进入管理后台创建密码，没有默认账号或密码。脚本编辑、配置和管理 API 均要求管理密码。已有密码保留；`ADMIN_PASSWORD` 只在尚未创建密码时提供预设值，不覆盖已有密码。
 
-后台可新建 drpy3 源，点击“导入脚本”直接选择 `.js` 或 ZIP 文件。编辑页提供代码、扩展参数、本源 ENV、接口验证和脱敏日志；未保存的修改会阻止验证并提供退出保护。已有运行环境也可使用 `./start.sh`。
+后台可新建 drpy3 源，点击“导入脚本”直接选择 `.js` 或 ZIP 文件。编辑页提供代码、扩展参数、本源 ENV、接口验证和脱敏日志；未保存的修改会阻止验证并提供退出保护。已有运行环境也可使用 `./start.sh`。从零写一个站点源见 [源开发指南](docs/SOURCE_DEVELOPMENT.md)。
 
 ## Docker
 
@@ -173,6 +173,7 @@ CokeTV 按根目录 GPL-3.0 分发。唯一源执行引擎取自 [hjdhnx/drpy3](
 
 ## 文档
 
+- [docs/SOURCE_DEVELOPMENT.md](docs/SOURCE_DEVELOPMENT.md)：从零编写 drpy3 站点源、调试、导入和发布。
 - [SECURITY.md](SECURITY.md)：信任边界、鉴权、SSRF、依赖审计与部署建议。
 - [docs/AI_HANDOFF.md](docs/AI_HANDOFF.md)：架构、版本/镜像、发布验收、网盘开发契约。
 - [AGENTS.md](AGENTS.md)：AI 接手约定与用户已确认的产品决策。

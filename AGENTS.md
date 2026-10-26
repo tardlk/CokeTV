@@ -36,7 +36,7 @@
 
 `engine/` 只分发固定版本 drpy3 官方运行库；`src/host/` 是宿主解析/ENV/网关辅助模块；`src/` 是宿主服务；`web/` 是管理页面；运行文件在 `data/`。不要直接修改用户的运行数据，官方引擎原包保持不变；宿主修改进入 `src/`，必要辅助库进入 `src/host/`。
 
-正式文档收敛为 `README.md`、`SECURITY.md`，公开交接统一在 `docs/AI_HANDOFF.md`，代理约定在本文件；原 CONFIGURATION/DEVELOPMENT/NETDISK_DEVELOPMENT/THIRD_PARTY 已合并且不再单独维护。`docs/local-history/` 若存在，只是本机调研与旧界面留档，内容可能已过时，不作为当前产品规范。运行数据、工具、截图和调研历史由 Git 忽略，不提交。
+正式文档为 `README.md`、`SECURITY.md`、`docs/SOURCE_DEVELOPMENT.md`，公开交接统一在 `docs/AI_HANDOFF.md`，代理约定在本文件；原 CONFIGURATION/DEVELOPMENT/NETDISK_DEVELOPMENT/THIRD_PARTY 已合并且不再单独维护。`docs/local-history/` 若存在，只是本机调研与旧界面留档，内容可能已过时，不作为当前产品规范。运行数据、工具、截图和调研历史由 Git 忽略，不提交。
 
 源执行接口、代理返回语义和原模块名路径需要保持兼容。框架测试使用 node:test，依赖外部站点的结果不能代替固定样本的协议测试。
 

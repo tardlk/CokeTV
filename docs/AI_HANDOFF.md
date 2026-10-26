@@ -4,7 +4,7 @@
 
 ## 0. 当前接手入口（先看本节）
 
-- **先读顺序**：`AGENTS.md`（用户已确认的产品与安全决定）→ 本文件 → `README.md`、`SECURITY.md`。原 CONFIGURATION/DEVELOPMENT/NETDISK_DEVELOPMENT/THIRD_PARTY 已并入 README 与本文件后删除。
+- **先读顺序**：`AGENTS.md`（用户已确认的产品与安全决定）→ 本文件 → `README.md`、`SECURITY.md`；写站点源时读 `docs/SOURCE_DEVELOPMENT.md`。原 CONFIGURATION/DEVELOPMENT/NETDISK_DEVELOPMENT/THIRD_PARTY 已并入 README 与本文件后删除。
 - **当前验证**（2026-10-26，macOS arm64 / Node 22.23.4）：`npm run check`、`npm run build` 通过；`npm test` 为后端 265 项（254 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 77 项，共 342 项。
 - **镜像（2026-10-26 已发布）**：`ghcr.io/tardlk/coketv:0.2.4`、`:0.2`、`:latest`、`:sha-cc3cb77` 指向同一 manifest digest `sha256:d3c42efe844207c0fb2b2735220a3125142f2beab1ed852b4c6dc298ab6dd480`（image ID `sha256:62ce39420b4ed1c73f1879cb404c5ae17e8090049e98f3ae202a6c740f9e1050`），源码提交 `cc3cb77`。GitHub Release：https://github.com/tardlk/CokeTV/releases/tag/v0.2.4 。上一版 0.2.3 为 `:sha-a4f972b`，0.2.2 为 `:sha-40b1303`，0.2.1 为 `:sha-cce9666`，0.2.0 为 `:sha-70bcf98`；0.2.0 未单独打 Git tag。
 - **发布门禁**：推送 `main`/`v*` 触发 `.github/workflows/docker.yml`；候选镜像先在原生 amd64 跑容器矩阵，再用同一镜像（不重建）发布 GHCR。本机没有 Docker，容器结论只能来自 Actions。
@@ -77,7 +77,7 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 
 2026-10-26（0.2.2，安全修复）：图片上传收紧为管理员/源内部，仅接受 PNG/JPEG/GIF/WebP 并按魔数校验，SVG 与订阅 Token 上传被拒绝，/image 响应加 CSP；WebDAV/FTP 网关的 /config 测试接口只允许管理员/源内部，其他请求剥离 body 中的 config，堵住订阅 Token 驱动的内网 SSRF；数据快照补 `netdisk/` 与 Emby `VACUUM INTO` 一致副本；日志脱敏覆盖 JSON 形态的 token/password/cookie/authorization，并在内存日志入口统一脱敏；`/api`、`/parse`、`/image`、`/json`、`/webdav`、`/ftp` 纳入公开限流；实现文档中的 `LOG_STDOUT=0`。生产依赖执行 `npm audit fix --omit=dev`（undici 7.30.1、fastify 5.12.7、fast-uri 4.2.3），`npm audit --omit=dev` 为 0；开发依赖仍有 vitest/tinypool 等 6 项，见 SECURITY。新增 hardening 回归，补充快照/Emby 备份/脱敏/限速测试。
 
-2026-10-26（文档收敛）：README 吸收配置与使用、开发与验证、第三方与许可；网盘开发契约并入本文件；删除 CONFIGURATION/DEVELOPMENT/NETDISK_DEVELOPMENT/THIRD_PARTY 四个独立文档，当前只保留 README、SECURITY、AGENTS、AI_HANDOFF。
+2026-10-26（文档收敛）：README 吸收配置与使用、开发与验证、第三方与许可；网盘开发契约并入本文件；删除 CONFIGURATION/DEVELOPMENT/NETDISK_DEVELOPMENT/THIRD_PARTY 四个独立文档，当前保留 README、SECURITY、AGENTS、AI_HANDOFF 与源开发指南 SOURCE_DEVELOPMENT。
 
 2026-10-26（0.2.1）：运行日志改为 stdio 单行 JSON + `data/logs/coketv.log`（0600，5 MiB × 3 个历史文件），写入前隐藏 URL token、Authorization/Cookie 与 password 类赋值；后台新增“运行维护”页，可看最近 400 条、按级别过滤、下载日志。新增进程内数据快照：启动 60 秒后检查，默认每 24 小时创建、保留 7 份，zip 0600，包含状态/凭据/脚本与历史/ENV/KV/参数文件/解析脚本，不含运行库；后台可立即创建与下载；删除脚本、批量迁移、导入配置前自动补快照（10 分钟节流，失败不阻断）。恢复步骤写入 README「数据快照与恢复」。静态资源启用 gzip/br（阈值 1 KiB）与一年 immutable 缓存，HTML 统一 no-cache。版本升至 0.2.1；新增 logging/backups/maintenance-api/static-delivery 测试与运行维护 UI 测试。
 
@@ -91,4 +91,4 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 
 上游百忙无果1、央视频-1 仅在临时目录经 CokeTV HTTP 接口运行上游固定响应；六环节、多清晰度、m3u8 与 WASM 桩 TS 代理通过，示例未进入发行树。完整真实 GET/HEAD/Range/HLS/二进制代理、CLI 和重启持久化脚本也在本机服务验证；另以仅安装生产依赖的独立临时副本复验。以上不等于原生 Linux amd64 Docker 验收、真实站点/真实 WASM 解密或异地客户端验收。
 
-历史版本的 NAS 部署、镜像 digest 和过程记录留在 Git 历史。当前正式说明为 `README.md`、`SECURITY.md`、`docs/AI_HANDOFF.md` 与代理约定 `AGENTS.md`；私密 HANDOFF 和 .tools 不提交。
+历史版本的 NAS 部署、镜像 digest 和过程记录留在 Git 历史。当前正式说明为 `README.md`、`SECURITY.md`、`docs/SOURCE_DEVELOPMENT.md`、`docs/AI_HANDOFF.md` 与代理约定 `AGENTS.md`；私密 HANDOFF 和 .tools 不提交。
