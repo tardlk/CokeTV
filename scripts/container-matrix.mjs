@@ -93,7 +93,10 @@ try {
 
     // Every regression creates its own temporary data; no test mutates /app/data.
     const regressions = create('regressions'); await wait(regressions); inject(regressions);
-    const files = (await fs.readdir(path.join(root,'tests'))).filter(file=>file.endsWith('.test.js') && file!=='check-identifiers.test.js').map(file=>file.slice(0,-8));
+    // 两项不进容器矩阵：标识符检查依赖源码树；站点脚本回归依赖用户自备的
+    // js_dr3 脚本，而发行镜像按设计零预置源，跑起来只会整组 skip。
+    const excluded = new Set(['check-identifiers','site-sources']);
+    const files = (await fs.readdir(path.join(root,'tests'))).filter(file=>file.endsWith('.test.js') && !excluded.has(file.slice(0,-8))).map(file=>file.slice(0,-8));
     let tap;
     try { tap = inside(regressions,['node','--test','--test-reporter=tap',...files.map(file=>'tests/'+file+'.test.js')]); }
     catch (error) { await fs.writeFile(path.join(output,'regressions.tap'),error.output || error.message); throw error; }
