@@ -48,5 +48,14 @@ export class EmbyStore {
     remove(namespace,id) {if(!this.db)return;const previous=this.db.get('SELECT length(CAST(body AS BLOB)) AS bytes FROM records WHERE namespace=? AND id=?',[namespace,id])?.bytes||0;this.db.run('DELETE FROM records WHERE namespace=? AND id=?',[namespace,id]);this.bytes-=previous;}
     transaction(fn) {this.db.exec('BEGIN IMMEDIATE');const bytes=this.bytes;try{const value=fn();this.db.exec('COMMIT');return value;}catch(error){this.db.exec('ROLLBACK');this.bytes=bytes;throw error;}}
     id(key) {let value=this.get('identity',key);if(!value){value=randomUUID().replaceAll('-','');this.put('identity',key,value);}return value;}
+    // Consistent copy for backups: VACUUM INTO writes a compact database
+    // without the torn-file risk of copying an open SQLite file.
+    async backupTo(target) {
+        if(!this.db)return false;
+        await fs.rm(target,{force:true});
+        this.db.exec(`VACUUM INTO '${String(target).replaceAll("'","''")}'`);
+        await fs.chmod(target,0o600);
+        return true;
+    }
     close() {this.db?.close();this.db=null;}
 }

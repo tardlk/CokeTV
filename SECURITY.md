@@ -16,8 +16,9 @@
 
 - **源脚本 = 任意代码执行。** drpy3源在服务器上以与 CokeTV **相同的权限**执行，可导入Node模块、访问文件系统与网络。**导入任何第三方脚本或ZIP源包等价于允许其在你的服务器上执行任意代码。**
 - **公开观影与管理权限**：首页、浏览、搜索和播放默认公开，管理密码只保护管理接口与编辑操作。公网部署若需限制观众，应在外部 HTTPS 网关增加访问鉴权与限流，并收紧代理目标；不要导入不可信源。容器入口以 root 初始化专用 data 的权限，随后以 PUID:PGID（默认1000:1000）、空附加组、全部 Linux 能力清零及 no-new-privileges 运行服务。入口不加载源或用户配置，不跟随 data 中的符号链接；具体限制和 NAS ACL 例外见 README 的 Docker 节。Docker exec 须显式指定 `--user <PUID>:<PGID>`，否则使用镜像的 root 默认账号；具备 Docker 管理权的用户本就能控制容器。Compose 的少量 cap_add 仅用于启动初始化，源脚本仍与普通服务账号同权限执行。
+- **图片接口**：`/image/upload` 仅允许管理员或源内部运行时，只接受 PNG/JPEG/GIF/WebP 并校验文件魔数；`/image/:id` 只回栅格图并带 `Content-Security-Policy: default-src 'none'`，不再接受 SVG，避免同源脚本读取管理会话。
 - **管理后台凭据**是唯一的管理入口凭据。请使用独立强口令，并保护好 `data/` 备份（其中含管理凭据的加盐哈希与源 ENV）。
-- **运行日志与数据快照**：日志写入前会隐藏 URL 中的令牌、`Authorization`/`Cookie` 头与 `password=` 类赋值，但**源脚本自行打印的内容不会被识别**；日志文件（0600）仍按私密数据对待。自动快照包含状态、管理凭据、源脚本/ENV/持久 KV，下载入口要求管理密码，导出的 zip 应加密保管或放入受控目录。
+- **运行日志与数据快照**：日志写入前会隐藏 URL 中的令牌、`Authorization`/`Cookie` 头、`password=` 类赋值以及 JSON 形态的 `token`/`password`/`cookie` 键值，但**源脚本自行拼接的非标准格式不会被识别**；日志文件（0600）仍按私密数据对待。自动快照包含状态、管理凭据、源脚本/ENV/持久 KV、115/光鸭授权与 Emby 数据库一致性副本，下载入口要求管理密码，导出的 zip 应加密保管或放入受控目录。
 - **首次设置管理密码**：未设置密码时，首个成功提交新密码和确认密码的人完成后台初始化。创建成功后关闭首次设密入口，再次提交返回 409；已有密码不能通过该入口重置。无人值守部署可通过 `ADMIN_PASSWORD` 预设管理密码。**不要在完成首次初始化前把新实例直接暴露公网**：该入口按设计不校验管理密码（只做跨站来源校验），公网暴露期间任何能直连的 HTTP 客户端都可以抢先完成初始化。公网/无人值守部署请先设置 `ADMIN_PASSWORD`，或用 Cloudflare Access / VPN / 仅内网等方式限制管理入口。
 - **管理接口的跨站防护**：所有 `/admin/*` 的**非安全方法**（POST/PUT/PATCH/DELETE）统一校验请求来源——`Sec-Fetch-Site: cross-site` 一律拒绝；带 `Origin` 时必须（URL 归一化后）精确等于当前请求的同源地址；不带 `Origin` 的 CLI/自动化请求放行，仍由管理密码保护（刻意不强制要求 `Origin`，否则会破坏 curl/脚本等客户端）。首次设密入口同样受此校验。**CokeTV 不使用 cookie，也不使用 CSRF token**：前端把访问密码的 Basic 凭据保存在 `sessionStorage`，由 `fetch` 显式附带 `Authorization`；因此浏览器不会像原生 Basic 弹窗那样自动为跨站表单附带凭据，跨越来源的表单提交会被上面的来源校验拒绝。
 - **媒体代理**：普通源或显式代理模式的浏览器只收到 43 字符的随机能力引用（256 位随机数），上游 URL、请求头与到期时间留在服务端；最长有效期 12 小时。存储最多 50000 条、载荷总计 64 MiB，签发时回收过期记录，容量不足时淘汰最旧记录；读取不延长有效期。重启、过期或淘汰后需重新选择剧集。媒体票据在 `/watch/media/:ticket` 只抓绑定的 URL，并可访问所属源的 `/proxy/:module/*`（该入口只绑定源，不绑定 URL）；分片/转发用的 `proxy` 票据绑定具体 URL。两类票据均不能用于管理接口、源 API 或订阅。
@@ -64,26 +65,22 @@ Emby 登录按 IP 限制，普通协议请求与源取链另有限额；仅已�
 
 ## 已知依赖漏洞（审计记录）
 
-2026-10-10新增qrcode后重新执行 `npm audit --json`，仍为下表4项（1 high、1 moderate、2 critical），新增依赖没有引入额外告警；没有升级无关依赖。以下是该次审计快照，包级告警不等于已证明 CokeTV 存在可利用路径，也不表示已豁免扫描：
+**2026-10-26 复核并修复**（Node 22.23.4，`npm audit --omit=dev`）：
 
-**2026-10-16 复核**（`npm audit --omit=dev`）：仅 `node-forge` 1 项 high，`fixAvailable: false`，与上表一致；安装版本为 `1.4.0`（`package.json` 声明 `^1.3.1`），未做任何升级，也未使用 `npm audit fix --force`。已补充确认依赖链与可达性：
+生产依赖已通过 `npm audit fix --omit=dev` 升到修复版本，当前为 **0 项**：
+- `undici` 7.30.1（cheerio 传递依赖；原先的 EventSource/SRI/内容编码问题已修复）
+- `fastify` 5.12.7（头部校验 `propertyNames` 大小写绕过）
+- `fast-uri` 4.2.3（URI 规范化/主机混淆问题）
 
-| 包 | 严重度 | 影响面 | 处置 |
-| --- | --- | --- | --- |
-| `node-forge` | high | **运行时**（内核加密/签名）。`GHSA-86w9-cpqp-85rv`：RSA PKCS#1 v1.5 签名校验接受多余嵌套 DigestAlgorithm。 | **上游无修复版本**（`fixAvailable: false`）。接受该风险；不要依赖 node-forge 做不可信来源的签名校验。等待上游修复后升级。 |
-| `vitest` | critical | **dev-only**（测试运行器），不进镜像运行路径。 | 本次 audit 建议升级到 vitest 5.0.3，属于主版本变更，需单独验证迁移。 |
-| `tinypool` | critical | **dev-only**（vitest 的线程池依赖），不进镜像运行路径。 | 随 vitest 主版本升级一并解决。 |
-| `@vitest/mocker` | moderate | **dev-only**，不进镜像运行路径。 | 随 vitest 主版本升级一并解决。 |
+全量 `npm audit`（含开发依赖）仍有 6 项：`vitest`/`tinypool` 为 critical，`vite`/`node-forge`/顶层开发用 `undici` 为 high，`@vitest/mocker` 为 moderate。它们只影响测试/构建路径，不进入生产镜像；其中 vitest 的修复是 5.x 主版本，需单独迁移验证。`node-forge` 仅用于测试证书生成，无上游修复，不用于运行时签名校验。
 
-即：唯一进入运行时的是 `node-forge`，且无上游修复版本；其余 3 项都在 `devDependencies`，**镜像运行路径不包含它们**（Dockerfile 只 `npm prune --omit=dev` 后复制生产依赖）。
+历史审计表保留在 Git 历史。发布前重新执行 `npm audit` 并在本节更新；包级告警不等于已证明 CokeTV 存在可利用路径，也不表示已豁免扫描。
 
-0.2 系列仅保留 drpy3。旧 drpyS 注入的 node-forge 已从生产依赖移除，node-forge 仅用于生成回归测试的 TLS 证书，不进入生产镜像。drpy3 官方打包依赖按固定版本和哈希保留；源脚本仍与宿主同权限执行，worker不是安全沙箱。
-
-发布前重新执行 `npm audit` 并在本文件更新该表。
+0.2 系列仅保留 drpy3。旧 drpyS 注入的 node-forge 已从生产依赖移除；drpy3 官方打包依赖按固定版本和哈希保留；源脚本仍与宿主同权限执行，worker 不是安全沙箱。
 
 ## 限流与反代前提
 
-- 公开接口（`/watch/*`、`/mediaProxy`、`/proxy/*`、`/req/*`、`/m3u8-proxy/*`、`/subscription/*`、`/tvbox/*`、`/s/*`、`/config`）按来源 IP 限流，默认 `RATE_LIMIT_PER_MINUTE=1200`/分钟；仅 GET/HEAD 媒体转发路由（`/mediaProxy`、`/req/*`、`/m3u8-proxy/{playlist,ts,proxy}`、`/unified-proxy/proxy`、`/file-proxy/proxy`）中，有效且绑定当前目标 URL 的 **`proxy` 票据**豁免，以保留同一 NAT 后多观众的 HLS 分片/key 请求余量。`/proxy/:module/*` 会执行源逻辑，媒体票据在该入口只绑定源，因此即使带有效票据也照常限流；将票据放到其他路由或更换目标 URL 同样不豁免。限流按匹配到的路由判断，覆盖编码路径与 absolute-form 请求。
+- 公开接口（`/watch/*`、`/api/*`、`/parse/*`、`/image/*`、`/json/*`、`/webdav/*`、`/ftp/*`、`/mediaProxy`、`/proxy/*`、`/req/*`、`/m3u8-proxy/*`、`/subscription/*`、`/tvbox/*`、`/s/*`、`/config`）按来源 IP 限流，默认 `RATE_LIMIT_PER_MINUTE=1200`/分钟；仅 GET/HEAD 媒体转发路由（`/mediaProxy`、`/req/*`、`/m3u8-proxy/{playlist,ts,proxy}`、`/unified-proxy/proxy`、`/file-proxy/proxy`）中，有效且绑定当前目标 URL 的 **`proxy` 票据**豁免，以保留同一 NAT 后多观众的 HLS 分片/key 请求余量。`/proxy/:module/*` 会执行源逻辑，媒体票据在该入口只绑定源，因此即使带有效票据也照常限流；将票据放到其他路由或更换目标 URL 同样不豁免。限流按匹配到的路由判断，覆盖编码路径与 absolute-form 请求。
 - `/admin/*` 同样按 IP 限流，并对**鉴权失败**单独计数，默认 `ADMIN_AUTH_FAIL_PER_MINUTE=20`；耗尽后该 IP 在一分钟窗口内一律 429（包含随后给出的正确密码），用于抵御在线爆破。两个阈值都可用同名环境变量调整。
 - `TRUST_PROXY=1` 时 `request.ip` 取自 `X-Forwarded-For`。**必须确保前置反向代理可信且会覆写该头**；否则攻击者可伪造 IP 绕过限流。
 - 密码校验使用 scrypt（`N=16384`）且为**异步**实现（跑在 libuv 线程池），未鉴权请求无法阻塞主事件循环；仍建议用限流把并发 KDF 成本压在可控范围。

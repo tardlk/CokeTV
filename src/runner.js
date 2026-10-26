@@ -5,6 +5,7 @@ import path from 'path';
 import {randomBytes} from 'crypto';
 import {sourceOperation} from './source-operation.js';
 import {SOURCE_TIMEOUT} from './runtime-defaults.js';
+import {redactLogMessage} from './logging.js';
 
 export class Runner extends EventEmitter {
     constructor(store, {sink} = {}) {
@@ -14,7 +15,7 @@ export class Runner extends EventEmitter {
         this.internalKey = randomBytes(24).toString('hex'); this.gatewayPort = null; this.gatewayPending = null;
     }
     log(entry) {
-        const record = {time: new Date().toISOString(), level: 'info', ...entry, message: String(entry.message || '').slice(0, 8192)};
+        const record = {time: new Date().toISOString(), level: 'info', ...entry, message: redactLogMessage(entry.message || '')};
         this.logs.push(record);
         if (this.logs.length > 400) this.logs.splice(0, this.logs.length - 400);
         this.sink?.write(record);

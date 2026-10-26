@@ -9,6 +9,7 @@ import {createReadStream} from 'fs';
 import path from 'path';
 import net from 'net';
 import {pathToFileURL} from 'url';
+import {randomBytes} from 'crypto';
 import dotenv from 'dotenv';
 import {Store, token} from './store.js';
 import {Runner} from './runner.js';
@@ -56,6 +57,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
         file: logFile,
         maxBytes: Number(process.env.LOG_MAX_BYTES) || undefined,
         keep: Number(process.env.LOG_KEEP) || undefined,
+        stdout: process.env.LOG_STDOUT === '0' ? false : undefined,
     });
     const runner = new Runner(store, {sink: logSink});
     const backups = new Backups(store.directory, {
@@ -284,7 +286,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     });
     const URL_PROXY_ROUTES = ['/unified-proxy/proxy', '/file-proxy/proxy', '/m3u8-proxy/playlist', '/m3u8-proxy/ts', '/m3u8-proxy/proxy'];
     const TICKET_RATE_ROUTES = new Set(['/mediaProxy', '/req/*', ...URL_PROXY_ROUTES]);
-    const PUBLIC_RATE_PATHS = /^\/(?:cat\/|tvbox\/|s\/|watch\/|mediaProxy$|req\/|m3u8-proxy\/|unified-proxy\/|file-proxy\/|proxy\/|subscription\/|config$|config\/)/;
+    const PUBLIC_RATE_PATHS = /^\/(?:cat\/|tvbox\/|s\/|watch\/|api\/|parse\/|image\/|json\/|webdav\/|ftp\/|mediaProxy$|req\/|m3u8-proxy\/|unified-proxy\/|file-proxy\/|proxy\/|subscription\/|config$|config\/)/;
     app.addHook('onRequest', async (request, reply) => {
         const route = request.routeOptions?.url || '';
         if (!PUBLIC_RATE_PATHS.test(route)) return;
@@ -300,8 +302,8 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
         if (rateBuckets.size > 20000) rateBuckets.clear();
         if (!allowRequest(`public:${request.ip || request.raw?.socket?.remoteAddress || 'local'}`)) reply.code(429).send({error: '请求过于频繁，请稍后再试'});
     });
-    app.get('/health', async () => ({ok: true, version: '0.2.1'}));
-    app.get('/admin/health', async () => ({ok: true, version: '0.2.1', memory: process.memoryUsage(), runtime: runner.status(), backups: await backups.status()}));
+    app.get('/health', async () => ({ok: true, version: '0.2.2'}));
+    app.get('/admin/health', async () => ({ok: true, version: '0.2.2', memory: process.memoryUsage(), runtime: runner.status(), backups: await backups.status()}));
     app.get('/admin/state', async () => { await store.refreshEnvironment(); return {...store.state, runtime: runner.status()}; });
     app.get('/watch/sources', async () => store.state.instances.filter(instance => sourceAvailable(store.state, instance)).flatMap(instance => {
         const script = store.state.scripts.find(item => item.id === instance.scriptId);
@@ -352,7 +354,21 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
         return serveMedia(request, reply, session.url, session.headers || {}, request.params.ticket,
             proxyMint(session.headers || {}, session), undefined, guardForEgress(session.egress));
     }});
-    await registerEmby(app, {store, content, baseUrl, serveMedia, isNetdiskCurrent: revision => netdisk.current(revision), targetGuard});
+    const emby = await registerEmby(app, {store, content, baseUrl, serveMedia, isNetdiskCurrent: revision => netdisk.current(revision), targetGuard});
+    if (emby?.db) {
+        backups.setExtraFiles(async () => {
+            const temporary = path.join(store.directory, 'backups', `.emby-${randomBytes(6).toString('hex')}.sqlite`);
+            try {
+                if (!(await emby.db.backupTo(temporary))) return [];
+                return [{name: 'emby/emby.sqlite', bytes: await fs.readFile(temporary)}];
+            } catch (error) {
+                runner.log({level: 'warn', source: 'backup', message: `Emby 快照失败，已跳过：${error.message}`});
+                return [];
+            } finally {
+                await fs.rm(temporary, {force: true}).catch(() => {});
+            }
+        });
+    }
     // Destructive operations take a fresh snapshot first (throttled: one per
     // 10 minutes) so a mistaken delete still has a recent recovery point.
     const snapshotBeforeChange = async reason => {
@@ -660,15 +676,25 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     for (const route of URL_PROXY_ROUTES) app.route({method: ['GET', 'HEAD'], url: route, handler: mediaProxyHandler});
     for (const route of ['/webdav/*', '/ftp/*']) app.route({method: ['GET', 'HEAD', 'POST'], url: route, handler: async (request, reply) => {
         const sub = await authorizeService(request);
+        // 不接受调用方自带的 config：目标主机与凭据只能取自服务端保存的配置，避免被当作带凭据的开放代理。
+        // 查询参数和 JSON body 都必须剥离；/config 测试接口只允许管理员或源内部运行时。
+        const forwarded = new URL(request.url, 'http://127.0.0.1');
+        forwarded.searchParams.delete('config');
+        let pathname = forwarded.pathname;
+        try { pathname = decodeURIComponent(pathname); } catch {}
+        const configRoute = pathname === '/webdav/config' || pathname === '/ftp/config';
+        if (configRoute && !['admin', 'runtime'].includes(sub.kind)) throw fail('网关配置仅限管理员或源内部调用', 403);
+        let forwardedBody = request.body;
+        if (forwardedBody && typeof forwardedBody === 'object' && !Array.isArray(forwardedBody) && !configRoute) {
+            const {config, ...rest} = forwardedBody;
+            forwardedBody = rest;
+        }
         const port = await runner.gateway();
         const headers = {...request.headers, host: request.headers.host};
         delete headers['content-length'];
-        // 不接受调用方自带的 config：目标主机与凭据只能取自服务端保存的配置，避免被当作带凭据的开放代理。
-        const forwarded = new URL(request.url, 'http://127.0.0.1');
-        forwarded.searchParams.delete('config');
         const target = `http://127.0.0.1:${port}${forwarded.pathname}${forwarded.search}`;
         return streamMedia(target, headers, request, reply,
-            {base: baseUrl(request), token: sub?.token, method: request.method, body: request.body ? JSON.stringify(request.body) : undefined});
+            {base: baseUrl(request), token: sub?.token, method: request.method, body: forwardedBody === undefined ? undefined : JSON.stringify(forwardedBody)});
     }});
     app.post('/http', async (request, reply) => {
         // /http 是「调用方自选 URL/method/headers/body」的通用 HTTP 客户端能力，
@@ -692,18 +718,36 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
         return streamMedia(target, headers, request, reply, {base: baseUrl(request), token, mint: proxyMint(headers, scopeFor(info)), guard: guardFor(info)});
     });
     const images = new Map();
+    // Only raster formats are accepted. SVG is a document and would execute
+    // script when opened directly on this origin (stolen admin sessionStorage).
+    const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+    const imageMatchesType = (type, bytes) => {
+        if (type === 'image/png') return bytes.length > 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+        if (type === 'image/jpeg') return bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+        if (type === 'image/gif') return bytes.length > 6 && ['GIF87a', 'GIF89a'].includes(bytes.subarray(0, 6).toString('ascii'));
+        if (type === 'image/webp') return bytes.length > 12 && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+        return false;
+    };
     app.post('/image/upload', async request => {
-        await authorizeService(request);
+        const access = await authorizeService(request);
+        if (!['admin', 'runtime'].includes(access.kind)) throw fail('图片上传仅限管理员或源内部调用', 403);
         const {imageId, base64Data} = request.body || {};
-        if (!checkString(imageId, 100) || !/^data:image\/[^;]+;base64,/.test(base64Data || '') || base64Data.length > 700000) throw fail('图片格式不正确或超过大小限制');
-        const comma = base64Data.indexOf(',');
-        images.set(imageId, {type: base64Data.slice(5, base64Data.indexOf(';')), bytes: Buffer.from(base64Data.slice(comma + 1), 'base64'), time: Date.now()});
+        if (!checkString(imageId, 100) || typeof base64Data !== 'string' || base64Data.length > 700000) throw fail('图片格式不正确或超过大小限制');
+        const match = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\s]+)$/i.exec(base64Data);
+        if (!match) throw fail('图片仅支持 PNG、JPEG、GIF 或 WebP');
+        const type = match[1].toLowerCase();
+        const bytes = Buffer.from(match[2].replace(/\s/g, ''), 'base64');
+        if (!IMAGE_TYPES.has(type) || !bytes.length || bytes.length > 512 * 1024 || !imageMatchesType(type, bytes)) throw fail('图片内容与声明类型不符');
+        images.set(imageId, {type, bytes, time: Date.now()});
         if (images.size > 100) images.delete(images.keys().next().value);
         return {success: true, data: {imageId, imageUrl: `/image/${encodeURIComponent(imageId)}`}};
     });
     app.get('/image/:id', async (request, reply) => {
         const image = images.get(request.params.id);
         if (!image || Date.now() - image.time > 3600000) { images.delete(request.params.id); throw fail('图片不存在或已过期', 404); }
+        // Defense in depth for any future image type: the response document
+        // cannot load scripts or subresources.
+        reply.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
         return reply.type(image.type).send(image.bytes);
     });
     app.get('/parse/:jx', async request => {

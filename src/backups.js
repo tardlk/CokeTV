@@ -8,14 +8,14 @@ import {logStamp} from './logging.js';
 // script files and their history, per-source ENV and persistent source KV.
 // Runtime libraries are re-created from engine/ on every start and are skipped
 // so a snapshot stays small; the node_modules symlink must never be followed.
-const SNAPSHOT_ROOTS = ['state.json', 'admin.json', 'revisions', 'runtime/spider', 'runtime/config', 'runtime/data', 'runtime/json', 'runtime/jx'];
+const SNAPSHOT_ROOTS = ['state.json', 'admin.json', 'revisions', 'netdisk', 'runtime/spider', 'runtime/config', 'runtime/data', 'runtime/json', 'runtime/jx'];
 const SNAPSHOT_NAME = /^coketv-\d{8}-\d{6}-[a-f0-9]{6}\.zip$/;
 const MAX_TOTAL_BYTES = 512 * 1024 * 1024;
 
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
 
 export class Backups {
-    constructor(directory, {keep = 7, intervalMs = 24 * 3600000, maxTotalBytes = MAX_TOTAL_BYTES, now = Date.now, onLog} = {}) {
+    constructor(directory, {keep = 7, intervalMs = 24 * 3600000, maxTotalBytes = MAX_TOTAL_BYTES, now = Date.now, onLog, extraFiles} = {}) {
         if (!directory) throw new TypeError('备份目录不能为空');
         this.root = path.resolve(directory);
         this.directory = path.join(this.root, 'backups');
@@ -24,6 +24,7 @@ export class Backups {
         this.maxTotalBytes = maxTotalBytes;
         this.now = now;
         this.onLog = onLog || (() => {});
+        this.extraFiles = typeof extraFiles === 'function' ? extraFiles : null;
         this.pending = null;
         this.timers = [];
     }
@@ -40,6 +41,11 @@ export class Backups {
         this.timers.push(first, repeat);
         return this;
     }
+
+    // SQLite cannot be captured by a plain file copy while it is open, so
+    // Emby's database is produced by a consistent VACUUM INTO in the app layer
+    // and added through this callback.
+    setExtraFiles(callback) { this.extraFiles = typeof callback === 'function' ? callback : null; }
 
     close() {
         for (const timer of this.timers) clearTimeout(timer);
@@ -107,6 +113,12 @@ export class Backups {
         try {
             await fs.mkdir(this.directory, {recursive: true, mode: 0o700});
             for (const root of SNAPSHOT_ROOTS) await add(root);
+            for (const item of await this.extraFiles?.() || []) {
+                if (!item || typeof item.name !== 'string' || !Buffer.isBuffer(item.bytes)) continue;
+                total += item.bytes.length;
+                if (total > this.maxTotalBytes) throw fail('数据目录过大，未创建快照', 507);
+                zip.addFile(item.name, item.bytes);
+            }
             const bytes = zip.toBuffer();
             await fs.writeFile(temporary, bytes, {mode: 0o600});
             await fs.rename(temporary, target);

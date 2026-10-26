@@ -88,6 +88,13 @@ test('限流仅豁免 URL 匹配的代理票据；媒体票据驱动源代理仍
         for (let index = 0; index < 4; index += 1) assert.equal((await app.inject({remoteAddress, url: '/watch/sources'})).statusCode, 200);
         assert.equal((await app.inject({remoteAddress, url: '/watch/sources'})).statusCode, 429);
 
+        // /api 也走同一公开预算：无凭据请求先被鉴权拒绝，但超限后必须在执行源之前 429。
+        const apiAddress = '192.0.2.4';
+        for (let index = 0; index < 5; index += 1) {
+            assert.equal((await app.inject({remoteAddress: apiAddress, url: `/api/${id}`})).statusCode, 403);
+        }
+        assert.equal((await app.inject({remoteAddress: apiAddress, url: `/api/${id}`})).statusCode, 429);
+
         // 源代理的 toBytes=2 重定向仍可签发 URL 绑定票据，匿名跟随不受已满预算影响。
         const redirected = await app.inject({remoteAddress: '192.0.2.3', url: `/proxy/${id}/?redirect=1&token=${mediaTicket}`});
         assert.equal(redirected.statusCode, 302, redirected.body);

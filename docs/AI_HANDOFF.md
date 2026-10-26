@@ -1,12 +1,12 @@
 # CokeTV 接手记录
 
-更新：2026-10-26。当前源码版本 **0.2.1**，用户已明确 **只保留 drpy3 一个源执行引擎**；工作方式继续直接在 `main` 工作，不主动创建分支或 PR。
+更新：2026-10-26。当前源码版本 **0.2.2**，用户已明确 **只保留 drpy3 一个源执行引擎**；工作方式继续直接在 `main` 工作，不主动创建分支或 PR。
 
 ## 0. 当前接手入口（先看本节）
 
 - **先读顺序**：`AGENTS.md`（用户已确认的产品与安全决定）→ 本文件 → `README.md`、`SECURITY.md`、`docs/CONFIGURATION.md`、`docs/DEVELOPMENT.md`。
-- **当前验证**（2026-10-26，macOS arm64 / Node 22.23.4）：`npm run check`、`npm run build` 通过；`npm test` 为后端 259 项（248 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 77 项，共 336 项。
-- **镜像（2026-10-26 已发布）**：`ghcr.io/tardlk/coketv:0.2.1`、`:0.2`、`:latest`、`:sha-cce9666` 指向同一 manifest digest `sha256:26412dbf3d5df18c42e6da8f89e9db02c16b5468cbbed74414a40547a7674d6e`（image ID `sha256:725346ef5680561df3e30cd100e5ae99079cf833779ffbb13ff6b4e058f88148`），源码提交 `cce9666e`。GitHub Release：https://github.com/tardlk/CokeTV/releases/tag/v0.2.1 。上一版 0.2.0 镜像保留 `:sha-70bcf98`（manifest `sha256:49742ce391ff294cd6baeb7f35e606f253c307c00ee7da05a0275ec83df9d61b`）；0.2.0 未单独打 Git tag，回退优先用 sha 标签。
+- **当前验证**（2026-10-26，macOS arm64 / Node 22.23.4）：`npm run check`、`npm run build` 通过；`npm test` 为后端 264 项（253 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 77 项，共 341 项。
+- **镜像（0.2.1 已发布，0.2.2 待本轮发布）**：`ghcr.io/tardlk/coketv:0.2.1`、`:0.2`、`:latest`、`:sha-cce9666` 指向 manifest digest `sha256:26412dbf3d5df18c42e6da8f89e9db02c16b5468cbbed74414a40547a7674d6e`（源码 `cce9666e`）。0.2.2 的安全修复要等本次推送后的 Verify + Docker amd64 成功；成功前不要宣称 `latest` 已包含 0.2.2。上一版 0.2.0 保留 `:sha-70bcf98`；0.2.0 未单独打 Git tag。GitHub Release：https://github.com/tardlk/CokeTV/releases/tag/v0.2.1 。
 - **发布门禁**：推送 `main`/`v*` 触发 `.github/workflows/docker.yml`；候选镜像先在原生 amd64 跑容器矩阵，再用同一镜像（不重建）发布 GHCR。本机没有 Docker，容器结论只能来自 Actions。
 - **本机私有**：`HANDOFF.md`、`.tools/`、`data/` 不入库；不要拿正式用户 data 做删除、迁移或恢复实验。
 
@@ -42,15 +42,17 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 
 网页观影对没有分类和首页影片、但可以搜索的源显示“请搜索影片”与直接聚焦搜索框的按钮，不再一律显示“暂无影片”。首页/搜索响应可选的 notice 仅按纯文本显示（最多 500 字符），用于说明站点浏览限制；切换查询时清除旧提示，不修改官方引擎。站点脚本和登录资料仍仅保存在忽略的本机运行目录。
 
+2026-10-26（0.2.2，安全修复）：图片上传收紧为管理员/源内部，仅接受 PNG/JPEG/GIF/WebP 并按魔数校验，SVG 与订阅 Token 上传被拒绝，/image 响应加 CSP；WebDAV/FTP 网关的 /config 测试接口只允许管理员/源内部，其他请求剥离 body 中的 config，堵住订阅 Token 驱动的内网 SSRF；数据快照补 `netdisk/` 与 Emby `VACUUM INTO` 一致副本；日志脱敏覆盖 JSON 形态的 token/password/cookie/authorization，并在内存日志入口统一脱敏；`/api`、`/parse`、`/image`、`/json`、`/webdav`、`/ftp` 纳入公开限流；实现文档中的 `LOG_STDOUT=0`。生产依赖执行 `npm audit fix --omit=dev`（undici 7.30.1、fastify 5.12.7、fast-uri 4.2.3），`npm audit --omit=dev` 为 0；开发依赖仍有 vitest/tinypool 等 6 项，见 SECURITY。新增 hardening 回归，补充快照/Emby 备份/脱敏/限速测试。
+
 2026-10-26（0.2.1）：运行日志改为 stdio 单行 JSON + `data/logs/coketv.log`（0600，5 MiB × 3 个历史文件），写入前隐藏 URL token、Authorization/Cookie 与 password 类赋值；后台新增“运行维护”页，可看最近 400 条、按级别过滤、下载日志。新增进程内数据快照：启动 60 秒后检查，默认每 24 小时创建、保留 7 份，zip 0600，包含状态/凭据/脚本与历史/ENV/KV/参数文件/解析脚本，不含运行库；后台可立即创建与下载；删除脚本、批量迁移、导入配置前自动补快照（10 分钟节流，失败不阻断）。恢复步骤写入 CONFIGURATION。静态资源启用 gzip/br（阈值 1 KiB）与一年 immutable 缓存，HTML 统一 no-cache。版本升至 0.2.1；新增 logging/backups/maintenance-api/static-delivery 测试与运行维护 UI 测试。
 
 生产依赖只保留宿主所需包，前端构建工具和测试库归开发依赖；新增 `@fastify/compress` 为生产依赖。Docker 不安装 Python/PHP、浏览器或 ffmpeg，保留证书和权限初始化工具。GitHub Verify 与原生 amd64 候选矩阵已同步；发布仍须核对同一 artifact/image ID/revision，不能重建后直接发布。
 
 ## 验证与发行边界
 
-本机为 macOS arm64 / Node 22.23.4。0.2.1 完整 `npm test` 通过后端 259 项（248 通过、11 项 data 站点脚本在空壳下跳过）和界面 77 项，合计 336 项；`npm run check` 与 `npm run build` 通过。新增回归覆盖日志脱敏/轮转/权限、快照内容/保留/路径校验、维护接口鉴权与下载、静态资源压缩与缓存（无 dist 时跳过）。
+本机为 macOS arm64 / Node 22.23.4。0.2.2 完整 `npm test` 通过后端 264 项（253 通过、11 项 data 站点脚本在空壳下跳过）和界面 77 项，合计 341 项；`npm run check` 与 `npm run build` 通过。新增回归覆盖图片上传权限/SVG/魔数、WebDAV/FTP 配置越权阻断、日志 JSON 脱敏与 stdout 开关、快照含网盘凭据与 Emby 一致副本、`/api` 限流，以及原有日志/快照/维护接口/静态资源用例。
 
-2026-10-26 的 `70bcf98` 已在 GitHub Actions 原生 Linux amd64 上通过 Verify 与 Docker 候选矩阵（12 项容器检查、容器内 237 项回归 fail 0 / skipped 0），并用同一镜像发布 `ghcr.io/tardlk/coketv:latest` 与 `:sha-70bcf98`（manifest digest 见 §0）。0.2.1 的 `cce9666` 在 Verify 与 Docker amd64 上同样全绿，`:latest`、`:0.2.1`、`:0.2` 与 `:sha-cce9666` 指向同一 manifest digest（见 §0）；本机仍无 Docker 及原生 amd64 环境，真实站点、真实 WASM 解密、异地客户端和 NAS 实机不在本轮验证范围。
+2026-10-26 的 `70bcf98` 已在 GitHub Actions 原生 Linux amd64 上通过 Verify 与 Docker 候选矩阵（12 项容器检查、容器内 237 项回归 fail 0 / skipped 0），并用同一镜像发布 `ghcr.io/tardlk/coketv:latest` 与 `:sha-70bcf98`（manifest digest 见 §0）。0.2.1 的 `cce9666` 在 Verify 与 Docker amd64 上全绿，`:latest`、`:0.2.1`、`:0.2` 与 `:sha-cce9666` 指向同一 manifest digest（见 §0）；本机仍无 Docker 及原生 amd64 环境，真实站点、真实 WASM 解密、异地客户端和 NAS 实机不在本轮验证范围。
 
 上游百忙无果1、央视频-1 仅在临时目录经 CokeTV HTTP 接口运行上游固定响应；六环节、多清晰度、m3u8 与 WASM 桩 TS 代理通过，示例未进入发行树。完整真实 GET/HEAD/Range/HLS/二进制代理、CLI 和重启持久化脚本也在本机服务验证；另以仅安装生产依赖的独立临时副本复验。以上不等于原生 Linux amd64 Docker 验收、真实站点/真实 WASM 解密或异地客户端验收。
 

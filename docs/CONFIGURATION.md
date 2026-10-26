@@ -73,9 +73,9 @@ v1 状态首次升级到 v2 时，先将专用数据目录复制到 `data/backup
 
 ## 数据快照与恢复
 
-服务启动 60 秒后检查一次快照，之后按 `BACKUP_INTERVAL_HOURS`（默认 24 小时）自动创建，保留最近 `BACKUP_KEEP`（默认 7）份，位于 `data/backups/`；快照文件 0600、目录 0700，不含可重建的 `runtime/libs` 与 `node_modules` 链接。
+服务启动 60 秒后检查一次快照，之后按 `BACKUP_INTERVAL_HOURS`（默认 24 小时）自动创建，保留最近 `BACKUP_KEEP`（默认 7）份，位于 `data/backups/`；快照文件 0600、目录 0700，不含可重建的 `runtime/libs` 与 `node_modules` 链接，也不含日志（`logs/`）和快照目录（`backups/`）本身。
 
-快照内容包括 `state.json`、`admin.json`、`revisions/`、`runtime/spider/`、`runtime/config/`、`runtime/data/`、`runtime/json/` 和 `runtime/jx/`，覆盖管理状态、凭据哈希、源脚本与历史、源 ENV、持久 KV、参数文件与解析脚本。源脚本和凭据都在其中，下载或转存时按私密数据保管。
+快照内容包括 `state.json`、`admin.json`、`revisions/`、`netdisk/`、`runtime/spider/`、`runtime/config/`、`runtime/data/`、`runtime/json/` 和 `runtime/jx/`，覆盖管理状态、凭据哈希、源脚本与历史、源 ENV、持久 KV、参数文件、解析脚本以及 115/光鸭授权。Emby 的 `emby/emby.sqlite` 通过 SQLite `VACUUM INTO` 生成一致性副本后加入，避免直接拷贝打开中的数据库。源脚本和凭据都在其中，下载或转存时按私密数据保管。
 
 后台“运行维护 → 数据快照”可立即创建并下载；删除脚本、批量迁移和导入配置前也会自动补一份快照（10 分钟内已有快照则复用），失败只记警告、不阻断操作。恢复步骤：停止服务 → 先备份当前 `data/` → 将 zip 解压覆盖到 `data/` 根目录 → 启动；不要让新旧进程同时写同一目录。旧版 `/admin/export` 只导出状态与 ENV，不包含脚本文件，完整恢复以本快照为准。
 

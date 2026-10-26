@@ -5,8 +5,11 @@ import path from 'node:path';
 // restart does not wipe the only diagnostic trail. Redaction is deliberately
 // conservative: capability tokens and authorization headers are the values
 // that must never end up in `docker logs` or a downloaded log file.
-const SECRET_QUERY = /([?&;](?:token|access_token|refresh_token|password|passwd|pwd|secret|apikey|api_key)=)[^&\s"'#]+/gi;
-const SECRET_ASSIGNMENT = /\b((?:token|access_token|refresh_token|password|passwd|pwd|secret|apikey|api_key)\s*[=:]\s*)[^\s,;"'&}]+/gi;
+const SECRET_KEYS = 'token|access_token|refresh_token|password|passwd|pwd|secret|apikey|api_key|cookie|authorization';
+const SECRET_QUERY = new RegExp(`([?&;](?:${SECRET_KEYS})=)[^&\\s"'#]+`, 'gi');
+// Handles both query/assignment forms and JSON-shaped payloads such as
+// {"token":"..."} or { cookie: '...' }. Values may be quoted (JSON-escaped) or bare.
+const SECRET_STRUCTURED = new RegExp(`((?:"|')?(?:${SECRET_KEYS})(?:"|')?\\s*[:=]\\s*)("(?:\\\\.|[^"\\\\])*"|'(?:\\\\.|[^'\\\\])*'|[^\\s,;&}]+)`, 'gi');
 const AUTH_HEADER = /\b((?:authorization|cookie|set-cookie)\s*:\s*)[^\r\n]+/gi;
 const AUTH_SCHEME = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}/gi;
 
@@ -15,7 +18,7 @@ export function redactLogMessage(value) {
         .replace(AUTH_SCHEME, (_, scheme) => `${scheme} [redacted]`)
         .replace(AUTH_HEADER, (_, name) => `${name}[redacted]`)
         .replace(SECRET_QUERY, (_, name) => `${name}[redacted]`)
-        .replace(SECRET_ASSIGNMENT, (_, name) => `${name}[redacted]`)
+        .replace(SECRET_STRUCTURED, (_, prefix, value) => `${prefix}${value.startsWith('"') ? '"[redacted]"' : value.startsWith("'") ? "'[redacted]'" : '[redacted]'}`)
         .slice(0, 8192);
 }
 

@@ -1,6 +1,6 @@
 # 开发与验证
 
-CokeTV 0.2.1 使用 Node.js 22，唯一源引擎为 drpy3。`src/` 是 HTTP/管理/订阅/网盘宿主，`src/host/` 是独立的解析、ENV和按需网关；`engine/libs/drpy3/` 保留官方原包四文件，版本与 SHA-256 见 UPSTREAM.json。`web/` 是 Vue 前端；用户运行文件仅放 data，不进入发行。
+CokeTV 0.2.2 使用 Node.js 22，唯一源引擎为 drpy3。`src/` 是 HTTP/管理/订阅/网盘宿主，`src/host/` 是独立的解析、ENV和按需网关；`engine/libs/drpy3/` 保留官方原包四文件，版本与 SHA-256 见 UPSTREAM.json。`web/` 是 Vue 前端；用户运行文件仅放 data，不进入发行。
 
 ## 当前验证
 
@@ -13,9 +13,9 @@ npm test
 
 测试及语法文件数量以命令输出为准。检查覆盖语法、未定义变量、唯一引擎空壳清单和来源哈希；node:test 验证后端，Vitest 验证 UI。没有 Python/PHP 测试环境要求。
 
-drpy-node 2.0.6 全源兼容基线及其旧引擎专项用例已退役；保留 HTTP/媒体/订阅/Emby/网盘/鉴权/SSRF/权限与事务回滚回归，并将协议样本迁为 drpy3。`tests/helpers/drpy3-fixture.js` 仅生成测试用的原生 drpy3 钩子，不被产品导入或随镜像分发。node-forge、undici、TypeScript 是开发/验证依赖，不进入生产镜像。
+drpy-node 2.0.6 全源兼容基线及其旧引擎专项用例已退役；保留 HTTP/媒体/订阅/Emby/网盘/鉴权/SSRF/权限与事务回滚回归，并将协议样本迁为 drpy3。`tests/helpers/drpy3-fixture.js` 仅生成测试用的原生 drpy3 钩子，不被产品导入或随镜像分发。node-forge、TypeScript 与测试直接使用的 undici 是开发/验证依赖；生产镜像中 `cheerio` 仍会带入其传递依赖 `undici`（见 SECURITY 审计表），不能把“测试直接依赖”与“镜像内不存在”混为一谈。
 
-`tests/logging.test.js`、`backups.test.js`、`maintenance-api.test.js` 分别覆盖日志脱敏/轮转/权限、快照内容/保留份数/路径校验以及管理接口鉴权与下载；`static-delivery.test.js` 验证带指纹资源长缓存、HTML 回源校验和压缩（未构建 dist 时跳过）。`tests/drpy3.test.js` 覆盖六环节、工具全局、存储和模块实例隔离、ESM/CJS/WASM、HTTP字符集/二进制/重定向、本地JS/ZIP导入与本地drpy3解析；`subscription-address.test.js` 验证域名/IP/IPv6与可信反代地址、旧地址覆盖失效、固定超时及退役检测API；`single-engine.test.js` 验证旧执行入口和已删除的链接导入API不可用、v1备份/升级、旧源过滤和迁移回滚；`site-sources.test.js` 针对data目录中的实际站点脚本做六环节、验证失败降级和媒体代理内网拦截回归，脚本不存在时整组跳过（发行空壳不受影响）。TVBox订阅、猫影视与Emby继续通过同一内容服务执行drpy3。
+`tests/logging.test.js`、`backups.test.js`、`maintenance-api.test.js` 分别覆盖日志脱敏（含 JSON 键值）/轮转/权限、快照内容（含网盘凭据与调用方一致副本）/保留份数/路径校验以及管理接口鉴权与下载；`tests/hardening.test.js` 覆盖图片上传的 SVG/魔数/权限和 WebDAV/FTP 配置接口的订阅越权阻断；`static-delivery.test.js` 验证带指纹资源长缓存、HTML 回源校验和压缩（未构建 dist 时跳过）。`tests/drpy3.test.js` 覆盖六环节、工具全局、存储和模块实例隔离、ESM/CJS/WASM、HTTP字符集/二进制/重定向、本地JS/ZIP导入与本地drpy3解析；`subscription-address.test.js` 验证域名/IP/IPv6与可信反代地址、旧地址覆盖失效、固定超时及退役检测API；`single-engine.test.js` 验证旧执行入口和已删除的链接导入API不可用、v1备份/升级、旧源过滤和迁移回滚；`site-sources.test.js` 针对data目录中的实际站点脚本做六环节、验证失败降级和媒体代理内网拦截回归，脚本不存在时整组跳过（发行空壳不受影响）。TVBox订阅、猫影视与Emby继续通过同一内容服务执行drpy3。
 
 ## 数据与生命周期
 

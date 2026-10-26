@@ -223,7 +223,7 @@ export default {
   <SourceWorkspace v-else-if="page==='workspace' && workspaceSource" ref="workspace" :key="workspaceSource.id" :source="workspaceSource" :sources="sources" :api="api" @close="closeWorkspace" @saved="action(load)" />
   <SidebarProvider v-else>
     <Sidebar collapsible="icon">
-      <SidebarHeader><a class="brand-lockup" href="/admin" @click.prevent="page='sources'"><span class="brand-mark"><Icon name="layers" /></span><div class="group-data-[collapsible=icon]:hidden"><strong>CokeTV</strong><small>v0.2.1</small></div></a></SidebarHeader>
+      <SidebarHeader><a class="brand-lockup" href="/admin" @click.prevent="page='sources'"><span class="brand-mark"><Icon name="layers" /></span><div class="group-data-[collapsible=icon]:hidden"><strong>CokeTV</strong><small>v0.2.2</small></div></a></SidebarHeader>
       <SidebarContent><AppNavigation :page="page" :sources="sources.length" :subscriptions="state.subscriptions.length" @navigate="page=$event" @watch="openWatch" /></SidebarContent>
 <SidebarRail />
     </Sidebar>

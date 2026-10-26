@@ -5,6 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import {EmbyStore} from '../src/emby/store.js';
 import {Store} from '../src/store.js';
+import {createRequire} from 'node:module';
+
+const require = createRequire(import.meta.url);
 
 test('Emby复用SQLite：并发首次打开同一连接、事务失败完整回滚、重启保持ServerId和0600',async t=>{
     const directory=await fs.mkdtemp(path.join(os.tmpdir(),'coketv-emby-store-'));
@@ -28,4 +31,20 @@ test('旧全局开关不再控制订阅协议，损坏数据库拒绝覆盖',asy
     const file=path.join(directory,'emby','emby.sqlite');await fs.writeFile(file,'{broken');
     await assert.rejects(new EmbyStore(store).init(),/数据库不可读/);assert.equal(await fs.readFile(file,'utf8'),'{broken');
 
+});
+
+test('Emby 备份使用 VACUUM INTO 生成可读一致副本且为 0600',async t=>{
+    const directory=await fs.mkdtemp(path.join(os.tmpdir(),'coketv-emby-backup-'));
+    const store=new Store(directory),db=await new EmbyStore(store).init();
+    t.after(async()=>{db.close();await fs.rm(directory,{recursive:true,force:true});});
+    await db.open();db.put('sample','keep',{value:'copied'});
+    const target=path.join(directory,'emby','backup.sqlite');
+    assert.equal(await db.backupTo(target),true);
+    assert.equal((await fs.stat(target)).mode&0o777,0o600);
+    const {Database}=require('node-sqlite3-wasm');
+    const copy=new Database(target);
+    assert.deepEqual(copy.get('SELECT body FROM records WHERE namespace=? AND id=?',['sample','keep']),{body:'{"value":"copied"}'});
+    copy.close();
+    db.close();
+    assert.equal(await db.backupTo(path.join(directory,'emby','closed.sqlite')),false);
 });
