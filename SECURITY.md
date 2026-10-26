@@ -81,6 +81,7 @@ Emby 登录按 IP 限制，普通协议请求与源取链另有限额；仅已�
 ## 限流与反代前提
 
 - 公开接口（`/watch/*`、`/api/*`、`/parse/*`、`/image/*`、`/json/*`、`/webdav/*`、`/ftp/*`、`/mediaProxy`、`/proxy/*`、`/req/*`、`/m3u8-proxy/*`、`/subscription/*`、`/tvbox/*`、`/s/*`、`/config`）按来源 IP 限流，默认 `RATE_LIMIT_PER_MINUTE=1200`/分钟；仅 GET/HEAD 媒体转发路由（`/mediaProxy`、`/req/*`、`/m3u8-proxy/{playlist,ts,proxy}`、`/unified-proxy/proxy`、`/file-proxy/proxy`）中，有效且绑定当前目标 URL 的 **`proxy` 票据**豁免，以保留同一 NAT 后多观众的 HLS 分片/key 请求余量。`/proxy/:module/*` 会执行源逻辑，媒体票据在该入口只绑定源，因此即使带有效票据也照常限流；将票据放到其他路由或更换目标 URL 同样不豁免。限流按匹配到的路由判断，覆盖编码路径与 absolute-form 请求。
+- `/watch/search` 单次最多查询 12 个可搜索源、单源 6 秒超时，结果缓存 30 秒；仍按一次 `/watch/*` 请求计入 IP 限流，但一次点击会放大为多个源请求，公网部署应同时限制观众和重复点击。
 - `/admin/*` 同样按 IP 限流，并对**鉴权失败**单独计数，默认 `ADMIN_AUTH_FAIL_PER_MINUTE=20`；耗尽后该 IP 在一分钟窗口内一律 429（包含随后给出的正确密码），用于抵御在线爆破。两个阈值都可用同名环境变量调整。
 - `TRUST_PROXY=1` 时 `request.ip` 取自 `X-Forwarded-For`。**必须确保前置反向代理可信且会覆写该头**；否则攻击者可伪造 IP 绕过限流。
 - 密码校验使用 scrypt（`N=16384`）且为**异步**实现（跑在 libuv 线程池），未鉴权请求无法阻塞主事件循环；仍建议用限流把并发 KDF 成本压在可控范围。

@@ -13,15 +13,17 @@ const enabled = computed(() => props.sources.filter(item => item.enabled));
 function readRoute() {
     const q = new URLSearchParams(location.search);
     const saved = (() => { try { return localStorage.getItem('coketv-watch-source'); } catch { return ''; } })();
-    return {path: location.pathname, source: q.get('source') || saved || enabled.value[0]?.id || '', vod: q.get('vod') || '', category: q.get('category') || 'home', search: q.get('search') || '', pg: Math.max(1, Number(q.get('pg')) || 1), line: Math.max(0, Number(q.get('line')) || 0), episode: Math.max(0, Number(q.get('episode')) || 0)};
+    return {path: location.pathname, source: q.get('source') || saved || enabled.value[0]?.id || '', vod: q.get('vod') || '', category: q.get('category') || 'home', search: q.get('search') || '', nav: q.get('nav') || '', pg: Math.max(1, Number(q.get('pg')) || 1), line: Math.max(0, Number(q.get('line')) || 0), episode: Math.max(0, Number(q.get('episode')) || 0)};
 }
-const route = ref(readRoute()), keyword = ref(route.value.search);
+const route = ref(readRoute()), keyword = ref(route.value.search || route.value.nav);
 const searchPanel = ref(false), searchInput = ref(null);
 const searchRecords = ref(readWatchStorage('coketv-search-history').filter(item => typeof item === 'string').slice(0, 12));
 const source = computed(() => enabled.value.find(item => item.id === route.value.source));
+const canSearch = computed(() => !!(source.value?.searchable || source.value?.navigation));
+const isNav = computed(() => !!route.value.nav);
 const isPlay = computed(() => route.value.path === '/watch/play');
 const isHistory = computed(() => route.value.path === '/watch/history');
-const home = ref({}), videos = ref([]), pageCount = ref(1), filters = ref({}), detail = ref(null);
+const home = ref({}), videos = ref([]), navGroups = ref([]), navTruncated = ref(false), pageCount = ref(1), filters = ref({}), detail = ref(null);
 const browseNotice = ref('');
 const loading = ref(false), error = ref(''), playLoading = ref(false), playError = ref(''), media = ref(null), parsers = ref([]), parser = ref('auto'), needsParse = ref(false), resume = ref(0);
 const sourceDialog = ref(false), episodeDialog = ref(false), sourceQuery = ref('');
@@ -33,14 +35,16 @@ const currentLine = computed(() => lines.value[lineIndex.value]);
 const currentEpisode = computed(() => currentLine.value?.episodes[Math.min(route.value.episode, currentLine.value.episodes.length - 1)]);
 const episodes = computed(() => descending.value ? [...(currentLine.value?.episodes || [])].reverse() : currentLine.value?.episodes || []);
 const categories = computed(() => [{type_id: 'home', type_name: '首页'}, ...(home.value.class || []).filter(item => String(item.type_id) !== 'home')]);
-const searchEntry = computed(() => source.value?.searchable && !route.value.search && route.value.category === 'home' && categories.value.length === 1);
+const searchEntry = computed(() => canSearch.value && !route.value.search && !isNav.value && route.value.category === 'home' && categories.value.length === 1);
 const activeFilters = computed(() => source.value?.filterable ? home.value.filters?.[route.value.category] || [] : []);
 const pickerSources = computed(() => enabled.value.filter(item => item.name.toLowerCase().includes(sourceQuery.value.toLowerCase())));
 const favorite = computed(() => favorites.value.some(item => item.source === route.value.source && item.vod === route.value.vod));
 const library = computed(() => libraryTab.value === 'history' ? historyItems.value : favorites.value);
 const backdrop = computed(() => ({backgroundImage: `url(${JSON.stringify(safeImage(detail.value?.vod_pic))})`}));
 const searchSuggestions = computed(() => [...new Set((home.value.list || []).map(item => plainText(item.vod_name)).filter(Boolean))].slice(0, 6));
-const searching = computed(() => loading.value && !!route.value.search);
+const searching = computed(() => loading.value && !!(route.value.search || route.value.nav));
+const navCount = computed(() => navGroups.value.reduce((total, group) => total + (group.results?.length || 0), 0));
+const navVisibleGroups = computed(() => navGroups.value.filter(group => group.results?.length || group.error));
 let dataVersion = 0, playVersion = 0;
 function navigate(path, values = {}) {
     const query = new URLSearchParams();
@@ -61,25 +65,42 @@ async function openSearch() {
     await nextTick();
     searchInput.value?.$el?.focus();
 }
+function rememberSearch(value) {
+    searchRecords.value = [value, ...searchRecords.value.filter(item => item !== value)].slice(0, 12);
+    saveWatchStorage('coketv-search-history', searchRecords.value);
+}
 function search() {
     const value = keyword.value.trim();
-    if (!source.value || !source.value.searchable || !value) {
+    if (!source.value || !canSearch.value || !value) {
         openSearch();
         return;
     }
-    searchPanel.value = false; keyword.value = value;
-    searchRecords.value = [value, ...searchRecords.value.filter(item => item !== value)].slice(0, 12);
-    saveWatchStorage('coketv-search-history', searchRecords.value);
-    navigate('/watch', {source: route.value.source, search: value});
+    searchPanel.value = false; keyword.value = value; rememberSearch(value);
+    if (source.value.navigation) navigate('/watch', {source: route.value.source, nav: value});
+    else navigate('/watch', {source: route.value.source, search: value});
 }
 function searchRecord(value) { keyword.value = value; search(); }
 function keepSearchFocus(event) { if (event.detail.originalEvent.target?.closest?.('.watch-search')) event.preventDefault(); }
 function changePage(pg) { navigate('/watch', {...route.value, path: undefined, vod: undefined, pg}); }
 function openVideo(vod) {
+    if (source.value?.navigation) {
+        const title = plainText(vod.vod_name || '');
+        if (!title) return;
+        keyword.value = title; rememberSearch(title);
+        navigate('/watch', {source: route.value.source, nav: title});
+        window.scrollTo({top: 0});
+        return;
+    }
     const id = String(vod.vod_id ?? '');
     if (!id) return;
     const previous = historyItems.value.find(item => item.source === route.value.source && item.vod === id);
     navigate('/watch/play', {source: route.value.source, vod: id, line: previous?.line || 0, episode: previous?.episode || 0});
+    window.scrollTo({top: 0});
+}
+function openNavResult(group, vod) {
+    const id = String(vod.vod_id ?? '');
+    if (!id || !group?.source?.id) return;
+    navigate('/watch/play', {source: group.source.id, vod: id});
     window.scrollTo({top: 0});
 }
 function chooseEpisode(index, line = lineIndex.value) {
@@ -97,9 +118,15 @@ async function loadData() {
     error.value = ''; browseNotice.value = ''; loading.value = true; expanded.value = false;
     if (isHistory.value) { loading.value = false; return; }
     if (!source.value) { loading.value = false; error.value = enabled.value.length ? '此源不存在或已停用，请选择其他源。' : '没有已启用的源，请先在源管理中启用。'; return; }
-    const {source: id, vod, category, search: wd, pg} = route.value;
+    const {source: id, vod, category, search: wd, nav, pg} = route.value;
     try {
-        if (isPlay.value) {
+        if (nav) {
+            navGroups.value = []; navTruncated.value = false; videos.value = [];
+            const data = await props.api(`/watch/search?${new URLSearchParams({wd: nav, pg: '1'})}`);
+            if (version !== dataVersion) return;
+            navGroups.value = Array.isArray(data.groups) ? data.groups : [];
+            navTruncated.value = !!data.truncated;
+        } else if (isPlay.value) {
             const data = resultObject(await props.api(`/watch/sources/${id}?${new URLSearchParams({ac: 'detail', ids: vod})}`));
             if (version !== dataVersion) return;
             const list = Array.isArray(data.list) ? data.list : Array.isArray(data) ? data : [data];
@@ -126,6 +153,7 @@ async function loadData() {
             browseNotice.value = typeof data.notice === 'string' ? plainText(data.notice).slice(0, 500) : '';
             pageCount.value = Math.max(pg, Number(data.pagecount) || (videos.value.length ? pg + 1 : pg));
         }
+        if (!nav) { navGroups.value = []; navTruncated.value = false; }
     } catch (failure) { if (version === dataVersion) error.value = failure.message; }
     finally { if (version === dataVersion) loading.value = false; }
 }
@@ -165,11 +193,11 @@ function removeHistory(item) {
     list.value = list.value.filter(entry => entry.source !== item.source || entry.vod !== item.vod);
     saveWatchStorage(`coketv-watch-${libraryTab.value === 'history' ? 'history' : 'favorites'}`, list.value);
 }
-function popstate() { route.value = readRoute(); keyword.value = route.value.search; }
+function popstate() { route.value = readRoute(); keyword.value = route.value.search || route.value.nav; }
 // 用原始值拼键做比较：数组 getter 每次返回新数组，Vue 按 Object.is 比较，
 // 会让「整体替换 route」总是触发 loadData，从而在切集/换线路时重载详情、
 // 卸载播放器并丢失自动播放。拆成两条互不干扰的路径后，只有真正换片才重新加载。
-watch(() => [route.value.path, route.value.source, route.value.vod, route.value.category, route.value.search, route.value.pg].join('|'), loadData);
+watch(() => [route.value.path, route.value.source, route.value.vod, route.value.category, route.value.search, route.value.nav, route.value.pg].join('|'), loadData);
 watch(() => [route.value.line, route.value.episode].join('|'), () => {
     if (detail.value && isPlay.value) resolvePlay(true);
 });
@@ -182,15 +210,15 @@ onBeforeUnmount(() => { ++dataVersion; ++playVersion; window.removeEventListener
       <a href="/watch" class="watch-brand" @click.prevent="backToBrowse">CokeTV</a>
       <Popover v-model:open="searchPanel"><PopoverAnchor as-child>
         <form class="watch-search" role="search" @submit.prevent="search"><InputGroup>
-          <InputGroupInput ref="searchInput" v-model="keyword" aria-label="搜索影片" :placeholder="source && !source.searchable?'此源不支持搜索':'搜索影片'" :readonly="source && !source.searchable" :aria-expanded="searchPanel" aria-haspopup="dialog" maxlength="200" @focus="searchPanel=true" @click="searchPanel=true" @keydown.esc="searchPanel=false" />
+          <InputGroupInput ref="searchInput" v-model="keyword" aria-label="搜索影片" :placeholder="source?.navigation?'搜索全部源':source && !canSearch?'此源不支持搜索':'搜索影片'" :readonly="source && !canSearch" :aria-expanded="searchPanel" aria-haspopup="dialog" maxlength="200" @focus="searchPanel=true" @click="searchPanel=true" @keydown.esc="searchPanel=false" />
           <InputGroupAddon><InputGroupButton type="button" size="icon-xs" aria-label="提交搜索" title="搜索" @click="search"><Search /></InputGroupButton></InputGroupAddon>
           <InputGroupAddon align="inline-end"><InputGroupButton v-if="keyword" type="button" size="icon-xs" aria-label="清除搜索" @click="backToBrowse"><X /></InputGroupButton><InputGroupButton type="submit" variant="secondary">{{searching?'搜索中…':'搜索'}}</InputGroupButton></InputGroupAddon>
         </InputGroup></form>
       </PopoverAnchor><PopoverContent class="watch-theme dark watch-search-panel" align="start" :side-offset="8" aria-label="影片搜索" @open-auto-focus.prevent @close-auto-focus.prevent @interact-outside="keepSearchFocus">
-        <div class="watch-search-context"><span>{{source?.searchable?'在 '+source.name+' 中搜索':source?'此源不支持搜索':'请选择影视源'}}</span><Button variant="ghost" size="sm" @click="openSites">切换源</Button></div>
-        <template v-if="source?.searchable">
+        <div class="watch-search-context"><span>{{source?.navigation?'在全部源中搜索':source?.searchable?'在 '+source.name+' 中搜索':source?'此源不支持搜索':'请选择影视源'}}</span><Button variant="ghost" size="sm" @click="openSites">切换源</Button></div>
+        <template v-if="canSearch">
           <section v-if="searchRecords.length"><h2>搜索记录</h2><div class="watch-search-records"><Button v-for="record in searchRecords" :key="record" variant="secondary" size="sm" @click="searchRecord(record)">{{record}}</Button></div></section>
-          <section v-if="searchSuggestions.length"><h2>当前源推荐</h2><div class="watch-search-suggestions"><Button v-for="name in searchSuggestions" :key="name" variant="ghost" size="sm" @click="searchRecord(name)"><Search data-icon="inline-start" /><span class="truncate">{{name}}</span></Button></div></section>
+          <section v-if="searchSuggestions.length"><h2>{{source?.navigation?'导航源推荐':'当前源推荐'}}</h2><div class="watch-search-suggestions"><Button v-for="name in searchSuggestions" :key="name" variant="ghost" size="sm" @click="searchRecord(name)"><Search data-icon="inline-start" /><span class="truncate">{{name}}</span></Button></div></section>
           <p v-if="!searchRecords.length && !searchSuggestions.length">输入影片名，点击搜索或按回车。</p>
         </template>
       </PopoverContent></Popover>
@@ -224,11 +252,23 @@ onBeforeUnmount(() => { ++dataVersion; ++playVersion; window.removeEventListener
         <Skeleton v-else-if="loading" class="watch-player-skeleton" />
       </template>
       <template v-else>
-        <div class="watch-browse-toolbar"><Tabs :model-value="route.search?'search':route.category" @update:model-value="selectCategory"><TabsList class="watch-category-tabs"><TabsTrigger v-for="item in categories" :key="item.type_id" :value="String(item.type_id)">{{item.type_name}}</TabsTrigger><TabsTrigger v-if="route.search" value="search">搜索结果</TabsTrigger></TabsList></Tabs><Button variant="ghost" size="sm" @click="sourceDialog=true"><Filter data-icon="inline-start" /><span class="truncate">{{source?.name||'选择源'}}</span></Button></div>
-        <div v-if="activeFilters.length && !route.search" class="watch-filters"><Field v-for="group in activeFilters" :key="group.key"><FieldLabel :for="'watch-filter-'+group.key">{{group.name}}</FieldLabel><NativeSelect :id="'watch-filter-'+group.key" v-model="filters[group.key]" @update:model-value="loadData"><option value="">全部</option><option v-for="item in group.value||[]" :key="item.v" :value="item.v">{{item.n}}</option></NativeSelect></Field></div>
+        <div v-if="route.nav" class="watch-browse-toolbar watch-nav-toolbar"><div class="watch-nav-title"><h2>全源搜索 “{{route.nav}}”</h2><span v-if="!loading && !error">{{navCount}} 条 · {{navGroups.length}} 个源</span></div><Button variant="outline" size="sm" @click="backToBrowse">返回导航源</Button></div>
+        <div v-else class="watch-browse-toolbar"><Tabs :model-value="route.search?'search':route.category" @update:model-value="selectCategory"><TabsList class="watch-category-tabs"><TabsTrigger v-for="item in categories" :key="item.type_id" :value="String(item.type_id)">{{item.type_name}}</TabsTrigger><TabsTrigger v-if="route.search" value="search">搜索结果</TabsTrigger></TabsList></Tabs><Button variant="ghost" size="sm" @click="sourceDialog=true"><Filter data-icon="inline-start" /><span class="truncate">{{source?.name||'选择源'}}</span></Button></div>
+        <div v-if="activeFilters.length && !route.search && !route.nav" class="watch-filters"><Field v-for="group in activeFilters" :key="group.key"><FieldLabel :for="'watch-filter-'+group.key">{{group.name}}</FieldLabel><NativeSelect :id="'watch-filter-'+group.key" v-model="filters[group.key]" @update:model-value="loadData"><option value="">全部</option><option v-for="item in group.value||[]" :key="item.v" :value="item.v">{{item.n}}</option></NativeSelect></Field></div>
         <p v-if="route.search" class="watch-search-status" role="status">{{loading?'正在 '+source?.name+' 搜索“'+route.search+'”…':'“'+route.search+'” · '+source?.name+' · 第 '+route.pg+' 页'}}<Button variant="ghost" size="sm" @click="backToBrowse">返回首页</Button></p>
+        <p v-if="route.nav" class="watch-search-status" role="status">{{loading?'正在搜索全部可用源…':'全源搜索 “'+route.nav+'”'}}<Button variant="ghost" size="sm" @click="backToBrowse">返回导航源</Button></p>
         <p v-if="browseNotice && !loading && !error && (videos.length || route.search)" class="watch-search-status" role="status">{{browseNotice}}</p>
         <div v-if="loading" class="watch-video-grid"><div v-for="n in 12" :key="n"><Skeleton class="watch-poster" /><Skeleton class="h-5 mt-3 w-3/4" /></div></div>
+        <template v-else-if="route.nav">
+          <section v-for="group in navVisibleGroups" :key="group.source.id" class="watch-nav-group">
+            <div class="watch-nav-group-head"><h2>{{group.source.name}}</h2><span>{{group.error?'失败':group.results.length+' 条'}}</span></div>
+            <p v-if="group.error" class="watch-nav-error">{{group.error}}</p>
+            <div v-else-if="group.results.length" class="watch-video-grid"><article v-for="(vod,index) in group.results" :key="group.source.id+String(vod.vod_id)+index" class="watch-video-card"><button @click="openNavResult(group,vod)"><div class="watch-poster"><img v-if="safeImage(vod.vod_pic)" :src="safeImage(vod.vod_pic)" :alt="vod.vod_name" loading="lazy" referrerpolicy="no-referrer" @error="$event.target.style.visibility='hidden'" /><Film v-else /><span v-if="vod.vod_year" class="watch-year">{{vod.vod_year}}</span><span v-if="vod.vod_remarks" class="watch-remark">{{vod.vod_remarks}}</span></div><h3>{{vod.vod_name}}</h3><p v-if="vod.vod_blurb">{{plainText(vod.vod_blurb)}}</p></button></article></div>
+            <p v-else class="watch-nav-empty">没有匹配结果</p>
+          </section>
+          <Empty v-if="!navVisibleGroups.length"><EmptyHeader><EmptyMedia variant="icon"><Search /></EmptyMedia><EmptyTitle>{{navGroups.length?'没有找到影片':'没有可搜索的源'}}</EmptyTitle><EmptyDescription>{{navGroups.length?'其他源没有返回匹配结果，可换一个片名或返回导航源。':'请先在管理后台启用可搜索的源，或切换导航源。'}}</EmptyDescription></EmptyHeader><EmptyContent><Button variant="outline" @click="sourceDialog=true">切换源</Button></EmptyContent></Empty>
+          <p v-if="navTruncated" class="watch-search-status">源数量超过单次上限，仅显示部分源。</p>
+        </template>
         <div v-else-if="!error && videos.length" class="watch-video-grid"><article v-for="(vod,index) in videos" :key="String(vod.vod_id)+index" class="watch-video-card"><button @click="openVideo(vod)"><div class="watch-poster"><img v-if="safeImage(vod.vod_pic)" :src="safeImage(vod.vod_pic)" :alt="vod.vod_name" loading="lazy" referrerpolicy="no-referrer" @error="$event.target.style.visibility='hidden'" /><Film v-else /><span v-if="vod.vod_year" class="watch-year">{{vod.vod_year}}</span><span v-if="vod.vod_remarks" class="watch-remark">{{vod.vod_remarks}}</span></div><h3>{{vod.vod_name}}</h3><p v-if="vod.vod_blurb">{{plainText(vod.vod_blurb)}}</p></button></article></div>
         <Empty v-else-if="!error"><EmptyHeader><EmptyMedia variant="icon"><Search v-if="searchEntry" /><Film v-else /></EmptyMedia><EmptyTitle>{{route.search?'没有找到影片':searchEntry?'请搜索影片':'暂无影片'}}</EmptyTitle><EmptyDescription>{{route.search?'尝试其他关键词或切换源。':browseNotice||(searchEntry?'此源暂未提供首页影片，请输入片名搜索。':'选择其他分类，或更换源。')}}</EmptyDescription></EmptyHeader><EmptyContent><Button v-if="searchEntry" @click="openSearch"><Search data-icon="inline-start" />搜索影片</Button><Button variant="outline" @click="sourceDialog=true">切换源</Button></EmptyContent></Empty>
         <div v-if="!loading && !error && (route.category!=='home'||route.search)" class="watch-pagination"><Button variant="outline" size="sm" :disabled="route.pg<=1" @click="changePage(route.pg-1)">上一页</Button><span>第 {{route.pg}} 页</span><Button variant="outline" size="sm" :disabled="route.pg>=pageCount||!videos.length" @click="changePage(route.pg+1)">下一页</Button></div>
@@ -237,7 +277,7 @@ onBeforeUnmount(() => { ++dataVersion; ++playVersion; window.removeEventListener
     </main>
     <Button v-if="!isPlay && !isHistory" class="watch-source-fab" size="icon" aria-label="选择影视源" @click="sourceDialog=true"><Filter /></Button>
     <nav class="watch-mobile-nav" aria-label="观影导航"><a href="/watch" aria-haspopup="dialog" :aria-expanded="sourceDialog" :aria-current="!isHistory?'page':undefined" @click.prevent="openSites"><Film /><span>影视站</span></a><a href="/watch/history" :aria-current="isHistory?'page':undefined" @click.prevent="navigate('/watch/history')"><UserRound /><span>我的</span></a><a href="/admin" @click.prevent="emit('close')"><Settings2 /><span>管理后台</span></a></nav>
-    <Dialog v-model:open="sourceDialog"><DialogContent class="watch-theme dark watch-source-dialog"><DialogHeader><DialogTitle>选择影视源</DialogTitle><DialogDescription class="sr-only">选择已启用的源浏览影片。</DialogDescription></DialogHeader><InputGroup><InputGroupInput v-model="sourceQuery" placeholder="搜索源" aria-label="搜索影视源" /><InputGroupAddon><Search /></InputGroupAddon></InputGroup><div class="watch-source-list"><button v-for="item in pickerSources" :key="item.id" @click="selectSource(item.id)"><Film /><span>{{item.name}}</span><Check v-if="item.id===source?.id" /></button><p v-if="!pickerSources.length">没有匹配的源</p></div></DialogContent></Dialog>
+    <Dialog v-model:open="sourceDialog"><DialogContent class="watch-theme dark watch-source-dialog"><DialogHeader><DialogTitle>选择影视源</DialogTitle><DialogDescription class="sr-only">选择已启用的源浏览影片。</DialogDescription></DialogHeader><InputGroup><InputGroupInput v-model="sourceQuery" placeholder="搜索源" aria-label="搜索影视源" /><InputGroupAddon><Search /></InputGroupAddon></InputGroup><div class="watch-source-list"><button v-for="item in pickerSources" :key="item.id" @click="selectSource(item.id)"><Film /><span>{{item.name}}</span><Badge v-if="item.navigation" variant="outline">导航</Badge><Check v-if="item.id===source?.id" /></button><p v-if="!pickerSources.length">没有匹配的源</p></div></DialogContent></Dialog>
     <Dialog v-model:open="episodeDialog"><DialogContent class="watch-theme dark watch-episode-dialog"><DialogHeader><DialogTitle>选集</DialogTitle><DialogDescription class="sr-only">{{detail?.vod_name}}</DialogDescription></DialogHeader><Tabs v-if="lines.length>1" :model-value="String(lineIndex)" @update:model-value="chooseEpisode(0,Number($event))"><TabsList class="watch-line-tabs"><TabsTrigger v-for="(line,index) in lines" :key="index" :value="String(index)">{{line.name}}</TabsTrigger></TabsList></Tabs><div class="watch-episode-list"><button v-for="episode in episodes" :key="episode.index" class="watch-episode" :aria-current="episode.index===currentEpisode?.index?'true':undefined" @click="chooseEpisode(episode.index)">{{episode.name}}</button></div></DialogContent></Dialog>
   </div>
 </template>

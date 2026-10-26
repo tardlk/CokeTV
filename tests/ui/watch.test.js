@@ -21,9 +21,9 @@ beforeEach(() => {
     pending = null;
 });
 afterEach(() => { wrapper?.unmount(); document.body.innerHTML = ''; localStorage.clear(); history.replaceState({}, '', '/'); });
-async function start(path) {
+async function start(path, mockSources = sources, mockApi = api) {
     if (path) history.replaceState({}, '', path);
-    wrapper = mount(WatchApp, {props: {sources, api}, attachTo: document.body, global: {plugins: [{install: registerUI}], stubs: {WebPlayer: PlayerStub}}});
+    wrapper = mount(WatchApp, {props: {sources: mockSources, api: mockApi}, attachTo: document.body, global: {plugins: [{install: registerUI}], stubs: {WebPlayer: PlayerStub}}});
     await flushPromises(); return wrapper;
 }
 function button(text) { return wrapper.findAll('button').find(item => item.text().trim() === text); }
@@ -172,5 +172,36 @@ describe('网页观影流程', () => {
         expect(after.props('media').autoplay).toBe(true);
         // 同一个 DOM 节点 ⇒ 播放器实例未被卸载重建，进度与设置得以保留。
         expect(wrapper.find('.player-stub').element).toBe(element);
+    });
+
+    it('导航源点击影片触发全源聚合搜索，结果分组并可切换源', async () => {
+        const navigationSources = [
+            {id: 'nav', name: '导航热播', enabled: true, searchable: false, navigation: true, script: {engine: 'dr3'}},
+            {id: 'a', name: '搜索甲', enabled: true, searchable: true, filterable: false, script: {engine: 'dr3'}},
+            {id: 'b', name: '搜索乙', enabled: true, searchable: true, filterable: false, script: {engine: 'dr3'}},
+        ];
+        const navigationApi = vi.fn(async (url, body) => {
+            if (url === '/watch/sources/nav') return {class: [], list: [{vod_id: 'hot-1', vod_name: '测试片'}]};
+            if (url.startsWith('/watch/search?')) return {query: '测试片', groups: [
+                {source: {id: 'a', name: '搜索甲'}, results: [{vod_id: 'a-1', vod_name: '测试片 · 搜索甲'}], pagecount: 1},
+                {source: {id: 'b', name: '搜索乙'}, results: [], pagecount: 0, error: '站点暂时不可用'},
+            ], truncated: false};
+            if (url.includes('ac=detail')) return {list: [detail]};
+            if (url.endsWith('/play')) return {url: '/watch/media/fixture', type: 'm3u8'};
+            return {class: [], list: []};
+        });
+        await start('/watch?source=nav', navigationSources, navigationApi);
+        expect(wrapper.find('[aria-label="搜索影片"]').attributes('placeholder')).toBe('搜索全部源');
+        expect(wrapper.findAll('.watch-video-card')).toHaveLength(1);
+        await wrapper.find('.watch-video-card button').trigger('click'); await flushPromises();
+        expect(new URLSearchParams(location.search).get('nav')).toBe('测试片');
+        expect(navigationApi.mock.calls.some(([url]) => url.startsWith('/watch/search?'))).toBe(true);
+        expect(wrapper.findAll('.watch-nav-group')).toHaveLength(2);
+        expect(wrapper.text()).toContain('搜索甲');
+        expect(wrapper.text()).toContain('站点暂时不可用');
+        await wrapper.find('.watch-nav-group .watch-video-card button').trigger('click'); await flushPromises();
+        expect(location.pathname).toBe('/watch/play');
+        expect(new URLSearchParams(location.search).get('source')).toBe('a');
+        expect(new URLSearchParams(location.search).get('vod')).toBe('a-1');
     });
 });

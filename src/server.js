@@ -308,8 +308,51 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     app.get('/admin/state', async () => { await store.refreshEnvironment(); return {...store.state, runtime: runner.status()}; });
     app.get('/watch/sources', async () => store.state.instances.filter(instance => sourceAvailable(store.state, instance)).flatMap(instance => {
         const script = store.state.scripts.find(item => item.id === instance.scriptId);
-        return script ? [{id: instance.id, name: instance.name, enabled: true, searchable: instance.searchable, filterable: instance.filterable, script: {engine: script.engine}}] : [];
+        return script ? [{id: instance.id, name: instance.name, enabled: true, searchable: instance.searchable, filterable: instance.filterable, navigation: !!instance.navigation, script: {engine: script.engine}}] : [];
     }));
+    // Aggregate search for navigation-style sources (e.g. a hot-list source that
+    // links each item to the other enabled search sources). Only searchable,
+    // non-navigation sources are queried; failures and timeouts are partial.
+    const AGGREGATE_LIMIT = 12, AGGREGATE_TIMEOUT = 6000, AGGREGATE_CACHE_MS = 30000;
+    const aggregateCache = new Map();
+    const searchWithTimeout = (promise, timeout) => {
+        let timer;
+        return Promise.race([
+            promise,
+            new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error('搜索超时'), {statusCode: 504})), timeout); }),
+        ]).finally(() => clearTimeout(timer));
+    };
+    app.get('/watch/search', async request => {
+        const wd = request.query.wd;
+        if (!checkString(wd, 200)) throw fail('搜索内容不能为空');
+        const pg = Math.max(1, Math.min(100, Number(request.query.pg) || 1));
+        const requested = typeof request.query.sources === 'string' && request.query.sources
+            ? new Set(request.query.sources.split(',').map(value => value.trim()).filter(Boolean))
+            : null;
+        const candidates = store.state.instances.filter(instance => instance.enabled && instance.searchable && !instance.navigation &&
+            sourceAvailable(store.state, instance) && (!requested || requested.has(instance.id)));
+        const selected = candidates.slice(0, AGGREGATE_LIMIT);
+        const cacheKey = `${wd}|${pg}|${candidates.map(instance => instance.id).join(',')}`;
+        const cached = aggregateCache.get(cacheKey);
+        if (cached && Date.now() - cached.at < AGGREGATE_CACHE_MS) return cached.payload;
+        const groups = await Promise.all(selected.map(async instance => {
+            const script = store.state.scripts.find(item => item.id === instance.scriptId);
+            const started = Date.now();
+            try {
+                if (!script) throw fail('脚本不存在', 404);
+                const result = await searchWithTimeout(content.query(request, {script, instance, file: store.scriptPath(script)}, {wd, pg}), AGGREGATE_TIMEOUT);
+                return {source: {id: instance.id, name: instance.name}, results: Array.isArray(result?.list) ? result.list.slice(0, 50) : [],
+                    pagecount: Number(result?.pagecount) || 1, took: Date.now() - started};
+            } catch (error) {
+                return {source: {id: instance.id, name: instance.name}, results: [], pagecount: 0,
+                    error: error.message, took: Date.now() - started};
+            }
+        }));
+        const payload = {query: wd, page: pg, groups, truncated: candidates.length > selected.length, limit: AGGREGATE_LIMIT, timeoutMs: AGGREGATE_TIMEOUT};
+        if (aggregateCache.size >= 50) aggregateCache.delete(aggregateCache.keys().next().value);
+        aggregateCache.set(cacheKey, {at: Date.now(), payload});
+        return payload;
+    });
     const watchSource = request => {
         if (!store.state.instances.some(instance => instance.id === request.params.id)) throw fail('源不存在', 404);
         const resolved = store.resolve(request.params.id);

@@ -166,6 +166,30 @@ return {parse: 0, url: 'https://cdn.example.com/a.m3u8', header: {Referer: HOST 
 
 `parse: 1` 表示需要解析；网页端只有在配置了解析器时才比较可用。优先返回直链 m3u8/mp4。多清晰度可以返回 `urls` 数组，CokeTV 会保留并取第一个给共享网页/Emby 播放。
 
+## 导航源
+
+导航源不负责搜索或播放，只展示热播/分类；用户点击条目时，CokeTV 用 `vod_name` 对全部启用且可搜索的源发起聚合搜索。
+
+```js
+export default {
+    meta: {title: '豆瓣热播', lang: 'dr3', navigation: true},
+    rule: {host: 'https://example.com', searchable: 0},
+    async home() { return {class: []}; },
+    async homeVod() {
+        return {list: [
+            {vod_id: 'hot-1', vod_name: '热播片名'},
+        ]};
+    },
+};
+```
+
+- `meta.navigation: true` 会被保存时解析，管理列表显示“导航”，网页端自动启用全源搜索。
+- 导航源本身不会进入聚合搜索；只查询其他已启用、`searchable` 的源。
+- 导航源不要求实现 `detail`/`play`；点击条目不进入它自己的详情页。
+- 聚合搜索由 `/watch/search?wd=<片名>` 提供，结果按源分组；单次最多 12 个源、单源 6 秒超时，失败/超时返回部分结果。
+- 网页端点击结果会切到结果所属源并打开播放；TVBox/猫影视/Emby 没有这套跨源交互，仍依赖各自客户端。
+- 如果所有可搜索源都没有结果，页面会显示空结果；可返回导航源继续浏览。
+
 ## HTML 站点
 
 ```js
@@ -239,6 +263,7 @@ jx/解析.js
 | 请求超时 | 接口慢或分页过大；缩短 timeout、加缓存、减少并发 |
 | 中文乱码 | 让 `ctx.req` 使用正确编码；HTML 站点先确认响应头 |
 | 详情 ID 不稳定 | 用站点内稳定 ID，不要用会变的展示序号 |
+| 导航源点击没反应 | 确认 `meta.navigation: true`，且条目有 `vod_name`；同时至少有一个启用的可搜索源 |
 
 ## 与 OmniBox 的差异
 

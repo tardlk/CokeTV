@@ -57,7 +57,7 @@ test('公开选源列表不暴露参数、ENV、脚本或订阅凭据，停用�
         entry.params = 'private-source-params'; entry.enabled = false;
         const response = await app.inject('/watch/sources');
         assert.equal(response.statusCode, 200);
-        assert.deepEqual(response.json(), [{id: source, name: '网页样本', enabled: true, searchable: true, filterable: false, script: {engine: 'dr3'}}]);
+        assert.deepEqual(response.json(), [{id: source, name: '网页样本', enabled: true, searchable: true, filterable: false, navigation: false, script: {engine: 'dr3'}}]);
         assert.equal((await app.inject(`/watch/sources/${other}`)).statusCode, 403);
         assert.equal((await app.inject({method: 'POST', url: `/watch/sources/${other}/play`, payload: {play: `${upstreamUrl}/video.mp4`}})).statusCode, 403);
         for (const url of ['/admin/state', `/admin/scripts/${source}`, `/admin/instances/${source}/environment`, '/admin/export', '/admin/logs']) assert.equal((await app.inject(url)).statusCode, 401);

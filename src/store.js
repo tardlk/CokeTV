@@ -7,7 +7,8 @@ export const token = () => randomBytes(24).toString('base64url');
 const stableId = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
 export const metadata = (code, name) => {
     const title = code.match(/(?:title|标题)\s*:\s*['"]([^'"\n]+)['"]/)?.[1] || name;
-    return {title, searchable: !/searchable\s*:\s*0/.test(code), filterable: /filterable\s*:\s*(?:1|true)/.test(code)};
+    return {title, searchable: !/searchable\s*:\s*0/.test(code), filterable: /filterable\s*:\s*(?:1|true)/.test(code),
+        navigation: /\bnavigation\s*:\s*(?:true|1)\b/i.test(code)};
 };
 const defaults = () => ({version: 2, scripts: [], instances: [], subscriptions: [], settings: {
     env: {}, parses: [], lives: [], jsonPublic: false, allowPrivateTargets: true, targetAllowlist: [],
@@ -212,15 +213,19 @@ export class Store {
     }
     registerScript(state, engine, name, code) {
         const id = stableId(`${engine}:${name}`);
+        const info = metadata(code, name.slice(0, -EXTENSIONS[engine].length));
         let script = state.scripts.find(s => s.id === id);
         if (!script) {
-            const info = metadata(code, name.slice(0, -EXTENSIONS[engine].length));
             script = {id, engine, file: name, name: info.title, updatedAt: new Date().toISOString()};
             state.scripts.push(script);
         }
-        if (!state.instances.some(instance => instance.scriptId === id)) {
-            const info = metadata(code, name.slice(0, -EXTENSIONS[engine].length));
-            state.instances.push({id, scriptId: id, name: script.name || info.title, params: '', enabled: true, searchable: info.searchable, filterable: info.filterable});
+        let instance = state.instances.find(item => item.scriptId === id);
+        if (!instance) {
+            instance = {id, scriptId: id, name: script.name || info.title, params: '', enabled: true, searchable: info.searchable, filterable: info.filterable, navigation: info.navigation};
+            state.instances.push(instance);
+        } else {
+            // navigation is author-declared; refresh it when the script is saved.
+            instance.navigation = info.navigation;
         }
         return script;
     }
