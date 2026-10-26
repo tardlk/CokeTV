@@ -1,6 +1,6 @@
 {
   "name": "coketv",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -17,6 +17,7 @@
     "verify": "node scripts/verify.mjs"
   },
   "dependencies": {
+    "@fastify/compress": "^8.3.1",
     "@fastify/formbody": "^8.0.2",
     "@fastify/multipart": "^9.4.0",
     "@fastify/static": "^10.1.5",

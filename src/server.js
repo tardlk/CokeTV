@@ -3,7 +3,9 @@ import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 import formbody from '@fastify/formbody';
 import staticPlugin from '@fastify/static';
+import compress from '@fastify/compress';
 import fs from 'fs/promises';
+import {createReadStream} from 'fs';
 import path from 'path';
 import net from 'net';
 import {pathToFileURL} from 'url';
@@ -26,6 +28,8 @@ import {NetdiskService} from './netdisk/service.js';
 import {createContent} from './content.js';
 import {registerEmby} from './emby/index.js';
 import {checkUnsafeRequestOrigin, requestOrigin} from './origin.js';
+import {createLogSink, inTestRunner, redactLogMessage} from './logging.js';
+import {Backups} from './backups.js';
 
 dotenv.config();
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
@@ -41,7 +45,25 @@ function validateEnvironment(values) {
 
 export async function createApp({directory, netdiskRequest, guangyaRequest} = {}) {
     const store = await new Store(directory).init();
-    const runner = new Runner(store);
+    // Tests keep only the in-memory ring unless they opt in with LOG_FILE:
+    // asynchronous file writes race temp-directory cleanup and add no coverage
+    // beyond tests/logging.test.js.
+    const logFile = process.env.LOG_FILE === '0' ? false
+        : process.env.LOG_FILE !== undefined ? process.env.LOG_FILE
+        : inTestRunner() ? false : undefined;
+    const logSink = createLogSink({
+        directory: store.directory,
+        file: logFile,
+        maxBytes: Number(process.env.LOG_MAX_BYTES) || undefined,
+        keep: Number(process.env.LOG_KEEP) || undefined,
+    });
+    const runner = new Runner(store, {sink: logSink});
+    const backups = new Backups(store.directory, {
+        keep: Number(process.env.BACKUP_KEEP) || 7,
+        intervalMs: (Number(process.env.BACKUP_INTERVAL_HOURS) || 24) * 3600000,
+        onLog: entry => runner.log(entry),
+    });
+    await backups.start();
     const auth = await createAuth(store);
     const netdisk = await NetdiskService.create(store.directory, netdiskRequest, guangyaRequest);
     const playback = createPlaybackSessions();
@@ -52,10 +74,16 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     const app = Fastify({logger: false, bodyLimit: 8 * 1024 * 1024, trustProxy: process.env.TRUST_PROXY === '1', routerOptions: {maxParamLength: 4096}});
     await app.register(formbody);
     await app.register(multipart, {limits: {fileSize: 16 * 1024 * 1024, files: 1}});
+    // JSON/HTML/CSS/JS only; media streams have non-compressible content types
+    // and are passed through untouched.
+    await app.register(compress, {global: true, threshold: 1024, encodings: ['br', 'gzip']});
     app.decorate('store', store); app.decorate('runner', runner);
     app.decorate('netdisk', netdisk);
+    app.decorate('backups', backups);
     app.setErrorHandler((error, request, reply) => {
-        runner.log({level: 'error', message: error.message});
+        const status = error.statusCode || 500;
+        runner.log({level: status >= 500 ? 'error' : 'warn', source: 'http', message: error.message,
+            method: request.method, route: request.routeOptions?.url || '', status});
         reply.code(error.statusCode || 500).send({error: error.message, ...(error.importCode ? {code: error.importCode} : {})});
     });
     // 限流与鉴权失败计数。阈值可用 RATE_LIMIT_PER_MINUTE / ADMIN_AUTH_FAIL_PER_MINUTE 调整。
@@ -105,7 +133,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     });
     app.get('/access/status', async () => ({requiresSetup: auth.needsSetup()}));
     app.post('/admin/access/setup', async request => auth.setup(request));
-    app.addHook('onClose', async () => runner.close());
+    app.addHook('onClose', async () => { backups.close(); runner.close(); await logSink.flush(); });
     netdisk.register(app);
     const baseUrl = requestOrigin;
     const contextFor = (request, instance, script, extra) => ({...buildContext(baseUrl(request), instance, script, extra), sourceEnvPath: store.state.instances.some(s => s.id === instance.id) ? store.sourceEnvPath(instance.id) : null, localPort: app.server.address()?.port || Number(process.env.PORT) || 54058});
@@ -272,8 +300,8 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
         if (rateBuckets.size > 20000) rateBuckets.clear();
         if (!allowRequest(`public:${request.ip || request.raw?.socket?.remoteAddress || 'local'}`)) reply.code(429).send({error: '请求过于频繁，请稍后再试'});
     });
-    app.get('/health', async () => ({ok: true, version: '0.2.0'}));
-    app.get('/admin/health', async () => ({ok: true, version: '0.2.0', memory: process.memoryUsage(), runtime: runner.status()}));
+    app.get('/health', async () => ({ok: true, version: '0.2.1'}));
+    app.get('/admin/health', async () => ({ok: true, version: '0.2.1', memory: process.memoryUsage(), runtime: runner.status(), backups: await backups.status()}));
     app.get('/admin/state', async () => { await store.refreshEnvironment(); return {...store.state, runtime: runner.status()}; });
     app.get('/watch/sources', async () => store.state.instances.filter(instance => sourceAvailable(store.state, instance)).flatMap(instance => {
         const script = store.state.scripts.find(item => item.id === instance.scriptId);
@@ -325,7 +353,37 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
             proxyMint(session.headers || {}, session), undefined, guardForEgress(session.egress));
     }});
     await registerEmby(app, {store, content, baseUrl, serveMedia, isNetdiskCurrent: revision => netdisk.current(revision), targetGuard});
-    app.get('/admin/logs', async request => runner.logs.filter(entry => !request.query.source || entry.source === request.query.source).slice(-150));
+    // Destructive operations take a fresh snapshot first (throttled: one per
+    // 10 minutes) so a mistaken delete still has a recent recovery point.
+    const snapshotBeforeChange = async reason => {
+        try {
+            const {last} = await backups.status();
+            if (!last || Date.now() - Date.parse(last.time) > 10 * 60000) await backups.create();
+        } catch (error) {
+            runner.log({level: 'warn', source: 'backup', message: `${reason}前快照失败：${error.message}`});
+        }
+    };
+    const logLimit = value => Math.min(400, Math.max(1, Number(value) || 150));
+    app.get('/admin/logs', async request => runner.logs.filter(entry => !request.query.source || entry.source === request.query.source).slice(-logLimit(request.query.limit)));
+    app.get('/admin/logs/download', async (_, reply) => {
+        await logSink.flush();
+        let content = '';
+        if (logSink.file) content = await fs.readFile(logSink.file, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; });
+        if (!content) content = runner.logs.map(entry => redactLogMessage(JSON.stringify(entry))).join('\n');
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        return reply.header('Content-Disposition', `attachment; filename="coketv-logs-${stamp}.txt"`)
+            .type('text/plain; charset=utf-8').send(content ? `${content.trimEnd()}\n` : '暂无日志\n');
+    });
+    app.get('/admin/backups', async () => backups.status());
+    app.post('/admin/backups', async () => ({ok: true, backup: await backups.create()}));
+    app.get('/admin/backups/:name', async (request, reply) => {
+        const file = backups.locate(request.params.name);
+        let stat;
+        try { stat = await fs.stat(file); } catch (error) { if (error.code === 'ENOENT') throw fail('快照不存在', 404); throw error; }
+        if (!stat.isFile()) throw fail('快照不存在', 404);
+        return reply.header('Content-Disposition', `attachment; filename="${request.params.name}"`)
+            .type('application/zip').send(createReadStream(file));
+    });
     app.get('/admin/instances/:id/environment', async request => {
         await store.refreshEnvironment();
         return {values: await store.readSourceEnvironment(request.params.id), defaults: store.state.settings.env};
@@ -370,6 +428,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
         const {code, name = script.file.replace(/\.[^.]+$/, '') + '.js'} = request.body || {};
         if (typeof code !== 'string' || !code.trim()) throw fail('请填写 drpy3 脚本');
         await syntaxCheck('dr3', name, code, store.state.settings);
+        await snapshotBeforeChange('迁移脚本');
         const result = await store.migrateScript(script.id, name, code);
         runner.reset('源已迁移到 drpy3');
         return result;
@@ -427,11 +486,13 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
         return {ok: true};
     });
     app.delete('/admin/scripts/batch', async request => {
+        await snapshotBeforeChange('批量删除脚本');
         const result = await store.deleteScripts(request.body?.ids);
         if (result.deletedScripts) runner.reset('脚本及关联源已删除');
         return {ok: true, ...result};
     });
     app.delete('/admin/scripts/:id', async request => {
+        await snapshotBeforeChange('删除脚本');
         const result = await store.deleteScripts([request.params.id]);
         if (result.deletedScripts) runner.reset('脚本及关联源已删除');
         return {ok: true, ...result};
@@ -516,6 +577,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
                 validateEnvironment(variables);
             }
         }
+        await snapshotBeforeChange('导入配置');
         await store.mutate(async state => {
             state.instances = value.instances.map(instance => { const old = state.instances.find(i => i.id === instance.id); const script = state.scripts.find(s => s.id === instance.scriptId); return script.engine === 'dr3' ? {...instance, migrationRequired: false} : {...instance, enabled: false, migrationRequired: true, preMigrationEnabled: old?.preMigrationEnabled ?? instance.enabled}; }); state.subscriptions = value.subscriptions;
             for (const [id, variables] of Object.entries(value.environments || {})) {
@@ -672,10 +734,16 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
         const extension = (relative.split('.').pop() || '').toLowerCase();
         return reply.type(JSON_TYPES[extension] || 'application/octet-stream').send(content);
     });
-    await app.register(staticPlugin, {root: path.join(ROOT, 'dist/assets'), prefix: '/assets/', decorateReply: false});
-    app.get('/', async (_, reply) => reply.type('text/html').send(await fs.readFile(path.join(ROOT, 'dist/index.html'))));
-    app.get('/sources/:id/edit', async (_, reply) => reply.type('text/html').send(await fs.readFile(path.join(ROOT, 'dist/index.html'))));
-    for (const url of ['/admin', '/watch', '/watch/play', '/watch/history']) app.get(url, async (_, reply) => reply.type('text/html').send(await fs.readFile(path.join(ROOT, 'dist/index.html'))));
+    // Vite fingerprints every asset filename, so hashed files are immutable for
+    // a year while index.html must be revalidated to pick up a new build.
+    await app.register(staticPlugin, {root: path.join(ROOT, 'dist/assets'), prefix: '/assets/', decorateReply: false, maxAge: '365d', immutable: true});
+    const indexPage = async (_, reply) => {
+        reply.header('Cache-Control', 'no-cache');
+        return reply.type('text/html').send(await fs.readFile(path.join(ROOT, 'dist/index.html')));
+    };
+    app.get('/', indexPage);
+    app.get('/sources/:id/edit', indexPage);
+    for (const url of ['/admin', '/watch', '/watch/play', '/watch/history']) app.get(url, indexPage);
     app.server.on('upgrade', (request, socket, head) => {
         // 源需要的 WebSocket 继续经主端口，管理页面本身不建立日志 WS。
         if (!runner.wsPort) { socket.end('HTTP/1.1 503 Service Unavailable\r\n\r\n'); return; }
@@ -691,8 +759,9 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
     const app = await createApp();
     await app.listen({port: Number(process.env.PORT) || 54058, host: process.env.HOST || '0.0.0.0'});
+    app.runner.log({level: 'info', source: 'service', message: `CokeTV 已启动：http://127.0.0.1:${app.server.address().port}`});
     console.log(`CokeTV 已启动：http://127.0.0.1:${app.server.address().port}`);
     console.log(`访问密码配置：${path.join(app.store.directory, 'admin.json')}（或使用 ADMIN_PASSWORD）`);
-    const close = async () => { await app.close(); process.exit(); };
+    const close = async () => { app.runner.log({level: 'info', source: 'service', message: '服务正在关闭'}); await app.close(); process.exit(); };
     process.on('SIGINT', close); process.on('SIGTERM', close);
 }

@@ -7,15 +7,17 @@ import {sourceOperation} from './source-operation.js';
 import {SOURCE_TIMEOUT} from './runtime-defaults.js';
 
 export class Runner extends EventEmitter {
-    constructor(store) {
-        super(); this.store = store; this.child = null; this.current = null;
+    constructor(store, {sink} = {}) {
+        super(); this.store = store; this.sink = sink || null; this.child = null; this.current = null;
         this.queue = Promise.resolve(); this.sequence = 0; this.waiting = 0;
         this.logs = []; this.stats = null; this.wsPort = null; this.closed = false;
         this.internalKey = randomBytes(24).toString('hex'); this.gatewayPort = null; this.gatewayPending = null;
     }
     log(entry) {
-        this.logs.push({time: new Date().toISOString(), ...entry, message: String(entry.message || '').slice(0, 8192)});
+        const record = {time: new Date().toISOString(), level: 'info', ...entry, message: String(entry.message || '').slice(0, 8192)};
+        this.logs.push(record);
         if (this.logs.length > 400) this.logs.splice(0, this.logs.length - 400);
+        this.sink?.write(record);
     }
     async start() {
         if (this.starting) return this.starting;

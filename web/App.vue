@@ -10,9 +10,10 @@ import {initializeNavigation, pushRoute, replaceRoute, routePosition, routeURL} 
 const SourceWorkspace=defineAsyncComponent(()=>import('./SourceWorkspace.vue'));
 const WatchApp=defineAsyncComponent(()=>import('./WatchApp.vue'));
 const NetdiskManager=defineAsyncComponent(()=>import('./NetdiskManager.vue'));
+const MaintenancePanel=defineAsyncComponent(()=>import('./MaintenancePanel.vue'));
 
 export default {
-    components: {SourceWorkspace, WatchApp, NetdiskManager, SubscriptionEmby, Icon, SubscriptionPicker, Toaster, AppNavigation},
+    components: {SourceWorkspace, WatchApp, NetdiskManager, MaintenancePanel, SubscriptionEmby, Icon, SubscriptionPicker, Toaster, AppNavigation},
     setup() {
         const workspaceSource = ref(null);
         const workspace = ref(null);
@@ -62,6 +63,21 @@ export default {
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || '请求失败');
             return data;
+        }
+        async function download(url, filename) {
+            try {
+                const response = await fetch(url, {headers: {Authorization: `Basic ${auth.value}`}});
+                if (!response.ok) {
+                    let message = '下载失败';
+                    try { message = (await response.json()).error || message; } catch {}
+                    throw new Error(message);
+                }
+                const blob = await response.blob();
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob); link.download = filename;
+                document.body.appendChild(link); link.click(); link.remove();
+                setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+            } catch (error) { notify(error.message, true); }
         }
         async function loadWatch() {
             watchLoading.value = true; watchError.value = '';
@@ -191,7 +207,7 @@ export default {
         onMounted(async () => { window.addEventListener('popstate', syncWatch); await syncWatch(); });
         onBeforeUnmount(() => window.removeEventListener('popstate', syncWatch));
         return {workspace,removeSelected,publicSources,watchLoading,watchError,watchApi,loadWatch,watching,openWatch,closeWatch,requiresSetup,accessLoading,newPassword,confirmPassword,createPassword,requestFile,renameSource,saveName,pageSize,openLinks,switchCapability,modalTitle, workspaceSource, closeWorkspace, api, state, page, query, engine, selected, currentPage, totalPages, visible, filtered, sources, scriptRows, enabledCount, auth, login, loginError, busy, modal, form, confirming,
-            action, signIn, toggle, selectVisible, switchSource, batch, editScript, newScript, saveScript, upload, removeSource, openSubscription, saveSubscription, subscriptionBase, subscriptionUrl, catSubscriptionUrl, copy, preview, deleteSub, resetToken, logout, acceptConfirm, load};
+            action, signIn, toggle, selectVisible, switchSource, batch, editScript, newScript, saveScript, upload, removeSource, openSubscription, saveSubscription, subscriptionBase, subscriptionUrl, catSubscriptionUrl, copy, preview, deleteSub, resetToken, logout, acceptConfirm, load, download};
     }
 };
 </script>
@@ -207,7 +223,7 @@ export default {
   <SourceWorkspace v-else-if="page==='workspace' && workspaceSource" ref="workspace" :key="workspaceSource.id" :source="workspaceSource" :sources="sources" :api="api" @close="closeWorkspace" @saved="action(load)" />
   <SidebarProvider v-else>
     <Sidebar collapsible="icon">
-      <SidebarHeader><a class="brand-lockup" href="/admin" @click.prevent="page='sources'"><span class="brand-mark"><Icon name="layers" /></span><div class="group-data-[collapsible=icon]:hidden"><strong>CokeTV</strong><small>v0.2.0</small></div></a></SidebarHeader>
+      <SidebarHeader><a class="brand-lockup" href="/admin" @click.prevent="page='sources'"><span class="brand-mark"><Icon name="layers" /></span><div class="group-data-[collapsible=icon]:hidden"><strong>CokeTV</strong><small>v0.2.1</small></div></a></SidebarHeader>
       <SidebarContent><AppNavigation :page="page" :sources="sources.length" :subscriptions="state.subscriptions.length" @navigate="page=$event" @watch="openWatch" /></SidebarContent>
 <SidebarRail />
     </Sidebar>
@@ -241,6 +257,7 @@ export default {
           <Empty v-if="!state.subscriptions.length"><EmptyHeader><EmptyMedia variant="icon"><Icon name="radio" /></EmptyMedia><EmptyTitle>创建第一个订阅</EmptyTitle><EmptyDescription>选好源，将订阅链接填入 TVBox。</EmptyDescription></EmptyHeader><EmptyContent><Button @click="openSubscription()">新建订阅</Button></EmptyContent></Empty>
         </template>
         <NetdiskManager v-else-if="page==='netdisk'" :api="api" />
+        <MaintenancePanel v-else-if="page==='maintenance'" :api="api" :download="download" />
 
       </main>
     </SidebarInset>

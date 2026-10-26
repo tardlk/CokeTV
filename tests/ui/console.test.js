@@ -311,9 +311,9 @@ describe('shadcn 控制台绑定',()=>{
         const cancel=[...document.querySelectorAll('[role="dialog"] button')].find(button=>button.textContent.trim()==='取消');cancel.click();await flushPromises();
         expect(requests.some(request=>request.url==='/admin/subscriptions'&&request.method==='POST')).toBe(false);
     });
-    it('管理侧栏只保留观影、源、订阅和网盘，移除整个设置页面',async()=>{
+    it('管理侧栏保留观影、源、订阅、网盘和运行维护，移除整个设置页面',async()=>{
         await start();
-        expect(wrapper.findAll('.omni-navigation button').map(item=>item.text().trim())).toEqual(['网页观影','源管理','订阅管理','网盘管理']);
+        expect(wrapper.findAll('.omni-navigation button').map(item=>item.text().trim())).toEqual(['网页观影','源管理','订阅管理','网盘管理','运行维护']);
         expect(button('设置')).toBeUndefined();expect(button('保存设置')).toBeUndefined();
         expect(wrapper.find('.settings-layout').exists()).toBe(false);
         expect(wrapper.find('#default-env').exists()).toBe(false);

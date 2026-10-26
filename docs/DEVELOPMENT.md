@@ -1,6 +1,6 @@
 # 开发与验证
 
-CokeTV 0.2 使用 Node.js 22，唯一源引擎为 drpy3。`src/` 是 HTTP/管理/订阅/网盘宿主，`src/host/` 是独立的解析、ENV和按需网关；`engine/libs/drpy3/` 保留官方原包四文件，版本与 SHA-256 见 UPSTREAM.json。`web/` 是 Vue 前端；用户运行文件仅放 data，不进入发行。
+CokeTV 0.2.1 使用 Node.js 22，唯一源引擎为 drpy3。`src/` 是 HTTP/管理/订阅/网盘宿主，`src/host/` 是独立的解析、ENV和按需网关；`engine/libs/drpy3/` 保留官方原包四文件，版本与 SHA-256 见 UPSTREAM.json。`web/` 是 Vue 前端；用户运行文件仅放 data，不进入发行。
 
 ## 当前验证
 
@@ -15,13 +15,15 @@ npm test
 
 drpy-node 2.0.6 全源兼容基线及其旧引擎专项用例已退役；保留 HTTP/媒体/订阅/Emby/网盘/鉴权/SSRF/权限与事务回滚回归，并将协议样本迁为 drpy3。`tests/helpers/drpy3-fixture.js` 仅生成测试用的原生 drpy3 钩子，不被产品导入或随镜像分发。node-forge、undici、TypeScript 是开发/验证依赖，不进入生产镜像。
 
-`tests/drpy3.test.js` 覆盖六环节、工具全局、存储和模块实例隔离、ESM/CJS/WASM、HTTP字符集/二进制/重定向、本地JS/ZIP导入与本地drpy3解析；`subscription-address.test.js` 验证域名/IP/IPv6与可信反代地址、旧地址覆盖失效、固定超时及退役检测API；`single-engine.test.js` 验证旧执行入口和已删除的链接导入API不可用、v1备份/升级、旧源过滤和迁移回滚；`site-sources.test.js` 针对data目录中的实际站点脚本做六环节、验证失败降级和媒体代理内网拦截回归，脚本不存在时整组跳过（发行空壳不受影响）。TVBox订阅、猫影视与Emby继续通过同一内容服务执行drpy3。
+`tests/logging.test.js`、`backups.test.js`、`maintenance-api.test.js` 分别覆盖日志脱敏/轮转/权限、快照内容/保留份数/路径校验以及管理接口鉴权与下载；`static-delivery.test.js` 验证带指纹资源长缓存、HTML 回源校验和压缩（未构建 dist 时跳过）。`tests/drpy3.test.js` 覆盖六环节、工具全局、存储和模块实例隔离、ESM/CJS/WASM、HTTP字符集/二进制/重定向、本地JS/ZIP导入与本地drpy3解析；`subscription-address.test.js` 验证域名/IP/IPv6与可信反代地址、旧地址覆盖失效、固定超时及退役检测API；`single-engine.test.js` 验证旧执行入口和已删除的链接导入API不可用、v1备份/升级、旧源过滤和迁移回滚；`site-sources.test.js` 针对data目录中的实际站点脚本做六环节、验证失败降级和媒体代理内网拦截回归，脚本不存在时整组跳过（发行空壳不受影响）。TVBox订阅、猫影视与Emby继续通过同一内容服务执行drpy3。
 
 ## 数据与生命周期
 
 保留按需 worker、串行请求队列、超时回收和独立的源实例状态；不创建 Python 守护或旧引擎插件服务。drpy3 官方包保持原样，宿主适配修改进入 src；更新原包时记录提交、哈希并对照固定样本。
 
 数据版本 v2：先备份旧数据再刷新运行库，旧源标记待迁移但保留文件/引用，迁移代码不会自动翻译。所有验证用临时 data；不能把历史真实环境记录当作当前机器状态，也不能拿正式用户数据做删除实验。
+
+运行日志默认写 `data/logs/coketv.log`（5 MiB × 3 个历史文件，0600）并输出 stdio；数据快照由进程内定时器创建到 `data/backups/`，默认 24 小时、保留 7 份，不含运行库。两者都用临时 data 验证，测试结束后清理。
 
 ## 容器发行
 
