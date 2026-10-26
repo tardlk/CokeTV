@@ -50,7 +50,7 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 
 本机为 macOS arm64 / Node 22.23.4。0.2.1 完整 `npm test` 通过后端 259 项（248 通过、11 项 data 站点脚本在空壳下跳过）和界面 77 项，合计 336 项；`npm run check` 与 `npm run build` 通过。新增回归覆盖日志脱敏/轮转/权限、快照内容/保留/路径校验、维护接口鉴权与下载、静态资源压缩与缓存（无 dist 时跳过）。
 
-2026-10-26 的 `70bcf98` 已在 GitHub Actions 原生 Linux amd64 上通过 Verify 与 Docker 候选矩阵（12 项容器检查、容器内 237 项回归 fail 0 / skipped 0），并用同一镜像发布 `ghcr.io/tardlk/coketv:latest` 与 `:sha-70bcf98`（manifest digest 见 §0）。本机仍无 Docker 及原生 amd64 环境，0.2.1 的容器结果以本次推送后的 Actions 为准；真实站点、真实 WASM 解密、异地客户端和 NAS 实机不在本轮验证范围。
+2026-10-26 的 `70bcf98` 已在 GitHub Actions 原生 Linux amd64 上通过 Verify 与 Docker 候选矩阵（12 项容器检查、容器内 237 项回归 fail 0 / skipped 0），并用同一镜像发布 `ghcr.io/tardlk/coketv:latest` 与 `:sha-70bcf98`（manifest digest 见 §0）。0.2.1 的 `cce9666` 在 Verify 与 Docker amd64 上同样全绿，`:latest`、`:0.2.1`、`:0.2` 与 `:sha-cce9666` 指向同一 manifest digest（见 §0）；本机仍无 Docker 及原生 amd64 环境，真实站点、真实 WASM 解密、异地客户端和 NAS 实机不在本轮验证范围。
 
 上游百忙无果1、央视频-1 仅在临时目录经 CokeTV HTTP 接口运行上游固定响应；六环节、多清晰度、m3u8 与 WASM 桩 TS 代理通过，示例未进入发行树。完整真实 GET/HEAD/Range/HLS/二进制代理、CLI 和重启持久化脚本也在本机服务验证；另以仅安装生产依赖的独立临时副本复验。以上不等于原生 Linux amd64 Docker 验收、真实站点/真实 WASM 解密或异地客户端验收。
 
