@@ -20,7 +20,7 @@ npm start
 
 ## Docker
 
-镜像通过 GitHub Actions 在原生 Linux amd64 上构建并验收后发布到 `ghcr.io/tardlk/coketv`。源码改动不代表 `latest` 已更新，实际镜像功能以对应提交的发布结果为准。
+镜像通过 GitHub Actions 在原生 Linux amd64 上构建并验收后发布到 `ghcr.io/tardlk/coketv`，版本列表见 [GitHub Packages](https://github.com/tardlk/CokeTV/pkgs/container/coketv)。源码改动不代表 `latest` 已更新，实际镜像功能以对应提交的发布结果为准。
 
 ```sh
 mkdir -p data
