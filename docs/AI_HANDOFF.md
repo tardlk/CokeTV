@@ -10,6 +10,7 @@
 - **删除与恢复背景**：用户确认此前删除了镜像，仓库也删除后恢复，恢复时 Actions 被禁用；2026-11-18 经用户授权重新启用并恢复发布。旧 0.2.5 digest `sha256:dd7474ac9353793f93ed45455b8873d22ecd401f21ea888fb62415441949bbf3` 只作历史记录，不再作为当前镜像身份。0.2.4 及更早镜像本轮未恢复；旧 Actions 记录也未恢复。另有 [main 重建记录](https://github.com/tardlk/CokeTV/actions/runs/44214809779)，发布 `:sha-da4a34f`，digest 为 `sha256:209b722d7c7c61815b3132d2194eeb9ecb237b9991e0e9d153aefc3e7b84d7c4`；随后 v0.2.5 发布将 `latest` 更新为上条固定版本镜像。
 - **发布门禁**：推送 `main`/`v*` 触发 `.github/workflows/docker.yml`；候选镜像先在原生 amd64 跑容器矩阵，再用同一镜像（不重建）发布 GHCR。本机没有 Docker，容器结论只能来自 Actions。
 - **本机私有**：`HANDOFF.md`、`.tools/`、`data/` 不入库；不要拿正式用户 data 做删除、迁移或恢复实验。
+- **Compose 简化（2026-11-18，用户确认）**：删除 `stop_grace_period`、`security_opt`、`cap_drop`、`cap_add` 及对应注释，采用 Docker 默认停止等待时间和容器权限。PUID/PGID 默认仍为 1000:1000；镜像入口继续初始化 data 权限，再切换普通用户、清除全部能力并设置 no-new-privileges。本次仅修改部署配置和说明，继续使用上面已验收发布的镜像。
 
 ## 当前架构
 

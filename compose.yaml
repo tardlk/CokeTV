@@ -15,16 +15,3 @@ services:
       # 尚未创建密码时，可在此显式配置 ADMIN_PASSWORD 预设管理密码；不覆盖已有密码。
       # 主机 .env 的变量不会自动全部传入容器，需要在 environment 中声明。
     restart: unless-stopped
-    stop_grace_period: 15s
-    # 启动时准备 data 权限，随后服务以 PUID:PGID 运行并清除全部能力。
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - DAC_OVERRIDE
-      - FOWNER
-      - SETUID
-      - SETGID
-      - SETPCAP
