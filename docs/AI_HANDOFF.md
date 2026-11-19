@@ -1,16 +1,17 @@
 # CokeTV 接手记录
 
-更新：2026-11-18。当前源码版本 **0.2.5**，用户已明确 **只保留 drpy3 一个源执行引擎**；工作方式继续直接在 `main` 工作，不主动创建分支或 PR。
+更新：2026-11-19。当前源码版本 **0.2.5**，用户已明确 **只保留 drpy3 一个源执行引擎**；工作方式继续直接在 `main` 工作，不主动创建分支或 PR。
 
 ## 0. 当前接手入口（先看本节）
 
 - **先读顺序**：`AGENTS.md`（用户已确认的产品与安全决定）→ 本文件 → `README.md`、`SECURITY.md`；写站点源时读 `docs/SOURCE_DEVELOPMENT.md`。原 CONFIGURATION/DEVELOPMENT/NETDISK_DEVELOPMENT/THIRD_PARTY 已并入 README 与本文件后删除。
-- **当前验证**（2026-11-18，macOS arm64 / Node 22.23.5）：`npm run check`、`npm run build` 通过；`npm test` 为后端 266 项（255 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 78 项，共 344 项。本地 Node 位于忽略的 `.tools/`，`start.sh` 可自动发现。
+- **当前验证**（2026-11-19，macOS arm64 / Node 22.23.5）：`npm run check`、`npm run build` 通过；`npm test` 为后端 271 项（260 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 80 项，共 351 项。本地 Node 位于忽略的 `.tools/`，`start.sh` 可自动发现。
 - **镜像（2026-11-18 重建发布）**：`ghcr.io/tardlk/coketv:0.2.5`、`:0.2`、`:latest`、`:sha-d9f0ce8` 指向同一 manifest digest `sha256:929bfc017c7ed0e716d5fc3246b1152813ab635dc059f03a21857a3efae8bd09`（image ID `sha256:7a858ab85381d1dcee8572adedf7516eb0277490b629faffc863354123775148`），源码提交 `d9f0ce8`，平台 `linux/amd64`。[GitHub Packages](https://github.com/tardlk/CokeTV/pkgs/container/coketv) 已显示 Public，以上四个标签的匿名清单/配置读取与摘要核对通过。[重建发布记录](https://github.com/tardlk/CokeTV/actions/runs/44215391262) 的源码检查、构建、测试、12 项容器检查及容器内 254 项后端回归均通过，然后发布同一已验收镜像。GitHub Release：https://github.com/tardlk/CokeTV/releases/tag/v0.2.5 。
 - **删除与恢复背景**：用户确认此前删除了镜像，仓库也删除后恢复，恢复时 Actions 被禁用；2026-11-18 经用户授权重新启用并恢复发布。旧 0.2.5 digest `sha256:dd7474ac9353793f93ed45455b8873d22ecd401f21ea888fb62415441949bbf3` 只作历史记录，不再作为当前镜像身份。0.2.4 及更早镜像本轮未恢复；旧 Actions 记录也未恢复。另有 [main 重建记录](https://github.com/tardlk/CokeTV/actions/runs/44214809779)，发布 `:sha-da4a34f`，digest 为 `sha256:209b722d7c7c61815b3132d2194eeb9ecb237b9991e0e9d153aefc3e7b84d7c4`；随后 v0.2.5 发布将 `latest` 更新为上条固定版本镜像。
 - **发布门禁**：推送 `main`/`v*` 触发 `.github/workflows/docker.yml`；候选镜像先在原生 amd64 跑容器矩阵，再用同一镜像（不重建）发布 GHCR。本机没有 Docker，容器结论只能来自 Actions。
 - **本机私有**：`HANDOFF.md`、`.tools/`、`data/` 不入库；不要拿正式用户 data 做删除、迁移或恢复实验。
 - **Compose 简化（2026-11-18，用户确认）**：删除 `stop_grace_period`、`security_opt`、`cap_drop`、`cap_add` 及对应注释，采用 Docker 默认停止等待时间和容器权限。PUID/PGID 默认仍为 1000:1000；镜像入口继续初始化 data 权限，再切换普通用户、清除全部能力并设置 no-new-privileges。本次仅修改部署配置和说明，继续使用上面已验收发布的镜像。
+- **客户端、播放与爬虫日志（2026-11-19）**：`src/activity.js` 关联匹配路由、客户端 IP/UA/Emby 设备、源与订阅名称、影片/分集及请求编号；记录 HTTP 状态/耗时、取链传输方式、worker 开始/推荐阶段/完成/错误/排队/条数及源输出。媒体和源代理首条立即记录，后续按 30 秒汇总且内存有界，错误即时记录；流错误与客户端取消分别记录。后台按客户端/播放/爬虫/系统筛选、搜索并每 5 秒刷新，可暂停，离开页面清理轮询。仅记录白名单元数据，匹配路由不含凭据值；参数、ENV、原始 URL、请求体与播放 ID 不进入新增元数据。客户端名称为自报标识，直连后流量及实际解码无法观测，不是在线设备统计。NAS 本轮仅调试并更新独立站点源，新增宿主日志功能尚未部署到 NAS，不得说 NAS 已具备它。
 
 ## 当前架构
 
@@ -57,7 +58,7 @@ v1 首次启动先备份原数据至 backups/before-drpy3-*（排除备份本身
 
 后台读取旧代码后人工改写，保存为 drpy3；保持共享该脚本的原实例 ID、ENV、参数与订阅引用，并恢复原启用状态。文件名冲突自动采用独立名称，不覆盖已有源；迁移失败回滚文件和状态。回退应停止服务并成对恢复旧代码及升级前 data 备份，不让两个版本同时写同一目录。
 
-升级与协议回归在临时目录完成。历史本机预览曾初始化 data 并导入站点脚本，但这些运行数据不随仓库分发；当前检出没有 data，实际源、账号与配置以部署机的磁盘数据为准，不能自动覆盖或清空。站点脚本与本机调试资料不进入发行树。NAS 未部署 0.2.5。
+升级与协议回归在临时目录完成。历史本机预览曾初始化 data 并导入站点脚本，但这些运行数据不随仓库分发；实际源、账号与配置以部署机的磁盘数据为准，不能自动覆盖或清空。站点脚本与本机调试资料不进入发行树。2026-11-19 NAS 运行版本报告为 0.2.5；本轮新增宿主日志功能尚未升级部署。
 
 ## 已完成实现
 

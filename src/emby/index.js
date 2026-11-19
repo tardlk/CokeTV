@@ -39,6 +39,8 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
         if(session.subscriptionRevision!==digest(sub.token)||session.userId!==user.id)throw fail('订阅凭据已重置，请重新登录',401);
         const userId=request.params.userId||request.query.UserId||request.query.userId;
         if(userId&&userId!==user.id)throw fail('不能访问其他订阅的观看记录',403);
+        app.activity?.bind(request,null,null,sub);
+        app.activity?.identify(request,{protocol:'Emby',client:session.Client,device:session.DeviceName});
         return {user,sub,session,key,token};
     };
     const allowed=(ctx,source)=>ctx.sub.instances.includes(source)&&store.state.instances.some(i=>i.id===source&&i.enabled);
@@ -47,6 +49,10 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
         const library=catalog.libraries(ctx.user,ctx.sub).find(l=>l.id===itemId);
         const item=rows(ctx).find(i=>i.id===itemId)||(library?libraryDTO(library):null);
         if(!item)throw fail('条目不存在或不在观看范围内',404);return item;
+    };
+    const bindItem=(request,item)=>{
+        app.activity?.bind(request,store.state.instances.find(i=>i.id===item.sourceId));
+        app.activity?.identify(request,{title:item.seriesName||item.name,episode:item.type==='Episode'?item.name:undefined});
     };
     const dto=(request,ctx,item)=>itemDTO(item,{db,serverId:db.get('meta','server'),user:ctx.user,base:baseUrl(request),token:ctx.token});
     const libraryDTO=l=>({id:l.id,name:l.name,type:'CollectionFolder',kind:l.kind,parentId:db.get('meta','server')});
@@ -136,6 +142,8 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
         const sub=typeof password==='string'&&password.length<=200?uniqueSubscriptionByToken(store.state,password):undefined;
         if(typeof name!=='string'||name.toLowerCase()!=='coke'||!sub)throw fail('账号或订阅Token错误',401);
         const user=viewer(sub),token=randomBytes(32).toString('base64url'),key=digest(token),client=clientInfo(request);
+        app.activity?.bind(request,null,null,sub);
+        app.activity?.identify(request,{protocol:'Emby',client:client.Client,device:client.DeviceName});
         for(const s of db.all('sessions'))if(s.expires<=Date.now())db.remove('sessions',s.id);
         const sessions=db.all('sessions').filter(s=>s.userId===user.id);
         for(const s of sessions.filter(s=>s.DeviceId===client.DeviceId))db.remove('sessions',s.id);
@@ -221,6 +229,7 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
     const playInfo=(request,_reply,ctx)=>{
         if(request.body?.UserId&&request.body.UserId!==ctx.user.id)throw fail('不能访问其他订阅的观看记录',403);
         const item=findItem(ctx,request.params.itemId);if(!item.versions?.length)throw fail('请选择影片或分集',422);
+        bindItem(request,item);
         const selected=request.body?.MediaSourceId||request.query.MediaSourceId;
         const versions=selected?item.versions.filter(v=>v.id===selected):item.versions;
         if(!versions.length)throw fail('播放版本不存在',404);
@@ -239,6 +248,7 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
     const stream=async(request,reply,ctx)=>{
         rate(request,'stream',120);
         const item=findItem(ctx,request.params.itemId),versionId=request.query.MediaSourceId;
+        bindItem(request,item);
         const version=versionId?item.versions?.find(v=>v.id===versionId):item.versions?.[0];if(!version)throw fail('播放版本不存在',404);
         const media=await catalog.play(request,item,version,ctx.sub);
         const current=authenticate(request);if(!allowed(current,item.sourceId)||!isNetdiskCurrent(media.netdiskRevision))throw fail('源或网盘账号已更新，请刷新',403);
@@ -250,6 +260,7 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
         const session=mediaSessions.get(request.params.ticket);
         if(!session||session.userId!==ctx.user.id||session.sessionKey!==ctx.key||!allowed(ctx,session.source)||!isNetdiskCurrent(session.netdiskRevision)||!/^stream\.(bin|m3u8|mp4|mkv|ts|webm|mov|avi)$/.test(request.params.file))throw fail('媒体引用已过期或无权访问',403);
         const item=findItem(ctx,session.itemId);
+        bindItem(request,item);
         return serveMedia(request,reply,session.url,session.headers,ctx.sub.token,undefined,url=>mediaUrl(request,ctx,item,{...session,url}),targetGuard);
     },{media:true});
     const changeState=(request,reply,ctx,kind)=>{
@@ -262,6 +273,7 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
     register(['POST','DELETE'],'/Users/:userId/PlayedItems/:itemId',(r,p,c)=>changeState(r,p,c,'played'));
     for(const action of ['Playing','Playing/Progress','Playing/Stopped'])register('POST','/Sessions/'+action,(request,reply,ctx)=>{
         const body=request.body||{},item=findItem(ctx,String(body.ItemId||'')),key=ctx.user.id+':'+item.id;
+        bindItem(request,item);
         if(!item.versions?.length)throw fail('不可播放条目');
         let play;
         if(body.PlaySessionId){play=db.get('plays',body.PlaySessionId);if(!play||play.userId!==ctx.user.id||play.itemId!==item.id||play.sessionKey!==ctx.key||play.expires<=Date.now())throw fail('播放会话无效',403);}

@@ -36,7 +36,7 @@ export class Catalog {
                 if(!library.automatic&&library.syncedAt)continue;
                 const last=Math.max(library.syncedAt||0,library.attemptedAt||0),ttl=library.syncedAt?10*60000:60000;
                 if(this.pending.has(library.id)||Date.now()-last<ttl)continue;
-                const context={protocol:request.protocol,headers:{host:request.headers.host,'user-agent':request.headers['user-agent']},params:{},query:{}};
+                const context={protocol:request.protocol,headers:{host:request.headers.host,'user-agent':request.headers['user-agent']},params:{},query:{},activity:request.server?.activity?.context(request)};
                 const task=this.autoQueue.then(async()=>{
                     if(this.closed||!this.db.get('libraries',library.id))return;
                     const existing=[...this.jobs.values()].find(j=>j.libraryId===library.id&&['queued','running'].includes(j.status));

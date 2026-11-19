@@ -5,7 +5,7 @@ import path from 'node:path';
 // restart does not wipe the only diagnostic trail. Redaction is deliberately
 // conservative: capability tokens and authorization headers are the values
 // that must never end up in `docker logs` or a downloaded log file.
-const SECRET_KEYS = 'token|access_token|refresh_token|password|passwd|pwd|secret|apikey|api_key|cookie|authorization';
+const SECRET_KEYS = 'token|access_token|refresh_token|password|passwd|pwd|secret|apikey|api_key|auth_key|cookie|authorization';
 const SECRET_QUERY = new RegExp(`([?&;](?:${SECRET_KEYS})=)[^&\\s"'#]+`, 'gi');
 // Handles both query/assignment forms and JSON-shaped payloads such as
 // {"token":"..."} or { cookie: '...' }. Values may be quoted (JSON-escaped) or bare.

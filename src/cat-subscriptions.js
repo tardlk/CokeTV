@@ -25,11 +25,13 @@ export function registerCatSubscriptions(app, {store, baseUrl, execute, play, se
         const sub = request.params.id === undefined ? uniqueSubscriptionByToken(store.state, request.params.credential)
             : store.state.subscriptions.find(item => item.id === request.params.id && item.enabled && item.token === request.params.credential);
         if (!sub) throw fail('订阅不存在、已停用或凭证无效', 403);
+        app.activity?.bind(request, null, null, sub);
         return sub;
     };
     const source = (request, sub) => {
         const instance = store.state.instances.find(item => item.id === request.params.source && sourceAvailable(store.state, item) && sub.instances.includes(item.id));
         if (!instance) throw fail('该源已停用或不在当前订阅中', 403);
+        app.activity?.bind(request, instance);
         return store.resolve(instance.id);
     };
     const scope = (sub, instance) => `${sub.id}:${sub.token}:${instance.id}`;

@@ -12,6 +12,7 @@ test('日志脱敏隐藏查询令牌、授权头与 Cookie，普通 URL 不受�
     assert.ok(!text.includes('private'));
     assert.ok(text.includes('https://cdn.test/a.m3u8?token=[redacted]&pg=2'));
     assert.equal(redactLogMessage('GET https://cdn.test/list.m3u8'), 'GET https://cdn.test/list.m3u8');
+    assert.equal(redactLogMessage('https://cdn.test/a.m3u8?auth_key=private-cdn-signature&pg=2'), 'https://cdn.test/a.m3u8?auth_key=[redacted]&pg=2');
     for (const secret of [
         '{"token":"json-token"}',
         '{ "password": "json-password" }',

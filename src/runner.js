@@ -7,6 +7,7 @@ import {randomBytes} from 'crypto';
 import {sourceOperation} from './source-operation.js';
 import {SOURCE_TIMEOUT} from './runtime-defaults.js';
 import {redactLogMessage} from './logging.js';
+import {activityFields, operationLabel} from './activity.js';
 
 const MAX_WORKERS = 4;
 const workerCount = value => {
@@ -76,17 +77,18 @@ export class Runner extends EventEmitter {
             stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
         });
         worker.child = child;
-        for (const output of [child.stdout, child.stderr]) output.on('data', data => this.log({level: 'info', source: worker.current?.source, message: data.toString().trim()}));
+        for (const output of [child.stdout, child.stderr]) output.on('data', data => this.log({...worker.current?.activity, category: 'spider', event: 'spider.output', level: 'info', source: worker.current?.source, message: data.toString().trim()}));
         child.on('error', error => { if (worker.child === child) this.resetWorker(worker, error.message); });
         child.on('message', message => {
             if (worker.child !== child) return;
-            if (message.kind === 'log') this.log({...message, source: message.source || worker.current?.source});
+            if (message.kind === 'log') this.log({...worker.current?.activity, ...message, category: 'spider', event: 'spider.output', source: message.source || worker.current?.source});
             if (message.kind === 'stats') worker.stats = message;
             if (message.kind === 'phase' && worker.current?.id === message.id &&
                 worker.current.method === 'home' && message.method === 'homeVod' && !worker.current.recommendationPhase) {
                 // Home and homeVod each receive the default timeout.
                 const pending = worker.current;
                 pending.recommendationPhase = true;
+                this.log({...pending.activity, category: 'spider', event: 'spider.phase', operation: 'homeVod', worker: worker.index, message: '爬虫进入推荐阶段'});
                 clearTimeout(pending.timer); pending.timer = pending.armTimer();
             }
             if (message.kind === 'ws') worker.wsPort = message.port;
@@ -164,17 +166,32 @@ export class Runner extends EventEmitter {
         this.waiting++;
         const worker = this.workerFor(source);
         worker.pending++;
+        const queuedAt = Date.now(), method = sourceOperation(query, operation);
+        const name = this.store.state.instances.find(item => item.id === source.instanceId)?.name || path.basename(source.file || '源');
+        const context = activityFields(env?.activity);
+        const meta = {...context, source: source.instanceId, sourceName: context.sourceName || redactLogMessage(name).slice(0, 200)};
+        let startedAt = queuedAt, queueMs = 0;
+        const completed = (result, error) => {
+            const durationMs = Date.now() - startedAt;
+            const entry = {...meta, category: 'spider', event: error ? 'spider.error' : 'spider.finish', operation: method,
+                worker: worker.index, durationMs, queueMs, outcome: error ? 'error' : 'ok', level: error ? 'error' : 'info',
+                ...(Array.isArray(result?.list) ? {recordCount: result.list.length} : {}),
+                message: `爬虫${error ? '失败' : '完成'} · ${meta.sourceName} · ${operationLabel(method)} · ${durationMs} ms${error ? ' · ' + error.message : Array.isArray(result?.list) ? ' · ' + result.list.length + ' 条' : ''}`};
+            if (method === 'proxy' && this.activity) this.activity.sample(entry, '源代理执行'); else this.log(entry);
+        };
         const work = worker.queue.then(async () => {
+            startedAt = Date.now(); queueMs = startedAt - queuedAt;
+            if (method !== 'proxy') this.log({...meta, category: 'spider', event: 'spider.start', operation: method, worker: worker.index, queueMs,
+                message: `爬虫开始 · ${meta.sourceName} · ${operationLabel(method)} · worker ${worker.index} · 排队 ${queueMs} ms`});
             if (this.closed) throw new Error('服务正在关闭');
             await this.startWorker(worker);
             return new Promise((resolve, reject) => {
                 const id = ++this.sequence;
-                const method = sourceOperation(query, operation);
                 const timeout = method === 'action' ? 60000 : SOURCE_TIMEOUT;
                 const armTimer = () => setTimeout(() => {
                     if (worker.current?.id === id) this.resetWorker(worker, `源执行超过 ${timeout / 1000} 秒，已回收运行进程`);
                 }, timeout);
-                const job = {id, source: source.instanceId, resolve, reject, timer: armTimer(), armTimer, method};
+                const job = {id, source: source.instanceId, activity: meta, resolve, reject, timer: armTimer(), armTimer, method};
                 worker.current = job;
                 const child = worker.child;
                 if (!child) { clearTimeout(job.timer); worker.current = null; reject(new Error('运行进程未启动')); return; }
@@ -186,7 +203,8 @@ export class Runner extends EventEmitter {
                     clearTimeout(job.timer); worker.current = null; reject(error);
                 }
             });
-        }).finally(() => { this.waiting--; worker.pending--; });
+        }).then(result => { completed(result); return result; }, error => { completed(undefined, error); throw error; })
+            .finally(() => { this.waiting--; worker.pending--; });
         worker.queue = work.catch(() => {});
         return work;
     }

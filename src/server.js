@@ -32,6 +32,8 @@ import {checkUnsafeRequestOrigin, requestOrigin} from './origin.js';
 import {VERSION} from './version.js';
 import {createLogSink, inTestRunner, redactLogMessage} from './logging.js';
 import {Backups} from './backups.js';
+import {createActivityLog} from './activity.js';
+import {sourceOperation} from './source-operation.js';
 
 dotenv.config();
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
@@ -61,6 +63,8 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
         stdout: process.env.LOG_STDOUT === '0' ? false : undefined,
     });
     const runner = new Runner(store, {sink: logSink});
+    const activity = createActivityLog(entry => runner.log(entry));
+    runner.activity = activity;
     const backups = new Backups(store.directory, {
         keep: Number(process.env.BACKUP_KEEP) || 7,
         intervalMs: (Number(process.env.BACKUP_INTERVAL_HOURS) || 24) * 3600000,
@@ -75,6 +79,8 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     const proxyMint = (headers, scope = {}) => createChildMint(playback, headers, scope);
     let catSubscriptions;
     const app = Fastify({logger: false, bodyLimit: 8 * 1024 * 1024, trustProxy: process.env.TRUST_PROXY === '1', routerOptions: {maxParamLength: 4096}});
+    activity.hooks(app, request => request.headers['x-drpy-runtime'] === runner.internalKey);
+    app.decorate('activity', activity);
     await app.register(formbody);
     await app.register(multipart, {limits: {fileSize: 16 * 1024 * 1024, files: 1}});
     // JSON/HTML/CSS/JS only; media streams have non-compressible content types
@@ -136,10 +142,10 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     });
     app.get('/access/status', async () => ({requiresSetup: auth.needsSetup()}));
     app.post('/admin/access/setup', async request => auth.setup(request));
-    app.addHook('onClose', async () => { backups.close(); runner.close(); await logSink.flush(); });
+    app.addHook('onClose', async () => { backups.close(); runner.close(); activity.close(); await logSink.flush(); });
     netdisk.register(app);
     const baseUrl = requestOrigin;
-    const contextFor = (request, instance, script, extra) => ({...buildContext(baseUrl(request), instance, script, extra), sourceEnvPath: store.state.instances.some(s => s.id === instance.id) ? store.sourceEnvPath(instance.id) : null, localPort: app.server.address()?.port || Number(process.env.PORT) || 54058});
+    const contextFor = (request, instance, script, extra) => ({...buildContext(baseUrl(request), instance, script, extra), activity: activity.bind(request, instance), sourceEnvPath: store.state.instances.some(s => s.id === instance.id) ? store.sourceEnvPath(instance.id) : null, localPort: app.server.address()?.port || Number(process.env.PORT) || 54058});
     // 默认出口取最严的 publicTargetGuard：任何忘记显式传 guard 的调用点都必须
     // 退化为公开出口，而不是悄悄获得 trusted。可信调用点显式传 trustedTargetGuard。
     const serveMedia = async (request, reply, target, headers, suppliedToken, mint, wrapUrl, guard = publicTargetGuard) => {
@@ -269,8 +275,18 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     const run = async (request, query, operation = 'api') => {
         const {script, instance, file} = sourceFor(request);
         const sub = await authorize(request, instance.id);
+        activity.bind(request, instance, query, sub);
         const env = contextFor(request, instance, script, {token: sub?.token, proxyPath: request.params['*'] || ''});
         const result = await netdisk.execute({script, instance, file}, query, env, runner, operation);
+        if (sourceOperation(query, operation) === 'detail') activity.remember(instance.id, result);
+        if (sourceOperation(query, operation) === 'play') {
+            let media = result;
+            if (typeof media === 'string') { try { media = JSON.parse(media); } catch { media = {url: media}; } }
+            let local = false;
+            try { local = new URL(media?.url, baseUrl(request)).origin === new URL(baseUrl(request)).origin; } catch {}
+            if (typeof media?.url === 'string' && media.url.trim()) activity.playback(request, instance, query, Number(media.parse) === 1 || Number(media.jx) === 1 ? '等待客户端解析' : local ? 'NAS 转发' : '客户端直连');
+            else activity.unresolved(request, instance, query);
+        }
         return {result, sub, instance, script, env};
     };
 
@@ -340,7 +356,9 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
             const started = Date.now();
             try {
                 if (!script) throw fail('脚本不存在', 404);
-                const result = await searchWithTimeout(content.query(request, {script, instance, file: store.scriptPath(script)}, {wd, pg}), AGGREGATE_TIMEOUT);
+                const scoped = Object.create(request);
+                scoped.activity = {...activity.context(request)};
+                const result = await searchWithTimeout(content.query(scoped, {script, instance, file: store.scriptPath(script)}, {wd, pg}), AGGREGATE_TIMEOUT);
                 return {source: {id: instance.id, name: instance.name}, results: Array.isArray(result?.list) ? result.list.slice(0, 50) : [],
                     pagecount: Number(result?.pagecount) || 1, took: Date.now() - started};
             } catch (error) {
@@ -375,7 +393,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     };
     app.get('/watch/sources/:id', watchHandler);
     app.get('/admin/watch/:id', watchHandler);
-    const content = createContent({store, runner, netdisk, contextFor, baseUrl, playback});
+    const content = createContent({store, runner, netdisk, contextFor, baseUrl, playback, activity});
     // 出口权限只看「铸造这条能力的调用链」：匿名 /watch 走公开出口；已鉴权的
     // 管理员或内部源运行时走可信出口（管理员用公开页面看 LAN 媒体属其自身意图）。
     const playHandler = async (request, options) => content.play(request, watchSource(request), request.body, {
@@ -393,6 +411,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     app.route({method: ['GET', 'HEAD'], url: '/watch/media/:ticket', handler: async (request, reply) => {
         const session = playback.get(request.params.ticket);
         if (!session || session.kind !== 'media' || !netdisk.current(session.netdiskRevision) || !store.state.instances.some(item => item.id === session.source && item.enabled)) throw fail('播放链接已过期，请重新选择剧集', 403);
+        activity.bind(request, store.state.instances.find(item => item.id === session.source));
         // 只抓服务端票据绑定的 URL 与请求头，绝不接受请求方传入的目标。
         // 出口权限同样只取自票据自身（匿名铸造的票据是 public），且派生票据继承它。
         return serveMedia(request, reply, session.url, session.headers || {}, request.params.ticket,
@@ -426,6 +445,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     const logLimit = value => Math.min(400, Math.max(1, Number(value) || 150));
     app.get('/admin/logs', async request => runner.logs.filter(entry => !request.query.source || entry.source === request.query.source).slice(-logLimit(request.query.limit)));
     app.get('/admin/logs/download', async (_, reply) => {
+        activity.flush();
         await logSink.flush();
         let content = '';
         if (logSink.file) content = await fs.readFile(logSink.file, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; });
@@ -651,12 +671,14 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     const subscriptionHandler = async request => {
         const sub = request.params.id ? store.state.subscriptions.find(s => s.id === request.params.id) : store.state.subscriptions.find(s => s.id === request.query.sub) || store.state.subscriptions[0];
         if (!sub || !sub.enabled || (!await auth.isAdmin(request) && sub.token !== request.query.token)) throw fail('订阅不存在、已停用或凭证无效', 403);
+        activity.bind(request, null, null, sub);
         return buildSubscription(store.state, sub, baseUrl(request));
     };
     app.get('/subscription/:id', subscriptionHandler);
     const shortSubscriptionHandler = async (request, reply) => {
         const sub = uniqueSubscriptionByToken(store.state, request.params.credential);
         if (!sub) throw fail('订阅不存在、已停用或凭证无效', 403);
+        activity.bind(request, null, null, sub);
         reply.header('Cache-Control', 'private, no-store');
         return buildSubscription(store.state, sub, baseUrl(request));
     };
@@ -709,6 +731,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     const mediaProxyHandler = async (request, reply) => {
         const target = decodeMediaTarget(request.query.url);
         const info = await authorizeProxy(request, target);
+        if (info.source) activity.bind(request, store.state.instances.find(item => item.id === info.source));
         // Capability-bound headers win even when caller also sends credentials.
         // Incoming Basic/runtime credentials are never implicitly copied out.
         const supplied = info.kind === 'ticket' ? info.headers || {} : decodeMediaHeaders(request.query);

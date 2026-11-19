@@ -74,6 +74,12 @@ test('Infuse目录/分集/多版本、实际收藏/续播/下一集和退出撤�
     assert.equal(info.statusCode,200,info.body);const play=info.json();assert.ok(play.PlaySessionId);
     const progress=await f.app.inject({method:'POST',url:'/Sessions/Playing/Progress',headers:p.headers,payload:{ItemId:ep.Id,PlaySessionId:play.PlaySessionId,PositionTicks:120000000}});
     assert.equal(progress.statusCode,204,progress.body);
+    const progressLog=f.app.runner.logs.find(entry=>entry.event==='client.request'&&entry.operation==='播放进度');
+    assert.equal(progressLog.client,'Infuse-Direct');assert.equal(progressLog.device,'iPhone');
+    assert.equal(progressLog.title,'剧集 one');assert.equal(progressLog.episode,'第1集');
+    assert.equal(progressLog.subscription,'观看范围');
+    assert.equal(JSON.stringify(f.app.runner.logs).includes(p.login.AccessToken),false);
+    assert.equal(JSON.stringify(f.app.runner.logs).includes('subscription-secret'),false);
     assert.equal((await get(`/Users/${p.user.id}/Items/Resume`)).Items[0].UserData.PlaybackPositionTicks,120000000);
     assert.equal((await f.app.inject({method:'POST',url:`/Users/${p.user.id}/PlayedItems/${ep.Id}`,headers:p.headers})).statusCode,200);
     assert.equal((await get('/Shows/NextUp')).Items[0].Id,episodes.Items[1].Id);

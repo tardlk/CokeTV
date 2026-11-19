@@ -5,11 +5,12 @@ import {unwrapMediaProxy} from './media-params.js';
 import {validFilename, inside} from './paths.js';
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
 const checkString = (value, max) => typeof value === 'string' && value.trim() && value.length <= max;
-export function createContent({store, runner, netdisk, contextFor, baseUrl, playback}) {
+export function createContent({store, runner, netdisk, contextFor, baseUrl, playback, activity}) {
     const play = async (request, {instance, script, file}, body, {native = false, subscription = null, clientUserAgent = false, egress = 'public'} = {}) => {
         const {play, flag = '', parser, delivery} = body || {};
         if (!checkString(play, 50000) || typeof flag !== 'string') throw fail('请选择要播放的剧集');
         if (delivery !== undefined && !['direct', 'proxy'].includes(delivery)) throw fail('播放传输方式无效');
+        activity?.bind(request, instance, {play, flag}, subscription);
         const netdiskPlay = netdisk.isReference(play);
         const env = contextFor(request, instance, script, {token: subscription?.token});
         // A browser cannot set its video element's User-Agent. Obtain the 115
@@ -25,12 +26,14 @@ export function createContent({store, runner, netdisk, contextFor, baseUrl, play
             const selected = parses[index];
             if (!selected) {
                 if (native && Object.keys(playbackHeaders(result.headers ?? result.header)).length) throw fail('此网页源需要服务器请求头，请在 CokeTV 配置解析或切换源', 422);
+                activity?.playback(request, instance, {play, flag}, '等待客户端解析');
                 return native ? {parse: 1, url: playbackUrl(result.url, baseUrl(request))} : {needsParse: true, parses: options};
             }
             const target = playbackUrl(result.url, baseUrl(request));
             if (Number(selected.type) === 0) {
                 const iframe = playbackUrl(`${selected.url}${encodeURIComponent(target)}`, baseUrl(request));
                 if (new URL(iframe).origin === new URL(baseUrl(request)).origin) throw fail('网页解析须使用外部解析地址');
+                activity?.playback(request, instance, {play, flag}, '客户端网页解析');
                 return native ? {parse: 1, url: iframe} : {iframe, parses: options, parser: index};
             }
             if (Number(selected.type) === 2) {
@@ -56,11 +59,15 @@ export function createContent({store, runner, netdisk, contextFor, baseUrl, play
         const carried = unwrapMediaProxy(url, baseUrl(request));
         const headers = playbackHeaders({...carried?.headers, ...playbackHeaders(result.headers ?? result.header)});
         if (carried) url = carried.url;
-        if (native) return {parse: 0, url, headers, direct: netdiskPlay && delivery !== 'proxy', type: mediaType(url, result.type) || result.netdiskFileName?.match(/\.(mkv|mp4|m4v|webm|mov|avi)$/i)?.[1]?.toLowerCase() || '', ...(result.netdiskRevision ? {netdiskRevision: result.netdiskRevision} : {})};
+        if (native) {
+            activity?.playback(request, instance, {play, flag}, netdiskPlay && delivery !== 'proxy' ? '客户端直连' : 'NAS 转发');
+            return {parse: 0, url, headers, direct: netdiskPlay && delivery !== 'proxy', type: mediaType(url, result.type) || result.netdiskFileName?.match(/\.(mkv|mp4|m4v|webm|mov|avi)$/i)?.[1]?.toLowerCase() || '', ...(result.netdiskRevision ? {netdiskRevision: result.netdiskRevision} : {})};
+        }
         if (netdiskPlay && result.netdiskRevision && delivery !== 'proxy') {
             // Only the unified provider's temporary media URL leaves the server;
             // generic source headers may contain private ENV and stay proxied.
             const type = mediaType(url, result.type) || mediaType('file.' + result.netdiskFileName?.split('.').pop()) || 'native';
+            activity?.playback(request, instance, {play, flag}, '客户端直连');
             return {url, type, direct: true, parses: options, parser: parser ?? null};
         }
         // 媒体票据的出口权限取自调用链，而不是「拿到票据即信任」：匿名 /watch 播放
@@ -69,11 +76,15 @@ export function createContent({store, runner, netdisk, contextFor, baseUrl, play
             ...(result.netdiskRevision ? {netdiskRevision: result.netdiskRevision} : {}),
             egress,
         });
+        activity?.playback(request, instance, {play, flag}, 'NAS 转发');
         return {url: `/watch/media/${ticket}`, type: mediaType(url, result.type), parses: options, parser: parser ?? null};
     };
     return {
-        query(request, resolved, query, subscription) {
-            return netdisk.execute(resolved, query, contextFor(request, resolved.instance, resolved.script, {token: subscription?.token}), runner);
+        async query(request, resolved, query, subscription) {
+            activity?.bind(request, resolved.instance, query, subscription);
+            const result = await netdisk.execute(resolved, query, contextFor(request, resolved.instance, resolved.script, {token: subscription?.token}), runner);
+            if (query.ac === 'detail') activity?.remember(resolved.instance.id, result);
+            return result;
         },
         play,
         identity(reference, source) { return netdisk.identity(reference, source); },

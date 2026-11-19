@@ -1,23 +1,29 @@
 <script setup>
-import {ref, computed, onMounted} from 'vue';
+import {ref, computed, onMounted, onUnmounted} from 'vue';
 import Icon from './Icon.vue';
 
 const props = defineProps({api: {type: Function, required: true}, download: {type: Function, required: true}});
 const tab = ref('logs');
 const logs = ref([]), backups = ref({items: [], keep: 7, intervalHours: 24, last: null});
 const loadingLogs = ref(true), loadingBackups = ref(true), busy = ref(false), error = ref('');
-const level = ref('all'), keyword = ref('');
+const level = ref('all'), category = ref('all'), keyword = ref(''), autoRefresh = ref(true);
 const levels = [{value: 'all', label: '全部级别'}, {value: 'error', label: '错误'}, {value: 'warn', label: '警告'}, {value: 'info', label: '信息'}];
+const categories = [{value: 'all', label: '全部类型'}, {value: 'client', label: '客户端访问'}, {value: 'playback', label: '播放'}, {value: 'spider', label: '爬虫'}, {value: 'system', label: '系统'}];
+const categoryText = entry => categories.find(item => item.value === (entry.category || 'system'))?.label || '系统';
 const filtered = computed(() => logs.value.filter(entry => (level.value === 'all' || entry.level === level.value) &&
-    (!keyword.value || `${entry.message || ''} ${entry.source || ''}`.toLowerCase().includes(keyword.value.toLowerCase()))));
+    (category.value === 'all' || (entry.category || 'system') === category.value) &&
+    (!keyword.value || [entry.message, entry.source, entry.sourceName, entry.clientIp, entry.client, entry.device, entry.protocol, entry.subscription, entry.title, entry.episode, entry.requestId].join(' ').toLowerCase().includes(keyword.value.toLowerCase()))));
 const sizeText = value => value < 1024 ? `${value} B` : value < 1048576 ? `${(value / 1024).toFixed(1)} KB` : `${(value / 1048576).toFixed(1)} MB`;
 const timeText = value => new Intl.DateTimeFormat('zh-CN', {dateStyle: 'medium', timeStyle: 'medium'}).format(new Date(value));
-const clock = value => String(value || '').slice(11, 19);
-async function loadLogs() {
-    loadingLogs.value = true;
+const clock = value => value ? new Date(value).toLocaleTimeString('zh-CN', {hour12: false}) : '';
+let logsPending = false, refreshTimer;
+async function loadLogs(silent = false) {
+    if (logsPending) return;
+    logsPending = true;
+    if (!silent) loadingLogs.value = true;
     try { logs.value = await props.api('/admin/logs?limit=400'); }
     catch (failure) { error.value = failure.message; }
-    finally { loadingLogs.value = false; }
+    finally { loadingLogs.value = false; logsPending = false; }
 }
 async function loadBackups() {
     loadingBackups.value = true;
@@ -34,7 +40,11 @@ async function snapshot() {
     finally { busy.value = false; }
 }
 function downloadBackup(item) { props.download(`/admin/backups/${encodeURIComponent(item.name)}`, item.name); }
-onMounted(refresh);
+onMounted(() => {
+    refresh();
+    refreshTimer = setInterval(() => { if (autoRefresh.value && tab.value === 'logs' && !document.hidden) loadLogs(true); }, 5000);
+});
+onUnmounted(() => clearInterval(refreshTimer));
 </script>
 <template>
   <div class="page-heading"><div><h1>运行维护</h1><p>查看运行日志，管理数据快照。</p></div><Button variant="outline" :disabled="loadingLogs || loadingBackups" @click="refresh"><Icon name="refresh" />刷新</Button></div>
@@ -44,20 +54,30 @@ onMounted(refresh);
     <TabsContent value="logs">
       <div class="maintenance-toolbar">
         <NativeSelect v-model="level" class="filter-select" aria-label="日志级别"><option v-for="item in levels" :key="item.value" :value="item.value">{{item.label}}</option></NativeSelect>
-        <InputGroup class="w-[240px]"><InputGroupInput v-model="keyword" aria-label="过滤日志" placeholder="搜索日志" /><InputGroupAddon><Icon name="search" :size="16" /></InputGroupAddon></InputGroup>
+        <NativeSelect v-model="category" class="filter-select" aria-label="日志类型"><option v-for="item in categories" :key="item.value" :value="item.value">{{item.label}}</option></NativeSelect>
+        <InputGroup class="w-[240px]"><InputGroupInput v-model="keyword" aria-label="过滤日志" placeholder="搜索 IP、客户端、源、影片" /><InputGroupAddon><Icon name="search" :size="16" /></InputGroupAddon></InputGroup>
+        <label class="log-auto-refresh"><input v-model="autoRefresh" type="checkbox" aria-label="自动刷新日志" />自动刷新</label>
         <Button variant="outline" size="sm" @click="download('/admin/logs/download', 'coketv-logs.txt')"><Icon name="download" :size="14" />下载日志</Button>
       </div>
       <Skeleton v-if="loadingLogs" class="h-64 w-full" />
       <div v-else class="log-panel" role="log" aria-label="运行日志">
         <div v-for="(entry, index) in filtered" :key="index" class="log-line">
-          <span class="log-time">{{clock(entry.time)}}</span>
+          <span class="log-time" :title="entry.time">{{clock(entry.time)}}</span>
           <Badge :variant="entry.level === 'error' ? 'destructive' : 'secondary'">{{entry.level || 'info'}}</Badge>
-          <span v-if="entry.source" class="log-source">{{entry.source}}</span>
-          <span class="log-message">{{entry.message}}</span>
+          <span class="log-source">{{categoryText(entry)}}</span>
+          <div class="log-content">
+            <span class="log-message">{{entry.message}}</span>
+            <div v-if="entry.clientIp || entry.sourceName || entry.requestId" class="log-details">
+              <span v-if="entry.clientIp">{{entry.clientIp}}</span><span v-if="entry.client">{{entry.client}}</span><span v-if="entry.device">{{entry.device}}</span>
+              <span v-if="entry.sourceName || entry.source">源：{{entry.sourceName || entry.source}}</span><span v-if="entry.subscription">订阅：{{entry.subscription}}</span>
+              <span v-if="entry.title">{{entry.title}} {{entry.episode || ''}}</span><span v-if="entry.requestId">请求 {{entry.requestId}}</span>
+              <span v-if="entry.statuses">状态 {{Object.entries(entry.statuses).map(([status, count]) => `${status} × ${count}`).join('，')}}</span>
+            </div>
+          </div>
         </div>
         <p v-if="!filtered.length" class="log-empty">暂无日志</p>
       </div>
-      <p class="maintenance-note">日志同时写入 <code>data/logs/coketv.log</code>，按大小轮转；下载内容已隐藏令牌与授权头。</p>
+      <p class="maintenance-note">每 5 秒刷新最近 400 条；媒体和源代理请求按 30 秒汇总，错误即时记录。客户端名称来自请求标识；取链成功不代表设备已播放出画面。日志按大小轮转，隐藏令牌与授权头。</p>
     </TabsContent>
     <TabsContent value="backups">
       <div class="maintenance-toolbar">
@@ -84,6 +104,9 @@ onMounted(refresh);
 .log-time{color:var(--muted-foreground);font-variant-numeric:tabular-nums;flex-shrink:0}
 .log-source{color:var(--muted-foreground);flex-shrink:0}
 .log-message{white-space:pre-wrap;overflow-wrap:anywhere}
+.log-content{min-width:0;flex:1}
+.log-details{display:flex;gap:4px 12px;flex-wrap:wrap;margin-top:3px;color:var(--muted-foreground);font-size:11px;overflow-wrap:anywhere}
+.log-auto-refresh{display:flex;gap:6px;align-items:center;font-size:12px;cursor:pointer}
 .log-empty{padding:36px;text-align:center;color:var(--muted-foreground)}
 .maintenance-note{margin-top:14px;font-size:12px;line-height:1.75;color:var(--muted-foreground)}
 .maintenance-note code{font-size:11px}
