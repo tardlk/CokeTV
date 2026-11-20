@@ -59,10 +59,11 @@ export default {
         const pageSize=ref(20);
         const confirming = ref(null), importFile = ref(null);
         const notify=(message,error=false)=>error?toast.error(message):toast.success(message);
-        async function watchApi(url, body) {
+        async function watchApi(url, body, options = {}) {
             const response = await fetch(url, {method: body === undefined ? 'GET' : 'POST', credentials: 'omit', headers: body === undefined ? {} : {'Content-Type': 'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)});
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || '请求失败');
+            options.onResponse?.(response);
             return data;
         }
         async function download(url, filename) {

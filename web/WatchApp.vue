@@ -1,6 +1,6 @@
 <script setup>
 import {computed, ref, watch, onMounted, onBeforeUnmount, defineAsyncComponent, nextTick} from 'vue';
-import {Film, Search, Settings2, UserRound, ArrowLeft, List, Grid2X2, ArrowDownUp, LocateFixed, ListVideo, SkipForward, Heart, Copy, Play, X, Filter, Check} from '@lucide/vue';
+import {Film, Search, Settings2, UserRound, ArrowLeft, List, Grid2X2, ArrowDownUp, LocateFixed, ListVideo, SkipForward, Heart, Copy, Play, X, Filter, Check, RefreshCw} from '@lucide/vue';
 import {toast} from 'vue-sonner';
 import {resultObject, playlists, plainText, detailText, safeImage, readWatchStorage, saveWatchStorage} from './watch-model.js';
 import {pushRoute} from './navigation.js';
@@ -26,6 +26,7 @@ const isHistory = computed(() => route.value.path === '/watch/history');
 const home = ref({}), videos = ref([]), navGroups = ref([]), navTruncated = ref(false), pageCount = ref(1), filters = ref({}), detail = ref(null);
 const browseNotice = ref('');
 const loading = ref(false), error = ref(''), playLoading = ref(false), playError = ref(''), media = ref(null), parsers = ref([]), parser = ref('auto'), needsParse = ref(false), resume = ref(0);
+const homeUpdating = ref(false), homePages = new Map();
 const sourceDialog = ref(false), episodeDialog = ref(false), sourceQuery = ref('');
 const descending = ref(false), coverMode = ref(true), expanded = ref(false), libraryTab = ref('history');
 const historyItems = ref(readWatchStorage('coketv-watch-history')), favorites = ref(readWatchStorage('coketv-watch-favorites'));
@@ -112,6 +113,36 @@ function previousEpisode() { if (currentEpisode.value?.index > 0) chooseEpisode(
 function nextEpisode() { if (currentEpisode.value?.index < (currentLine.value?.episodes.length || 0) - 1) chooseEpisode(currentEpisode.value.index + 1); }
 function episodeEnded() { saveProgress(0, 0, media.value?.context); nextEpisode(); }
 async function locateEpisode() { await nextTick(); document.querySelector('.watch-episode[aria-current="true"]')?.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'center'}); }
+async function loadHome(id, fresh = false) {
+    const saved = homePages.get(id);
+    const revision = enabled.value.find(item => item.id === id)?.homeRevision;
+    if (!fresh && saved?.expires > Date.now() && saved.revision === revision) return saved.data;
+    const started = Date.now();
+    let ttl = 5 * 60000;
+    const result = await props.api(`/watch/sources/${id}${fresh ? '?homeRefresh=1' : ''}`, undefined, {onResponse(response) {
+        const value = response.headers?.get('X-CokeTV-Home-TTL');
+        if (value !== null && value !== undefined && Number.isFinite(Number(value))) ttl = Math.max(0, Math.min(ttl, Number(value)));
+    }});
+    const data = resultObject(result);
+    if (data.error || data.success === false) throw new Error(typeof data.error === 'string' ? data.error : data.message || '首页获取失败');
+    homePages.delete(id);
+    if (ttl > 0) homePages.set(id, {data, revision, expires: started + ttl});
+    while (homePages.size > 20) homePages.delete(homePages.keys().next().value);
+    return data;
+}
+async function updateHome() {
+    if (loading.value || homeUpdating.value || !source.value) return;
+    const id = route.value.source, version = dataVersion;
+    homeUpdating.value = true;
+    try {
+        const data = await loadHome(id, true);
+        if (version !== dataVersion || id !== route.value.source) return;
+        home.value = data; videos.value = Array.isArray(data.list) ? data.list : [];
+        browseNotice.value = typeof data.notice === 'string' ? plainText(data.notice).slice(0, 500) : '';
+        error.value = ''; toast.success('首页已更新');
+    } catch (failure) { if (version === dataVersion) toast.error(failure.message); }
+    finally { homeUpdating.value = false; }
+}
 async function loadData() {
     const version = ++dataVersion; ++playVersion;
     media.value = null; detail.value = null; playError.value = ''; parsers.value = []; needsParse.value = false; parser.value = 'auto';
@@ -139,7 +170,7 @@ async function loadData() {
                 if (!source.value.searchable) throw new Error('此源不支持搜索，请切换源。');
                 data = resultObject(await props.api(`/watch/sources/${id}?${new URLSearchParams({wd, pg})}`));
             } else {
-                const homeResult = resultObject(await props.api(`/watch/sources/${id}`));
+                const homeResult = await loadHome(id);
                 if (version !== dataVersion) return;
                 home.value = homeResult;
                 data = homeResult;
@@ -197,10 +228,13 @@ function popstate() { route.value = readRoute(); keyword.value = route.value.sea
 // 用原始值拼键做比较：数组 getter 每次返回新数组，Vue 按 Object.is 比较，
 // 会让「整体替换 route」总是触发 loadData，从而在切集/换线路时重载详情、
 // 卸载播放器并丢失自动播放。拆成两条互不干扰的路径后，只有真正换片才重新加载。
-watch(() => [route.value.path, route.value.source, route.value.vod, route.value.category, route.value.search, route.value.nav, route.value.pg].join('|'), loadData);
+watch(() => [route.value.path, route.value.source, route.value.vod, route.value.category, route.value.search, route.value.nav, route.value.pg, source.value?.homeRevision].join('|'), loadData);
 watch(() => [route.value.line, route.value.episode].join('|'), () => {
     if (detail.value && isPlay.value) resolvePlay(true);
 });
+watch(() => props.sources, (next, previous) => {
+    for (const item of previous || []) if (JSON.stringify(item) !== JSON.stringify(next.find(current => current.id === item.id))) homePages.delete(item.id);
+}, {deep: true});
 onMounted(() => { window.addEventListener('popstate', popstate); loadData(); });
 onBeforeUnmount(() => { ++dataVersion; ++playVersion; window.removeEventListener('popstate', popstate); });
 </script>
@@ -253,7 +287,7 @@ onBeforeUnmount(() => { ++dataVersion; ++playVersion; window.removeEventListener
       </template>
       <template v-else>
         <div v-if="route.nav" class="watch-browse-toolbar watch-nav-toolbar"><div class="watch-nav-title"><h2>全源搜索 “{{route.nav}}”</h2><span v-if="!loading && !error">{{navCount}} 条 · {{navGroups.length}} 个源</span></div><Button variant="outline" size="sm" @click="backToBrowse">返回导航源</Button></div>
-        <div v-else class="watch-browse-toolbar"><Tabs :model-value="route.search?'search':route.category" @update:model-value="selectCategory"><TabsList class="watch-category-tabs"><TabsTrigger v-for="item in categories" :key="item.type_id" :value="String(item.type_id)">{{item.type_name}}</TabsTrigger><TabsTrigger v-if="route.search" value="search">搜索结果</TabsTrigger></TabsList></Tabs><Button variant="ghost" size="sm" @click="sourceDialog=true"><Filter data-icon="inline-start" /><span class="truncate">{{source?.name||'选择源'}}</span></Button></div>
+        <div v-else class="watch-browse-toolbar"><Tabs :model-value="route.search?'search':route.category" @update:model-value="selectCategory"><TabsList class="watch-category-tabs"><TabsTrigger v-for="item in categories" :key="item.type_id" :value="String(item.type_id)">{{item.type_name}}</TabsTrigger><TabsTrigger v-if="route.search" value="search">搜索结果</TabsTrigger></TabsList></Tabs><Button v-if="source && !route.search && route.category==='home'" class="watch-home-update" variant="ghost" size="sm" aria-label="更新首页" :disabled="loading || homeUpdating" @click="updateHome"><RefreshCw data-icon="inline-start" :class="{'animate-spin':homeUpdating}" />{{homeUpdating?'更新中…':'更新首页'}}</Button><Button variant="ghost" size="sm" @click="sourceDialog=true"><Filter data-icon="inline-start" /><span class="truncate">{{source?.name||'选择源'}}</span></Button></div>
         <div v-if="activeFilters.length && !route.search && !route.nav" class="watch-filters"><Field v-for="group in activeFilters" :key="group.key"><FieldLabel :for="'watch-filter-'+group.key">{{group.name}}</FieldLabel><NativeSelect :id="'watch-filter-'+group.key" v-model="filters[group.key]" @update:model-value="loadData"><option value="">全部</option><option v-for="item in group.value||[]" :key="item.v" :value="item.v">{{item.n}}</option></NativeSelect></Field></div>
         <p v-if="route.search" class="watch-search-status" role="status">{{loading?'正在 '+source?.name+' 搜索“'+route.search+'”…':'“'+route.search+'” · '+source?.name+' · 第 '+route.pg+' 页'}}<Button variant="ghost" size="sm" @click="backToBrowse">返回首页</Button></p>
         <p v-if="route.nav" class="watch-search-status" role="status">{{loading?'正在搜索全部可用源…':'全源搜索 “'+route.nav+'”'}}<Button variant="ghost" size="sm" @click="backToBrowse">返回导航源</Button></p>

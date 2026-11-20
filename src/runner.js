@@ -124,6 +124,7 @@ export class Runner extends EventEmitter {
     }
 
     resetWorker(worker, reason = '运行配置已更新') {
+        this.emit('reset');
         const child = worker.child;
         worker.child = null; worker.wsPort = null; worker.stats = null; worker.gatewayPort = null;
         if (worker.gatewayPending) { clearTimeout(worker.gatewayPending.timer); worker.gatewayPending.reject(new Error(reason)); worker.gatewayPending = null; }

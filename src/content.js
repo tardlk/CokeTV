@@ -5,7 +5,7 @@ import {unwrapMediaProxy} from './media-params.js';
 import {validFilename, inside} from './paths.js';
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
 const checkString = (value, max) => typeof value === 'string' && value.trim() && value.length <= max;
-export function createContent({store, runner, netdisk, contextFor, baseUrl, playback, activity}) {
+export function createContent({store, runner, netdisk, contextFor, baseUrl, playback, activity, executor}) {
     const play = async (request, {instance, script, file}, body, {native = false, subscription = null, clientUserAgent = false, egress = 'public'} = {}) => {
         const {play, flag = '', parser, delivery} = body || {};
         if (!checkString(play, 50000) || typeof flag !== 'string') throw fail('请选择要播放的剧集');
@@ -82,7 +82,7 @@ export function createContent({store, runner, netdisk, contextFor, baseUrl, play
     return {
         async query(request, resolved, query, subscription) {
             activity?.bind(request, resolved.instance, query, subscription);
-            const result = await netdisk.execute(resolved, query, contextFor(request, resolved.instance, resolved.script, {token: subscription?.token}), runner);
+            const result = await executor.execute(resolved, query, contextFor(request, resolved.instance, resolved.script, {token: subscription?.token}), 'api', meta => { request.homeCache = meta; });
             if (query.ac === 'detail') activity?.remember(resolved.instance.id, result);
             return result;
         },

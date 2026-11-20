@@ -6,8 +6,7 @@ import path from 'node:path';
 import {createApp} from '../src/server.js';
 import {ruleFixture} from './helpers/drpy3-fixture.js';
 
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const source = (title, delay) => ruleFixture(`var rule={title:${JSON.stringify(title)},host:'https://fixture.invalid',class_parse:async function(){await new Promise(resolve=>setTimeout(resolve,${delay}));return {class:[]}}};`);
+const source = (title, delay) => ruleFixture(`var rule={title:${JSON.stringify(title)},host:'https://fixture.invalid',一级:async function(){await new Promise(resolve=>setTimeout(resolve,${delay}));return {list:[]}}};`);
 
 test('不同源可跨 worker 并行，同一源仍保持串行', {timeout: 20000}, async t => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-runner-pool-'));
@@ -23,7 +22,8 @@ test('不同源可跨 worker 并行，同一源仍保持串行', {timeout: 20000
         assert.ok(a && b);
         await app.store.mutate(state => { state.subscriptions[0].instances = [a, b]; });
         const token = app.store.state.subscriptions[0].token;
-        const call = id => app.inject({method: 'POST', url: `/api/${id}?token=${token}`, payload: {}});
+        // Category results are uncached; identical home requests intentionally coalesce.
+        const call = id => app.inject({method: 'POST', url: `/api/${id}?token=${token}`, payload: {ac:'list',t:'movie',pg:'1'}});
 
         // Warm both worker processes first so the measurement covers execution,
         // not fork/engine startup.

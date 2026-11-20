@@ -35,6 +35,7 @@ import {Backups} from './backups.js';
 import {createActivityLog} from './activity.js';
 import {sourceOperation} from './source-operation.js';
 import {listenApp} from './listen.js';
+import {createSourceExecutor} from './home-cache.js';
 
 dotenv.config();
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
@@ -74,6 +75,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     await backups.start();
     const auth = await createAuth(store);
     const netdisk = await NetdiskService.create(store.directory, netdiskRequest, guangyaRequest);
+    const executor = createSourceExecutor({store, runner, netdisk});
     const playback = createPlaybackSessions();
     // 派生票据（HLS 子清单/KEY/MAP/分片、源代理目标）只能继承父票据的 egress，
     // 永不提升：公开票据派生出的所有子能力仍是 public。
@@ -143,7 +145,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     });
     app.get('/access/status', async () => ({requiresSetup: auth.needsSetup()}));
     app.post('/admin/access/setup', async request => auth.setup(request));
-    app.addHook('onClose', async () => { backups.close(); runner.close(); activity.close(); await logSink.flush(); });
+    app.addHook('onClose', async () => { backups.close(); runner.close(); executor.close(); activity.close(); await logSink.flush(); });
     netdisk.register(app);
     const baseUrl = requestOrigin;
     const contextFor = (request, instance, script, extra) => ({...buildContext(baseUrl(request), instance, script, extra), activity: activity.bind(request, instance), sourceEnvPath: store.state.instances.some(s => s.id === instance.id) ? store.sourceEnvPath(instance.id) : null, localPort: app.server.address()?.port || Number(process.env.PORT) || 54058});
@@ -278,7 +280,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
         const sub = await authorize(request, instance.id);
         activity.bind(request, instance, query, sub);
         const env = contextFor(request, instance, script, {token: sub?.token, proxyPath: request.params['*'] || ''});
-        const result = await netdisk.execute({script, instance, file}, query, env, runner, operation);
+        const result = await executor.execute({script, instance, file}, query, env, operation);
         if (sourceOperation(query, operation) === 'detail') activity.remember(instance.id, result);
         if (sourceOperation(query, operation) === 'play') {
             let media = result;
@@ -325,7 +327,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     app.get('/admin/state', async () => { await store.refreshEnvironment(); return {...store.state, runtime: runner.status()}; });
     app.get('/watch/sources', async () => store.state.instances.filter(instance => sourceAvailable(store.state, instance)).flatMap(instance => {
         const script = store.state.scripts.find(item => item.id === instance.scriptId);
-        return script ? [{id: instance.id, name: instance.name, enabled: true, searchable: instance.searchable, filterable: instance.filterable, navigation: !!instance.navigation, script: {engine: script.engine}}] : [];
+        return script ? [{id: instance.id, name: instance.name, enabled: true, searchable: instance.searchable, filterable: instance.filterable, navigation: !!instance.navigation, homeRevision: executor.revision(), script: {engine: script.engine}}] : [];
     }));
     // Aggregate search for navigation-style sources (e.g. a hot-list source that
     // links each item to the other enabled search sources). Only searchable,
@@ -378,7 +380,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
         if (!resolved.instance.enabled) throw fail('此源已停用，请选择其他源', 409);
         return resolved;
     };
-    const watchHandler = async request => {
+    const watchHandler = async (request, reply) => {
         const {instance, script, file} = watchSource(request);
         const {ac, t, pg = '1', wd, ids, ext} = request.query;
         let query = {};
@@ -390,11 +392,14 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
             if (!checkString(ids, 10000)) throw fail('影片 ID 无效');
             query = {ac, ids};
         } else if (ac === 'list') query = {ac, t: t || '', pg, ...(ext ? {ext} : {})};
-        return content.query(request, {script, instance, file}, query);
+        if (!wd && !ac && request.query.homeRefresh === '1') query.homeRefresh = '1';
+        const result = await content.query(request, {script, instance, file}, query);
+        if (request.homeCache) reply.header('X-CokeTV-Home-TTL', Math.floor(request.homeCache.remainingMs)).header('Cache-Control', 'no-store');
+        return result;
     };
     app.get('/watch/sources/:id', watchHandler);
     app.get('/admin/watch/:id', watchHandler);
-    const content = createContent({store, runner, netdisk, contextFor, baseUrl, playback, activity});
+    const content = createContent({store, runner, netdisk, contextFor, baseUrl, playback, activity, executor});
     // 出口权限只看「铸造这条能力的调用链」：匿名 /watch 走公开出口；已鉴权的
     // 管理员或内部源运行时走可信出口（管理员用公开页面看 LAN 媒体属其自身意图）。
     const playHandler = async (request, options) => content.play(request, watchSource(request), request.body, {
