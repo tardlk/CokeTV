@@ -46,7 +46,7 @@ export function createActivityLog(write, {now = Date.now, intervalMs = 30000, ma
         try { identification = clientInfo(request); } catch { /* Invalid auth headers must not break logging. */ }
         const userAgent = request.headers?.['user-agent'] || '';
         request.activity = {
-            requestId: text(request.id, 80), clientIp: text(request.ip || request.raw?.socket?.remoteAddress || '', 80),
+            requestId: text(request.id, 80), clientIp: text(request.ip || request.raw?.socket?.remoteAddress || '', 80).replace(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i, '$1'),
             protocol: info?.protocol || (request.routeOptions?.url?.startsWith('/admin') ? '管理后台' : '内部'),
             client: clean(request, identification.Client && identification.Client !== 'Emby' ? identification.Client : userAgent || (info?.protocol === 'Emby' ? 'Emby' : '未知客户端')),
             device: clean(request, identification.DeviceName !== '播放器' ? identification.DeviceName : ''), userAgent: clean(request, userAgent),

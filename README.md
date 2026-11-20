@@ -45,7 +45,9 @@ Compose 挂载 `./data:/app/data`，默认端口 54058。支持 `PUID`/`PGID`（
 
 ### 启动配置
 
-Node.js 22 是唯一语言运行环境。`HOST` 默认 `0.0.0.0`，`PORT` 默认 `54058`，`DATA_DIR` 默认项目内 `data/`；`TZ` 可设 `Asia/Shanghai`。`ADMIN_PASSWORD` 仅在未创建密码时生效。`TRUST_PROXY=1` 只用于可信且会覆写转发头的反向代理。`SOURCE_WORKERS` 控制源执行 worker 池大小（1–4，默认 2）：同一源串行，不同源可并行；worker 0 同时承载网关/WS。
+Node.js 22 是唯一语言运行环境。`HOST` 默认 `::`，以双栈方式监听 IPv6 和 IPv4；系统不支持 IPv6 监听时回退 `0.0.0.0` 并记日志，端口占用等错误仍正常报错。可显式设 `HOST=0.0.0.0` 只监听 IPv4。`PORT` 默认 `54058`，容器健康检查跟随该端口；`DATA_DIR` 默认项目内 `data/`；`TZ` 可设 `Asia/Shanghai`。`ADMIN_PASSWORD` 仅在未创建密码时生效。`TRUST_PROXY=1` 只用于可信且会覆写转发头的反向代理。`SOURCE_WORKERS` 控制源执行 worker 池大小（1–4，默认 2）：同一源串行，不同源可并行；worker 0 同时承载网关/WS。
+
+Linux NAS 使用 `network_mode: host` 时，CokeTV 直接监听 NAS 网络；移除 `ports` 映射。播放端可先访问 `http://[NAS公网IPv6]:54058/health`，再用同一 IPv6 入口生成或获取订阅；方括号不能省略，NAS/路由器的 IPv6 防火墙需允许对应 TCP 端口。域名可使用指向 NAS 的 AAAA 记录；同时有 A/AAAA 时，客户端可能选择 IPv4。旧容器若显式保留 `HOST=0.0.0.0`，升级后仍按该配置监听，需移除或改为 `::` 并重建容器。IPv4 映射地址在活动日志里仍按 IPv4 显示，避免误判为原生 IPv6；客户端到 NAS 与 NAS 到视频 CDN 的地址族独立。
 
 ### 运行日志
 

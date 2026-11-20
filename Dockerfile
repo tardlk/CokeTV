@@ -23,11 +23,11 @@ RUN chmod 755 /usr/local/bin/coketv-entrypoint && command -v setpriv
 RUN node scripts/check-shell.mjs
 # Startup fixes only data ownership/modes, then execs the service without root or capabilities.
 RUN mkdir -p /app/data && chown -R node:node /app/data
-ENV NODE_ENV=production TZ=Asia/Shanghai PORT=54058 HOST=0.0.0.0 HOME=/home/node
+ENV NODE_ENV=production TZ=Asia/Shanghai PORT=54058 HOST=:: HOME=/home/node
 USER root
 ENTRYPOINT ["/usr/local/bin/coketv-entrypoint"]
 VOLUME /app/data
 EXPOSE 54058
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
-    CMD node -e "fetch('http://127.0.0.1:54058/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+    CMD node -e "fetch('http://127.0.0.1:'+(Number(process.env.PORT)||54058)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "src/server.js"]

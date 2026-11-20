@@ -6,6 +6,7 @@ import os from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
+import {createServer} from 'node:net';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const image = process.argv[2];
@@ -56,9 +57,9 @@ const assertServiceIdentity = name => {
     for (const key of ['CapInh','CapPrm','CapEff','CapBnd','CapAmb']) assert.match(status,new RegExp('^'+key+':\\s+0+$','m'));
     assert.match(status, /^NoNewPrivs:\s+1$/m);
 };
-const wait = async name => {
+const wait = async (name, port = 54058) => {
     for (let attempt=0;attempt<60;attempt++) {
-        try { inside(name,['node','-e',"fetch('http://127.0.0.1:54058/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]); return; } catch {}
+        try { inside(name,['node','-e',`fetch('http://127.0.0.1:${port}/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))`]); return; } catch {}
         await new Promise(resolve => setTimeout(resolve,1000));
     }
     throw new Error('临时容器启动超时：'+name);
@@ -93,7 +94,9 @@ try {
     inside(clean,['node','scripts/image-verify.mjs','--persistence']); report.checks.push('same-volume-restart/snapshot/old-ticket-invalid/drpy3-media-replay');
 
     // Every regression creates its own temporary data; no test mutates /app/data.
-    const regressions = create('regressions'); await wait(regressions); inject(regressions);
+    // IPv6 loopback is enabled explicitly in this disposable bridge namespace
+    // so the real-socket dual-stack regression cannot silently skip IPv6.
+    const regressions = create('regressions', ['--sysctl', 'net.ipv6.conf.all.disable_ipv6=0']); await wait(regressions); inject(regressions);
     // 两项不进容器矩阵：标识符检查依赖源码树；站点脚本回归依赖用户自备的
     // js_dr3 脚本，而发行镜像按设计零预置源，跑起来只会整组 skip。
     const excluded = new Set(['check-identifiers','site-sources']);
@@ -106,6 +109,22 @@ try {
     report.backendTests = Number(tap.match(/# tests (\d+)/)?.[1]);
     assert.ok(report.backendTests > 0); report.regressionFiles = files;
     report.checks.push('drpy3/legacy-data-migration/user-content-preservation/headers/tickets/SSRF/private-0600/CLI');
+
+    const probe = createServer();
+    await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen({port: 0, host: '::', ipv6Only: false}, resolve); });
+    const hostPort = probe.address().port;
+    await new Promise(resolve => probe.close(resolve));
+    const dual = create('host-dual-stack', ['--network', 'host', '-e', `PORT=${hostPort}`]);
+    await wait(dual, hostPort);
+    inside(dual, ['node', '-e', `Promise.all(['http://127.0.0.1:${hostPort}/health','http://[::1]:${hostPort}/health'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error(url);if(!(await r.json()).ok)throw Error('health');})).catch(e=>{console.error(e);process.exit(1)});`]);
+    assert.equal(inspected.Config.Healthcheck.Test[0], 'CMD-SHELL');
+    inside(dual, ['sh', '-c', inspected.Config.Healthcheck.Test[1]]);
+    assertServiceIdentity(dual);
+    report.checks.push('host-network/default-ipv4-ipv6/custom-port/shipped-healthcheck/non-root');
+    const ipv4Only = create('ipv4-only', ['--sysctl', 'net.ipv6.conf.all.disable_ipv6=1']);
+    await wait(ipv4Only);
+    inside(ipv4Only, ['sh', '-c', inspected.Config.Healthcheck.Test[1]]);
+    report.checks.push('ipv6-disabled/ipv4-startup/shipped-healthcheck');
 
     // Startup errors must retain the exact corrupt input; use independent volumes.
     for (const relative of ['state.json','runtime/config/env.json']) {

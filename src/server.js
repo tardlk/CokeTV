@@ -34,6 +34,7 @@ import {createLogSink, inTestRunner, redactLogMessage} from './logging.js';
 import {Backups} from './backups.js';
 import {createActivityLog} from './activity.js';
 import {sourceOperation} from './source-operation.js';
+import {listenApp} from './listen.js';
 
 dotenv.config();
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
@@ -869,9 +870,9 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
     const app = await createApp();
-    await app.listen({port: Number(process.env.PORT) || 54058, host: process.env.HOST || '0.0.0.0'});
-    app.runner.log({level: 'info', source: 'service', message: `CokeTV 已启动：http://127.0.0.1:${app.server.address().port}`});
-    console.log(`CokeTV 已启动：http://127.0.0.1:${app.server.address().port}`);
+    const address = await listenApp(app);
+    app.runner.log({level: 'info', source: 'service', message: `CokeTV 已启动：${address}`});
+    console.log(`CokeTV 已启动：${address}`);
     console.log(`访问密码配置：${path.join(app.store.directory, 'admin.json')}（或使用 ADMIN_PASSWORD）`);
     const close = async () => { app.runner.log({level: 'info', source: 'service', message: '服务正在关闭'}); await app.close(); process.exit(); };
     process.on('SIGINT', close); process.on('SIGTERM', close);
