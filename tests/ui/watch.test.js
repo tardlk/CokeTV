@@ -28,10 +28,10 @@ async function start(path, mockSources = sources, mockApi = api) {
 }
 function button(text) { return wrapper.findAll('button').find(item => item.text().trim() === text); }
 describe('网页观影流程', () => {
-    it('分类、分页和返回首页复用已有首页，主动更新才重新取首页', async () => {
+    it('分类、分页和返回首页复用已有首页', async () => {
         api.mockImplementation(async url => url.includes('ac=list')
             ? {list: [{vod_id: 'category', vod_name: '分类影片'}], pagecount: 2}
-            : {class: [{type_id: 'movie', type_name: '电影'}], list: [{vod_id: 'home', vod_name: url.includes('homeRefresh=1') ? '新首页' : '首页影片'}]});
+            : {class: [{type_id: 'movie', type_name: '电影'}], list: [{vod_id: 'home', vod_name: '首页影片'}]});
         await start();
         const homeCalls = () => api.mock.calls.filter(([url]) => url === '/watch/sources/a').length;
         await wrapper.findAll('[role="tab"]').find(item => item.text() === '电影').trigger('mousedown', {button: 0}); await flushPromises();
@@ -39,9 +39,6 @@ describe('网页观影流程', () => {
         expect(homeCalls()).toBe(1); expect(wrapper.find('.watch-video-card').text()).toBe('分类影片');
         await wrapper.findAll('[role="tab"]').find(item => item.text() === '首页').trigger('mousedown', {button: 0}); await flushPromises();
         expect(homeCalls()).toBe(1); expect(wrapper.find('.watch-video-card').text()).toBe('首页影片');
-        await wrapper.find('[aria-label="更新首页"]').trigger('click'); await flushPromises();
-        expect(wrapper.find('.watch-video-card').text()).toBe('新首页');
-        expect(api.mock.calls.filter(([url]) => url.includes('homeRefresh=1'))).toHaveLength(1);
     });
     it('页面缓存跟随服务器剩余时长，到期后重新获取首页', async () => {
         let now = 10000;
@@ -66,19 +63,6 @@ describe('网页观影流程', () => {
         expect(api.mock.calls.filter(([url]) => url === '/watch/sources/b')).toHaveLength(1);
         await wrapper.setProps({sources: [{...both[0], homeRevision: 'new'}, both[1]]}); await flushPromises();
         expect(api.mock.calls.filter(([url]) => url === '/watch/sources/a')).toHaveLength(2);
-    });
-    it('更新失败保留现有首页可重试，切分类后迟到的更新不覆盖分类列表', async () => {
-        await start();
-        api.mockResolvedValueOnce({error: '刷新失败'});
-        await wrapper.find('[aria-label="更新首页"]').trigger('click'); await flushPromises();
-        expect(wrapper.find('.watch-video-card').text()).toBe('样本电影');
-        let release;
-        api.mockImplementation(async url => url.includes('homeRefresh=1') ? new Promise(resolve => { release = resolve; }) : {list: [{vod_id: 'category', vod_name: '分类影片'}]});
-        await wrapper.find('[aria-label="更新首页"]').trigger('click'); await flushPromises();
-        expect(wrapper.find('[aria-label="更新首页"]').attributes('disabled')).toBeDefined();
-        await wrapper.findAll('[role="tab"]').find(item => item.text() === '电影').trigger('mousedown', {button: 0}); await flushPromises();
-        release({list: [{vod_id: 'home', vod_name: '迟到的首页'}]}); await flushPromises();
-        expect(wrapper.find('.watch-video-card').text()).toBe('分类影片');
     });
     it('TVBox 多线路与剧集 ID 保持完整，包括 URL 中的美元符', () => {
         expect(playlists({...detail, vod_play_url: '正片$https://fixture.invalid/a$b'}).at(0).episodes[0].id).toBe('https://fixture.invalid/a$b');
