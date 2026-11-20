@@ -31,7 +31,13 @@ export default {
 };
 ```
 
-`meta.title` 是显示名，`lang` 固定 `dr3`。`rule.host` 是站点根地址；`class_name` / `class_url` 用 `&` 分隔多个分类；`searchable: 1` 才允许搜索。
+`meta.title` 是显示名，`lang` 固定 `dr3`。`rule.host` 是站点根地址；`class_name` / `class_url` 用 `&` 分隔多个分类。搜索和筛选由脚本声明自动同步，不需要在管理列表开启：
+
+```js
+rule: {host: 'https://example.com', searchable: 1, filterable: 1}
+```
+
+`rule.searchable` / `rule.filterable` 优先，其次读取 `meta` 中的同名字段；支持数字与布尔常量（`0`/`false` 关闭，`1`/`true` 开启，搜索 `2` 也开启），以及同文件常量引用、对象展开。元数据读取只解析语法，不执行脚本；注释、示例字符串和无关对象不算声明。未声明或动态表达式无法静态判断时兼容搜索开启、筛选关闭；应使用明确常量，不能依赖运行时 ENV 计算能力标记。导入、保存和升级启动时同步已有源；管理接口不再接受手动覆盖。启用筛选时，源仍须实际返回对应 `filters` 并处理分类筛选参数。
 
 ## 方法契约
 

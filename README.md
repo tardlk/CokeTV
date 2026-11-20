@@ -74,6 +74,8 @@ Linux NAS 使用 `network_mode: host` 时，CokeTV 直接监听 NAS 网络；移
 
 ### drpy3 脚本
 
+搜索和筛选由脚本声明自动决定，管理列表只读展示，不再提供独立开关。在 `rule`（其次 `meta`）中填写 `searchable: 1`、`filterable: 1` 表示支持，`0` 或 `false` 表示不支持；搜索也接受 `2`，布尔 `true` 等同开启。导入、保存脚本及升级启动时会同步已有源，包括同一脚本关联的多个源。原来的名称、启用状态、参数、ENV 和订阅保持不变；旧管理客户端传入的能力字段不再覆盖脚本。未声明或无法静态判断时保留兼容默认值：搜索开启、筛选关闭，建议脚本明确填写常量。
+
 后台新建、上传和编辑统一使用 drpy3，不再选择执行引擎。一个最小源为：
 
 ```js
@@ -179,6 +181,8 @@ npm run verify -- <源实例ID> [服务地址] --password-stdin
 贡献边界：保留公开观影与管理鉴权分离、路由匹配鉴权、来源校验、短期随机媒体票据及 public/subscription/trusted 出口继承。源与宿主同权限，不将 worker 描述为沙箱。发行始终零预置站点，不增加默认站点下载、全站扫描或 Android JAR 运行器。
 
 ## 第三方与许可
+
+宿主使用 [Acorn](https://github.com/acornjs/acorn)（MIT）静态读取脚本能力声明，解析时不导入或执行源脚本。
 
 CokeTV 按根目录 GPL-3.0 分发。唯一源执行引擎取自 [hjdhnx/drpy3](https://github.com/hjdhnx/drpy3/tree/e5b89fd779de2a7552feec74d5bd020962ccd2f2)（0.1.0，提交 `e5b89fd…`），四文件原样保存在 `engine/libs/drpy3/`，MIT 文本在 `LICENSES/drpy3-MIT.txt`，哈希登记于 `engine/UPSTREAM.json`。
 

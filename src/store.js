@@ -2,12 +2,13 @@ import fs from 'fs/promises';
 import path from 'path';
 import {randomBytes, createHash} from 'crypto';
 import {ROOT, ENGINE_DIRS, EXTENSIONS, LEGACY_DIRS, inside, validFilename} from './paths.js';
+import {sourceCapabilities} from './source-capabilities.js';
 
 export const token = () => randomBytes(24).toString('base64url');
 const stableId = text => createHash('sha256').update(text).digest('hex').slice(0, 16);
 export const metadata = (code, name) => {
     const title = code.match(/(?:title|标题)\s*:\s*['"]([^'"\n]+)['"]/)?.[1] || name;
-    return {title, searchable: !/searchable\s*:\s*0/.test(code), filterable: /filterable\s*:\s*(?:1|true)/.test(code),
+    return {title, ...sourceCapabilities(code),
         navigation: /\bnavigation\s*:\s*(?:true|1)\b/i.test(code)};
 };
 const defaults = () => ({version: 2, scripts: [], instances: [], subscriptions: [], settings: {
@@ -41,6 +42,7 @@ export class Store {
             this.state.subscriptions = [{id: stableId('default'), name: '默认订阅', token: token(), enabled: true, instances: []}];
             await this.persist();
         }
+        await this.syncCapabilities();
         await this.refreshEnvironment();
         await this.syncEnvironment();
         return this;
@@ -95,11 +97,13 @@ export class Store {
             const occupied = state.scripts.some(s => s.engine === 'dr3' && s.file === name) || await fs.access(inside(this.runtime, `spider/js_dr3/${name}`)).then(() => true).catch(error => { if (error.code === 'ENOENT') return false; throw error; });
             if (occupied) name = `${name.slice(0, -3).slice(0, 160)}-${stableId(scriptId).slice(0, 8)}.js`;
             const next = await this.writeScript(state, write, 'dr3', name, code, {createOnly: true});
+            const capabilities = sourceCapabilities(code);
             // writeScript creates a new default instance; migration keeps the original identities.
             state.instances = state.instances.filter(i => i.scriptId !== next.id);
             for (const instance of state.instances.filter(i => i.scriptId === scriptId)) {
                 instance.scriptId = next.id;
                 instance.enabled = instance.preMigrationEnabled ?? false;
+                Object.assign(instance, capabilities);
                 delete instance.migrationRequired;
                 delete instance.preMigrationEnabled;
             }
@@ -159,6 +163,20 @@ export class Store {
     }
     async syncEnvironment() {
         await this.atomic(path.join(this.runtime, 'config/env.json'), JSON.stringify(this.state.settings.env, null, 2), {mode: 0o600});
+    }
+    async syncCapabilities() {
+        const updates = new Map();
+        for (const script of this.state.scripts.filter(item => item.engine === 'dr3')) {
+            let code;
+            try { code = await fs.readFile(this.scriptPath(script), 'utf8'); }
+            catch (error) { if (['ENOENT', 'EISDIR', 'EACCES', 'EPERM'].includes(error.code)) continue; throw error; }
+            const capabilities = sourceCapabilities(code);
+            if (this.state.instances.some(item => item.scriptId === script.id &&
+                (item.searchable !== capabilities.searchable || item.filterable !== capabilities.filterable))) updates.set(script.id, capabilities);
+        }
+        if (updates.size) await this.mutate(state => {
+            for (const item of state.instances) if (updates.has(item.scriptId)) Object.assign(item, updates.get(item.scriptId));
+        });
     }
     async refreshEnvironment() {
         let value;
@@ -223,10 +241,9 @@ export class Store {
         if (!instance) {
             instance = {id, scriptId: id, name: script.name || info.title, params: '', enabled: true, searchable: info.searchable, filterable: info.filterable, navigation: info.navigation};
             state.instances.push(instance);
-        } else {
-            // navigation is author-declared; refresh it when the script is saved.
-            instance.navigation = info.navigation;
         }
+        for (const item of state.instances.filter(item => item.scriptId === id))
+            Object.assign(item, {searchable: info.searchable, filterable: info.filterable, navigation: info.navigation});
         return script;
     }
     async deleteScripts(ids) {

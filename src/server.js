@@ -552,8 +552,7 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     const instanceFields = body => {
         if (!checkString(body.name)) throw fail('站点名称不能为空');
         if (typeof body.params !== 'string' || body.params.length > 50000) throw fail('参数必须为文本，且小于 50KB');
-        return {name: body.name.trim(), params: body.params, enabled: !!body.enabled, searchable: !!body.searchable,
-            filterable: !!body.filterable};
+        return {name: body.name.trim(), params: body.params, enabled: !!body.enabled};
     };
     app.put('/admin/instances/:id', async request => {
         const fields = instanceFields(request.body || {});

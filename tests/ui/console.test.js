@@ -225,10 +225,13 @@ describe('shadcn 控制台绑定',()=>{
         await wrapper.find('[aria-label="每页条数"]').setValue('50');await flushPromises();
         expect(wrapper.findAll('tbody tr')).toHaveLength(23);
     });
-    it('搜索能力切换保留启用状态与原有参数',async()=>{
-        await start();await wrapper.find('[aria-label="切换搜索能力源B"]').trigger('click');await flushPromises();
-        const request=requests.find(request=>request.url==='/admin/instances/b'&&request.method==='PUT');
-        expect(request.payload).toMatchObject({searchable:false,enabled:false,params:'second'});
+    it('搜索和筛选由脚本声明，只读展示能力',async()=>{
+        await start();
+        const row=wrapper.findAll('tbody tr')[1];
+        expect(row.findAll('td')[3].text()).toBe('支持');
+        expect(row.findAll('td')[4].text()).toBe('—');
+        expect(row.findAll('td')[3].find('button').exists()).toBe(false);
+        expect(row.findAll('td')[4].find('button').exists()).toBe(false);
     });
     it('手机导航切换页面后自动收起侧栏',async()=>{
         window.matchMedia=vi.fn(()=>({matches:true,addEventListener:vi.fn(),removeEventListener:vi.fn(),addListener:vi.fn(),removeListener:vi.fn()}));

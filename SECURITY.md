@@ -65,14 +65,15 @@ Emby 登录按 IP 限制，普通协议请求与源取链另有限额；仅已�
 
 ## 已知依赖漏洞（审计记录）
 
-**2026-10-26 复核并修复**（Node 22.23.4，`npm audit --omit=dev`）：
+**2026-11-20 复核并修复**（Node 22.23.5，`npm audit --omit=dev`）：
 
 生产依赖已通过 `npm audit fix --omit=dev` 升到修复版本，当前为 **0 项**：
 - `undici` 7.30.1（cheerio 传递依赖；原先的 EventSource/SRI/内容编码问题已修复）
 - `fastify` 5.12.7（头部校验 `propertyNames` 大小写绕过）
 - `fast-uri` 4.2.3（URI 规范化/主机混淆问题）
+- 本轮兼容更新 `basic-ftp` 6.2.6、`follow-redirects` 1.16.3、`@fastify/static` 10.1.12、`@fastify/send` 4.2.1、生产路径的 `glob` 13.0.7；复核生产依赖仍为 0 项。
 
-全量 `npm audit`（含开发依赖）仍有 6 项：`vitest`/`tinypool` 为 critical，`vite`/`node-forge`/顶层开发用 `undici` 为 high，`@vitest/mocker` 为 moderate。它们只影响测试/构建路径，不进入生产镜像；其中 vitest 的修复是 5.x 主版本，需单独迁移验证。`node-forge` 仅用于测试证书生成，无上游修复，不用于运行时签名校验。
+全量 `npm audit`（含开发依赖）仍有 11 项：`vitest`/`tinypool` 为 critical，`vite`/`node-forge`/顶层开发用 `undici` 为 high，`@vitest/mocker` 和 `@vue/test-utils` 的 `js-beautify`/`editorconfig`/`glob`/`minimatch` 链为 moderate。它们只影响测试/构建路径，不进入生产镜像；其中 vitest 的修复是 5.x 主版本，需单独迁移验证。`node-forge` 仅用于测试证书生成，不用于运行时签名校验；本轮未扩大到开发依赖迁移。
 
 历史审计表保留在 Git 历史。发布前重新执行 `npm audit` 并在本节更新；包级告警不等于已证明 CokeTV 存在可利用路径，也不表示已豁免扫描。
 
