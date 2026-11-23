@@ -9,7 +9,9 @@ export function sourceImages(result, source, base, playback) {
         let url, referer;
         try { url = new URL(item.vod_pic.slice(0, marker), base); referer = new URL(item.vod_pic.slice(marker + 9)); } catch { return item; }
         if (!['https:', 'http:'].includes(url.protocol) || !['https:', 'http:'].includes(referer.protocol) || url.username || url.password || referer.username || referer.password) return item;
-        const token = playback.createProxy(url.href, {Referer: referer.href}, {source, egress: 'public'});
+        // Some image CDN shards reject a missing UA even with a valid Referer.
+        // Bind a fixed browser UA rather than copying incoming client headers.
+        const token = playback.createProxy(url.href, {Referer: referer.href, 'User-Agent': 'Mozilla/5.0'}, {source, egress: 'public'});
         return {...item, vod_pic: `${base}/mediaProxy?${new URLSearchParams({url: url.href, token})}`};
     })};
 }
