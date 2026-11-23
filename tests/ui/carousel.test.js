@@ -30,6 +30,23 @@ beforeEach(() => {
 afterEach(() => { wrapper?.unmount(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); document.body.innerHTML = ''; });
 async function start(slides = items) { wrapper = mount(WatchCarousel, {props: {items: slides}}); await flushPromises(); }
 describe('首页轮播交互', () => {
+    it('导航脚本同时提供轮播与列表，不请求内置热播接口，换源后分别处理', async () => {
+        const api = vi.fn(async url => url === '/watch/banner' ? {banner: items.slice(1)} : {class: [], list: [{vod_id:'one',vod_name:'脚本推荐'}], banner: items.slice(0,1)});
+        const sources = [{id:'a',name:'导航',enabled:true,navigation:true}, {id:'b',name:'普通源',enabled:true,searchable:true}];
+        wrapper = mount(WatchApp, {props:{sources,api},global:{plugins:[{install:registerUI}]},attachTo:document.body});
+        await flushPromises(); expect(wrapper.find('.watch-carousel-title').text()).toBe('热播甲');
+        expect(wrapper.find('.watch-video-card').text()).toContain('脚本推荐'); expect(api.mock.calls.some(([url])=>url==='/watch/banner')).toBe(false);
+        history.replaceState({},'','/watch?source=b');window.dispatchEvent(new PopStateEvent('popstate'));await flushPromises();
+        expect(api.mock.calls.filter(([url])=>url==='/watch/banner')).toHaveLength(1);
+        expect(wrapper.find('.watch-carousel-title').text()).toBe('热播乙');
+    });
+    it('导航脚本没有轮播时不混入内置轮播，推荐仍可点击全源搜索', async () => {
+        const api = vi.fn(async url => url.startsWith('/watch/search') ? {groups:[]} : {class:[],list:[{vod_id:'one',vod_name:'脚本推荐'}],banner:[]});
+        wrapper = mount(WatchApp,{props:{sources:[{id:'a',name:'导航',enabled:true,navigation:true}],api},global:{plugins:[{install:registerUI}]},attachTo:document.body});
+        await flushPromises();expect(wrapper.find('.watch-carousel').exists()).toBe(false);
+        await wrapper.find('.watch-video-card button').trigger('click');await flushPromises();
+        expect(new URLSearchParams(location.search).get('nav')).toBe('脚本推荐');expect(api.mock.calls.some(([url])=>url==='/watch/banner')).toBe(false);
+    });
     it('呈现标题、标签、描述、箭头和圆点，点击传递热播片名', async () => {
         await start(); expect(wrapper.findAll('.watch-carousel-slide')).toHaveLength(2);
         expect(wrapper.find('.watch-carousel-copy').text()).toContain('副标题演员甲推荐简介');

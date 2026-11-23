@@ -2,6 +2,7 @@ import {SOURCE_TIMEOUT} from './runtime-defaults.js';
 // Shared source playback for web, Cat and Emby adapters. No HTTP handler dispatch.
 import {playbackUrl, playbackHeaders, mediaType} from './playback.js';
 import {unwrapMediaProxy} from './media-params.js';
+import {sourceImages} from './source-images.js';
 import {validFilename, inside} from './paths.js';
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
 const checkString = (value, max) => typeof value === 'string' && value.trim() && value.length <= max;
@@ -84,7 +85,7 @@ export function createContent({store, runner, netdisk, contextFor, baseUrl, play
             activity?.bind(request, resolved.instance, query, subscription);
             const result = await executor.execute(resolved, query, contextFor(request, resolved.instance, resolved.script, {token: subscription?.token}), 'api', meta => { request.homeCache = meta; });
             if (query.ac === 'detail') activity?.remember(resolved.instance.id, result);
-            return result;
+            return sourceImages(result, resolved.instance.id, baseUrl(request), playback);
         },
         play,
         identity(reference, source) { return netdisk.identity(reference, source); },

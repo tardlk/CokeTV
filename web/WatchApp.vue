@@ -28,13 +28,22 @@ const home = ref({}), videos = ref([]), navGroups = ref([]), navTruncated = ref(
 const browseNotice = ref('');
 const loading = ref(false), error = ref(''), playLoading = ref(false), playError = ref(''), media = ref(null), parsers = ref([]), parser = ref('auto'), needsParse = ref(false), resume = ref(0);
 const homePages = new Map();
-const banner = ref([]);
+const fallbackBanner = ref([]), loadedHomeSource = ref('');
+let bannerLoaded = false;
+function bannerItems(items) {
+    return (Array.isArray(items) ? items : []).filter(item => item && plainText(item.title) && safeImage(item.backgroundImage)).slice(0, 5)
+        .map(item => ({...item, title: plainText(item.title), backgroundImage: safeImage(item.backgroundImage)}));
+}
+const banner = computed(() => source.value?.navigation
+    ? loadedHomeSource.value === route.value.source ? bannerItems(home.value.banner) : []
+    : fallbackBanner.value);
 const showBanner = computed(() => !!source.value && !isPlay.value && !isHistory.value && !isNav.value && !route.value.search && route.value.category === 'home');
 async function loadBanner() {
+    if (source.value?.navigation) return;
     try {
         const result = await props.api('/watch/banner');
-        banner.value = (Array.isArray(result?.banner) ? result.banner : []).filter(item => item && plainText(item.title) && safeImage(item.backgroundImage)).slice(0, 5)
-            .map(item => ({...item, title: plainText(item.title), backgroundImage: safeImage(item.backgroundImage)}));
+        fallbackBanner.value = bannerItems(result?.banner);
+        bannerLoaded = true;
     } catch { /* A banner failure must not block browsing or playback. */ }
 }
 function openBanner(item) {
@@ -177,6 +186,7 @@ async function loadData() {
                 const homeResult = await loadHome(id);
                 if (version !== dataVersion) return;
                 home.value = homeResult;
+                loadedHomeSource.value = id;
                 data = homeResult;
                 if (category !== 'home') {
                     const query = {ac: 'list', t: category, pg, ext: btoa(unescape(encodeURIComponent(JSON.stringify(filters.value))))};
@@ -240,7 +250,7 @@ watch(() => props.sources, (next, previous) => {
     for (const item of previous || []) if (JSON.stringify(item) !== JSON.stringify(next.find(current => current.id === item.id))) homePages.delete(item.id);
 }, {deep: true});
 onMounted(() => { window.addEventListener('popstate', popstate); loadData(); if (showBanner.value) loadBanner(); });
-watch(showBanner, visible => { if (visible && !banner.value.length) loadBanner(); });
+watch(() => [showBanner.value, source.value?.id], ([visible]) => { if (visible && !bannerLoaded) loadBanner(); });
 onBeforeUnmount(() => { ++dataVersion; ++playVersion; window.removeEventListener('popstate', popstate); });
 </script>
 <template>

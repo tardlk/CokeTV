@@ -198,6 +198,8 @@ export default {
 - 网页端点击结果会切到结果所属源并打开播放；TVBox/猫影视/Emby 没有这套跨源交互，仍依赖各自客户端。
 - 如果所有可搜索源都没有结果，页面会显示空结果；可返回导航源继续浏览。
 
+导航源可在 `home` 返回 `banner: [{title, backgroundImage, genre?, subtitle?, actors?, description?}]`，最多显示五张。选中导航源后，轮播和列表都使用该源的首页数据，不再请求内置热播接口；`banner: []` 表示不显示轮播。点击轮播或影片均按片名聚合搜索。图片若需要 Referer，可在 `vod_pic` 追加 `@Referer=https://来源站/`；共享内容接口转换为绑定源及目标的临时图片代理票据，仍受公开出口策略约束。
+
 ## HTML 站点
 
 ```js
