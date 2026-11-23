@@ -36,6 +36,7 @@ import {createActivityLog} from './activity.js';
 import {sourceOperation} from './source-operation.js';
 import {listenApp} from './listen.js';
 import {createSourceExecutor} from './home-cache.js';
+import {createHotBanner} from './hot-banner.js';
 
 dotenv.config();
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), {statusCode});
@@ -49,7 +50,7 @@ function validateEnvironment(values) {
     }
 }
 
-export async function createApp({directory, netdiskRequest, guangyaRequest} = {}) {
+export async function createApp({directory, netdiskRequest, guangyaRequest, bannerRequest} = {}) {
     const store = await new Store(directory).init();
     // Tests keep only the in-memory ring unless they opt in with LOG_FILE:
     // asynchronous file writes race temp-directory cleanup and add no coverage
@@ -325,6 +326,12 @@ export async function createApp({directory, netdiskRequest, guangyaRequest} = {}
     app.get('/health', async () => ({ok: true, version: VERSION}));
     app.get('/admin/health', async () => ({ok: true, version: VERSION, memory: process.memoryUsage(), runtime: runner.status(), backups: await backups.status()}));
     app.get('/admin/state', async () => { await store.refreshEnvironment(); return {...store.state, runtime: runner.status()}; });
+    const hotBanner = createHotBanner({request: bannerRequest, onError: () => runner.log({level: 'warn', source: 'homepage', message: '热播轮播暂时不可用，保留有效缓存'})});
+    app.get('/watch/banner', async (_request, reply) => {
+        const {banner, remainingMs} = await hotBanner.get();
+        reply.header('Cache-Control', `public, max-age=${Math.floor(remainingMs / 1000)}`);
+        return {banner};
+    });
     app.get('/watch/sources', async () => store.state.instances.filter(instance => sourceAvailable(store.state, instance)).flatMap(instance => {
         const script = store.state.scripts.find(item => item.id === instance.scriptId);
         return script ? [{id: instance.id, name: instance.name, enabled: true, searchable: instance.searchable, filterable: instance.filterable, navigation: !!instance.navigation, homeRevision: executor.revision(), script: {engine: script.engine}}] : [];

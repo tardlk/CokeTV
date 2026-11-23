@@ -6,6 +6,7 @@ import {resultObject, playlists, plainText, detailText, safeImage, readWatchStor
 import {pushRoute} from './navigation.js';
 import {InputGroupButton} from './components/ui/input-group/index.ts';
 import {Popover, PopoverAnchor, PopoverContent} from './components/ui/popover/index.ts';
+import WatchCarousel from './WatchCarousel.vue';
 const WebPlayer = defineAsyncComponent(() => import('./WebPlayer.vue'));
 const props = defineProps({sources: Array, api: Function});
 const emit = defineEmits(['close']);
@@ -27,6 +28,22 @@ const home = ref({}), videos = ref([]), navGroups = ref([]), navTruncated = ref(
 const browseNotice = ref('');
 const loading = ref(false), error = ref(''), playLoading = ref(false), playError = ref(''), media = ref(null), parsers = ref([]), parser = ref('auto'), needsParse = ref(false), resume = ref(0);
 const homePages = new Map();
+const banner = ref([]);
+const showBanner = computed(() => !!source.value && !isPlay.value && !isHistory.value && !isNav.value && !route.value.search && route.value.category === 'home');
+async function loadBanner() {
+    try {
+        const result = await props.api('/watch/banner');
+        banner.value = (Array.isArray(result?.banner) ? result.banner : []).filter(item => item && plainText(item.title) && safeImage(item.backgroundImage)).slice(0, 5)
+            .map(item => ({...item, title: plainText(item.title), backgroundImage: safeImage(item.backgroundImage)}));
+    } catch { /* A banner failure must not block browsing or playback. */ }
+}
+function openBanner(item) {
+    const title = plainText(item.title).slice(0, 200);
+    if (!title) return;
+    keyword.value = title; searchPanel.value = false; rememberSearch(title);
+    navigate('/watch', {source: route.value.source, nav: title});
+    window.scrollTo({top: 0});
+}
 const sourceDialog = ref(false), episodeDialog = ref(false), sourceQuery = ref('');
 const descending = ref(false), coverMode = ref(true), expanded = ref(false), libraryTab = ref('history');
 const historyItems = ref(readWatchStorage('coketv-watch-history')), favorites = ref(readWatchStorage('coketv-watch-favorites'));
@@ -222,7 +239,8 @@ watch(() => [route.value.line, route.value.episode].join('|'), () => {
 watch(() => props.sources, (next, previous) => {
     for (const item of previous || []) if (JSON.stringify(item) !== JSON.stringify(next.find(current => current.id === item.id))) homePages.delete(item.id);
 }, {deep: true});
-onMounted(() => { window.addEventListener('popstate', popstate); loadData(); });
+onMounted(() => { window.addEventListener('popstate', popstate); loadData(); if (showBanner.value) loadBanner(); });
+watch(showBanner, visible => { if (visible && !banner.value.length) loadBanner(); });
 onBeforeUnmount(() => { ++dataVersion; ++playVersion; window.removeEventListener('popstate', popstate); });
 </script>
 <template>
@@ -246,7 +264,8 @@ onBeforeUnmount(() => { ++dataVersion; ++playVersion; window.removeEventListener
       <nav class="watch-desktop-nav" aria-label="观影导航"><Button variant="ghost" size="sm" aria-haspopup="dialog" :aria-expanded="sourceDialog" @click="openSites"><Film data-icon="inline-start" />影视站</Button><Button variant="ghost" size="sm" @click="navigate('/watch/history')"><UserRound data-icon="inline-start" />我的</Button><Button variant="ghost" size="sm" @click="emit('close')"><Settings2 data-icon="inline-start" />管理后台</Button></nav>
     </div></header>
     <div v-if="isPlay && safeImage(detail?.vod_pic)" class="watch-backdrop" :style="backdrop" />
-    <main :class="['watch-main',{'watch-play-main':isPlay}]">
+    <WatchCarousel v-if="showBanner && banner.length" :items="banner" @select="openBanner" />
+    <main :class="['watch-main',{'watch-play-main':isPlay,'watch-home-main':showBanner && banner.length}]">
       <template v-if="isHistory">
         <div class="watch-library-heading"><h1>我的</h1></div>
         <Tabs v-model="libraryTab"><TabsList><TabsTrigger value="history">观看历史</TabsTrigger><TabsTrigger value="favorites">我的收藏</TabsTrigger></TabsList></Tabs>

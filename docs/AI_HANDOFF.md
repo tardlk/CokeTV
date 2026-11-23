@@ -1,11 +1,11 @@
 # CokeTV 接手记录
 
-更新：2026-11-20。当前源码版本 **0.2.5**，用户已明确 **只保留 drpy3 一个源执行引擎**；工作方式继续直接在 `main` 工作，不主动创建分支或 PR。
+更新：2026-11-23。当前源码版本 **0.2.5**，用户已明确 **只保留 drpy3 一个源执行引擎**；工作方式继续直接在 `main` 工作，不主动创建分支或 PR。
 
 ## 0. 当前接手入口（先看本节）
 
 - **先读顺序**：`AGENTS.md`（用户已确认的产品与安全决定）→ 本文件 → `README.md`、`SECURITY.md`；写站点源时读 `docs/SOURCE_DEVELOPMENT.md`。原 CONFIGURATION/DEVELOPMENT/NETDISK_DEVELOPMENT/THIRD_PARTY 已并入 README 与本文件后删除。
-- **当前验证**（2026-11-20，macOS arm64 / Node 22.23.5）：`npm run check`、`npm run build` 通过；`npm test` 为后端 285 项（274 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 83 项，共 368 项。本地 Node 位于忽略的 `.tools/`，`start.sh` 可自动发现。
+- **当前验证**（2026-11-23，macOS arm64 / Node 22.23.5）：`npm run check`、`npm run build` 通过；`npm test` 为后端 289 项（278 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 88 项，共 377 项。本地 Node 位于忽略的 `.tools/`，`start.sh` 可自动发现。
 - **当前 latest（2026-11-20 脚本声明搜索/筛选）**：`ghcr.io/tardlk/coketv:latest` 与 `:sha-8c678e7`，manifest digest `sha256:e7386c0b405da1526aa0dea5b242f0ce0e61501595cca1ceb37e2f432b13521c`，image ID `sha256:e794607f91de6484c1bf531aad8bfaa5479e728a61a9834c0b4f3711e929f799`，源码提交 `8c678e7490304c61b12dca791506c1ac7adcd862`，版本号仍为 0.2.5，平台 `linux/amd64`。[Verify](https://github.com/tardlk/CokeTV/actions/runs/44669407566) 与 [容器验收并发布](https://github.com/tardlk/CokeTV/actions/runs/44669407547) 成功，14 项容器检查、容器内 273 项后端回归通过。latest 与 sha 标签匿名 manifest 摘要、config digest 相同且匹配已验收镜像。能力由脚本声明自动同步，管理列表改为只读；兼容修复生产依赖补丁，`npm audit --omit=dev` 为 0，全量开发依赖审计见 SECURITY。NAS 容器需用户更新，尚未部署此构建。
 - **移除首页刷新按钮构建（2026-11-20）**：`ghcr.io/tardlk/coketv:latest` 与 `:sha-7adc8d4`，manifest digest `sha256:2c14c301794c704a9c576486ae66e6060ecf26695515b347e4d90b781f6cb558`，image ID `sha256:b74223c19d095c3482dafcd4c5dc8038cb49d97186016e41228a73e7de32853a`，源码提交 `7adc8d41a35414cf99bfa7a4e4e26f94f94b5214`，版本号仍为 0.2.5，平台 `linux/amd64`。[Verify](https://github.com/tardlk/CokeTV/actions/runs/44662963061) 与 [容器验收并发布](https://github.com/tardlk/CokeTV/actions/runs/44662963051) 成功，14 项容器检查、容器内 268 项后端回归通过。latest 与 sha 标签匿名 manifest 摘要、config digest 相同且匹配已验收镜像。用户要求去掉首页刷新按钮，已删除按钮/图标/处理逻辑/专属样式及失效的 UI 用例；保留 5 分钟到期后的按需更新，不增加后台定时抓站点。NAS 容器需用户更新。
 - **首页缓存初版（2026-11-20）**：`:sha-0c8f927`，manifest digest `sha256:d0dec240c7414b00ef3b112cefd4554836c04c3cb2d4b1dd22a4ea068262b192`，image ID `sha256:de1db7a47c5cc80a10da0c05496e66e3501e068c877c18a6b6716b1422d3f7a1`，源码提交 `0c8f927ef35beb41a14bcb9fcc9a8b5fcdf56c61`，版本号仍为 0.2.5，平台 `linux/amd64`。[Verify](https://github.com/tardlk/CokeTV/actions/runs/44660986599) 与 [候选镜像验收并发布](https://github.com/tardlk/CokeTV/actions/runs/44660986575) 成功；14 项容器检查与容器内 268 项后端回归通过，发布复用同一已验收 image ID。两个标签的匿名 manifest 读取、摘要和 config digest 核对通过；本机无 Docker，未实际 pull。桌面及 390px 手机页面检查通过，临时样本验证主动更新后刷新网页继续复用首页。临时预览已停止并清理数据；NAS 容器待用户更新。
@@ -20,6 +20,8 @@
 - **默认双栈监听（2026-11-20）**：用户反馈 host 网络下 IPv6 不通，原因是旧镜像和启动代码默认 `HOST=0.0.0.0`。`src/listen.js` 与镜像改为 `::`、`ipv6Only:false`；仅 IPv6 不可用的三类绑定错误回退 IPv4 并记日志，端口占用仍报错，显式 IPv4 监听保留。启动日志显示实际绑定地址；Docker 健康检查跟随 PORT。IPv4 映射地址在活动日志中显示为普通 IPv4。新增真实双栈 socket/IPv6 订阅与原生及网页 HLS/流量日志、禁用 IPv6 的回退与端口占用回归。容器矩阵增加真实 host 网络双栈、非默认端口与原版健康检查，以及禁用 IPv6 场景；后端回归容器显式启用自身 IPv6 loopback。已有容器若显式保存旧 `HOST=0.0.0.0`，需用户移除或改 `::` 并重建；host 模式本身不会改变应用监听。用户已自行更新此修复，并确认目前均走 IPv6。
 
 ## 当前架构
+
+- **OmniBox 同款首页轮播（2026-11-23，用户确认）**：`web/WatchCarousel.vue` 独立实现同款全宽、三层遮罩、响应式字号/高度/容器/箭头/圆点，Embla Vue 8.6.0（仅开发依赖，前端打包）与参照相同的滚动交互；五秒切图、可拖动/键盘/圆点，页面隐藏或减少动态效果时暂停自动切换，卸载清理定时器。`/watch/banner` 固定请求腾讯公开推荐接口，不接受调用方 URL/头/请求体，无 Cookie 或账号标识，无重定向和任意代理；最多五张，五分钟按需缓存与并发复用，失败一分钟退避并保留一天内旧成功结果，首轮失败隐藏横幅。图片只接受 HTTPS tv.puui.qpic.cn 且无端口/凭据，由浏览器直接读取，沿用 no-referrer。点击走现有 `/watch/search` 聚合搜索（最多 12 个可搜索源），不改变源/订阅/播放和源首页缓存。首次进首页单独加载轮播，分类/搜索/播放/我的不显示，返回首页复用。实测 1105×865 横幅 y=60/h=346、标题 x=56.5/y=153/48px、箭头 32px、圆点位置与参照一致；390×844 横幅高 200px、标题 20px、无横向溢出，五张实际图片均加载，点击搜索和拖动已验收。截图在忽略的 `.tools/carousel/`，临时预览已停止并清理数据。NAS 容器需用户升级，未修改 OmniBox 或用户源数据。
 
 - **脚本声明搜索/筛选（2026-11-20，用户确认）**：移除管理列表的手动能力开关，改为只读展示。`source-capabilities.js` 使用生产依赖 Acorn 8.19 静态读取 default 导出的 rule/meta 声明（rule 优先），支持数字/布尔/常量引用/对象展开，忽略注释、示例字符串和无关对象，不执行脚本。未声明或无法静态判断时兼容搜索开、筛选关，建议明确填写常量。Store 导入/保存同步同脚本所有实例；旧引擎转换同步新声明，升级启动同步既有实例并跳过缺失/不可读脚本；不改变名称、启用、参数、ENV、订阅和原脚本内容。PUT 实例接口忽略旧客户端 searchable/filterable 字段，禁止恢复独立覆盖。新增声明解析、静态不执行、保存/重启保留用户数据、API 与网页/TVBox 同步回归。此前 NAS ivdy 脚本声明两项均为 1，但实例搜索/筛选均为 false；用户反馈后仅通过现有管理 API 打开搜索，实测返回 20 条；新自动同步机制仍需更新镜像后生效。
 

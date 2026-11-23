@@ -117,7 +117,7 @@ describe('网页观影流程', () => {
         expect(wrapper.text()).not.toContain('暂无影片');
         await button('搜索影片').trigger('click'); await flushPromises();
         expect(document.activeElement).toBe(wrapper.find('[aria-label="搜索影片"]').element);
-        expect(api).toHaveBeenCalledTimes(1);
+        expect(api.mock.calls.filter(([url]) => url !== '/watch/banner')).toHaveLength(1);
         await wrapper.find('[aria-label="搜索影片"]').setValue('希望');
         await wrapper.find('form').trigger('submit'); await flushPromises();
         expect(wrapper.find('.watch-video-card').text()).toBe('希望');
