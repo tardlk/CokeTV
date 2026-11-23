@@ -24,6 +24,8 @@
 
 ## 当前架构
 
+- **FongMi 原生导航搜索（2026-11-23，用户确认）**：buildSubscription 为 navigation 实例输出站点级 indexs:1，普通源不增加该字段；豆瓣仍 searchable:0。已核对 FongMi/fongmi 分支 Site.isIndex、leanback HomeActivity.onItemClick 和 CollectActivity：点击首页推荐以 vod_name 进入客户端搜索，候选站点来自订阅中 searchable:1 的源。与网页 /watch/search 独立，无服务端新增聚合/取链逻辑。现有导航回归扩充 TVBox 与 /s 订阅标记、推荐片名到其他源搜索的真实接口链及未订阅源 403。NAS 已导入豆瓣且将其加入默认订阅；旧输出缺 indexs，日志显示客户端误入豆瓣详情/取链。新镜像需用户升级并刷新 FongMi 订阅；实体客户端点击仍需用户实测，不泛称所有 TVBox 或分类页均支持。
+
 - **豆瓣部分海报 403 修复（2026-11-23）**：用户反馈《两京十五日》海报缺失；NAS 日志及对应图片请求确认该图源返回 403，而其他分片图片可用。原 source-images.js 只绑定 Referer，原生 streamMedia 请求不带 UA；同一张图片通过原生 HTTPS 验证，无 UA 为 403，加入 Mozilla/5.0 为 206。修复在图片票据中绑定固定 UA，保留公开出口/目标/源/Range 约束，不转发客户端 Cookie/Authorization。新增真实 HTTP 端到端回归，以同时要求来源头和 UA 的模拟图源验证首页转换、票据、媒体转发、Range、二进制及篡改拒绝。脚本无需重新导入，NAS 需用户更新镜像后刷新页面。
 
 - **导航脚本轮播与图片来源头（2026-11-23）**：用户要求转换 OmniBox 豆瓣推荐脚本；单文件与 ZIP 位于忽略的 releases，不进入源码或镜像。meta.navigation=true、searchable=0、filterable=1，保留六分类/全部筛选、腾讯轮播和豆瓣推荐，不带原脚本的 Cookie/标识；真实临时运行得到 6 分类/5 轮播/20 推荐，全部分类和翻页/筛选通过。框架选中导航源时读取该源 home.banner（与源 ID 关联），禁用内置轮播请求；空 banner 不混入内置推荐，普通源保持已有机制；修复空成功内置轮播重复请求。source-images.js 为带 @Referer= 声明的 vod_pic 铸造随机目标/源绑定图片票据，公开出口，不改变源首页缓存原值，不暴露订阅或管理凭据；处理位于共享内容查询层。图片上游无 Referer 返回 418，有 Referer 实际返回 206。新增来源/空轮播/切源/图片票据范围测试。NAS 未新增豆瓣源，需用户更新镜像后导入并在影视站选择；导航源不加入视频订阅。
@@ -40,7 +42,7 @@
 - `src/host/`：独立 HTML 解析、JSONPath、ENV 及网关辅助；来源与本地哈希在 UPSTREAM。宿主修改进入 src，不修改官方引擎原包。
 - `src/store.js`：数据版本 v2、事务/历史、v1 预备份与旧源标记、显式代码迁移；源保存时解析 `meta.navigation` 并更新实例标记。数据只在 data，发行始终零预置源。
 - `src/logging.js`、`src/backups.js`：stdio + 轮转文件日志（脱敏）、data 快照（定时/手动、保留份数、下载）；快照 zip 由 `worker_threads` 生成，避免阻塞主事件循环。
-- 网页、TVBox、猫影视、Emby 和 115/光鸭继续通过统一内容服务。CatVod 执行器已删除，猫影视连接程序保留；TVBox 配置链接导入和采集 JSON/XML 脚本生成器已移除。导航源由 `meta.navigation: true` 标记，网页点击条目走 `/watch/search` 聚合搜索（最多 12 个可搜索源、单源 6 秒超时、30 秒缓存）；TVBox/Emby 不承担跨源交互。
+- 网页、TVBox、猫影视、Emby 和 115/光鸭继续通过统一内容服务。CatVod 执行器已删除，猫影视连接程序保留；TVBox 配置链接导入和采集 JSON/XML 脚本生成器已移除。导航源由 `meta.navigation: true` 标记，网页点击条目走 `/watch/search` 聚合搜索（最多 12 个可搜索源、单源 6 秒超时、30 秒缓存）；TVBox 输出 indexs:1 交给 FongMi 原生导航搜索，Emby 仍不承担跨源交互。
 
 ## 网盘开发契约
 

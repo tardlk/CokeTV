@@ -41,6 +41,30 @@ test('导航源标记可见，聚合搜索只查可搜索的非导航源并按�
     assert.equal(list.find(item => item.id === navInstance.id).navigation, true);
     assert.equal(list.find(item => item.id === firstInstance.id).navigation, false);
 
+    // FongMi uses the site-level indexs flag to search by the clicked title.
+    const subscription = app.store.state.subscriptions[0];
+    await app.store.mutate(state => { state.subscriptions[0].instances = [navInstance.id, firstInstance.id]; });
+    for (const endpoint of ['/tvbox/', '/s/']) {
+        const response = await app.inject(endpoint + subscription.token);
+        assert.equal(response.statusCode, 200, response.body);
+        const sites = response.json().sites;
+        assert.equal(sites.length, 2);
+        const navSite = sites.find(site => site.key === 'lite_' + navInstance.id);
+        assert.equal(navSite.indexs, 1); assert.equal(navSite.searchable, 0);
+        const playable = sites.filter(site => site.searchable === 1);
+        assert.equal(playable.length, 1); assert.equal(playable[0].indexs, undefined);
+        const homeUrl = new URL(navSite.api);
+        const homeResult = await app.inject(homeUrl.pathname + homeUrl.search);
+        assert.equal(homeResult.statusCode, 200, homeResult.body);
+        const keyword = homeResult.json().list[0].vod_name;
+        const searchUrl = new URL(playable[0].api); searchUrl.searchParams.set('wd', keyword);
+        const nativeSearch = await app.inject(searchUrl.pathname + searchUrl.search);
+        assert.equal(nativeSearch.statusCode, 200, nativeSearch.body);
+        assert.equal(nativeSearch.json().list[0].vod_name, '热播片 · 搜索甲');
+        searchUrl.pathname = '/api/' + secondInstance.id;
+        assert.equal((await app.inject(searchUrl.pathname + searchUrl.search)).statusCode, 403);
+    }
+
     // Disable the failure source for the happy path, then include it explicitly.
     await app.store.mutate(state => { state.instances.find(item => item.id === brokenInstance.id).enabled = false; });
     const result = await app.inject(`/watch/search?wd=${encodeURIComponent('庆余年')}`);

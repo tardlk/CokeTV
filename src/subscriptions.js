@@ -10,6 +10,7 @@ export function buildSubscription(state, subscription, baseUrl) {
         api.searchParams.set('token', subscription.token);
         return [{key: `lite_${instance.id}`, name: instance.name, type: 4, api: api.href,
             searchable: instance.searchable ? 1 : 0, quickSearch: 0, filterable: instance.filterable ? 1 : 0,
+            ...(instance.navigation ? {indexs: 1} : {}),
             ext: instance.params || '', engine: script.engine}];
     });
     return {sites, parses: state.settings.parses || [], lives: state.settings.lives || [], flags: []};
