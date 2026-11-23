@@ -75,6 +75,8 @@ Emby 登录按 IP 限制，普通协议请求与源取链另有限额；仅已�
 
 全量 `npm audit`（含开发依赖）仍有 11 项：`vitest`/`tinypool` 为 critical，`vite`/`node-forge`/顶层开发用 `undici` 为 high，`@vitest/mocker` 和 `@vue/test-utils` 的 `js-beautify`/`editorconfig`/`glob`/`minimatch` 链为 moderate。它们只影响测试/构建路径，不进入生产镜像；其中 vitest 的修复是 5.x 主版本，需单独迁移验证。`node-forge` 仅用于测试证书生成，不用于运行时签名校验；本轮未扩大到开发依赖迁移。
 
+2026-11-23 轮播发布前复核：生产依赖仍为 0 项，全量仍为上述 11 项。新增 Embla 8.6.0 为前端构建依赖，本轮未新增生产依赖或扩大开发依赖迁移范围。
+
 历史审计表保留在 Git 历史。发布前重新执行 `npm audit` 并在本节更新；包级告警不等于已证明 CokeTV 存在可利用路径，也不表示已豁免扫描。
 
 0.2 系列仅保留 drpy3。旧 drpyS 注入的 node-forge 已从生产依赖移除；drpy3 官方打包依赖按固定版本和哈希保留；源脚本仍与宿主同权限执行，worker 不是安全沙箱。
