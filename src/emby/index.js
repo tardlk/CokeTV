@@ -57,8 +57,10 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
         return {user,sub,session,key,token};
     };
     const allowed=(ctx,source)=>ctx.sub.instances.includes(source)&&store.state.instances.some(i=>i.id===source&&i.enabled);
-    const rows=ctx=>catalog.items(ctx.user,ctx.sub);
+    const rows=(ctx,libraryId)=>catalog.items(ctx.user,ctx.sub,libraryId);
+    const itemAlias=itemId=>db.get('aliases',itemId)?.itemId||itemId;
     const findItem=(ctx,itemId)=>{
+        itemId=itemAlias(itemId);
         const library=catalog.libraries(ctx.user,ctx.sub).find(l=>l.id===itemId);
         const item=rows(ctx).find(i=>i.id===itemId)||(library?libraryDTO(library):null);
         if(!item)throw fail('条目不存在或不在观看范围内',404);return item;
@@ -174,7 +176,10 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
     });
     register('GET','/Library/VirtualFolders',(_request,_reply,ctx)=>catalog.libraries(ctx.user,ctx.sub).map(l=>({Name:l.name,ItemId:l.id,CollectionType:l.kind==='Mixed'?'':l.kind==='Series'?'tvshows':'movies',Locations:[],RefreshStatus:'Idle',LibraryOptions:{EnableRealtimeMonitor:false}})));
     const list=(request,reply,ctx,mode='items')=>{
-        const q=request.query;let items=rows(ctx),libraries=catalog.libraries(ctx.user,ctx.sub).map(libraryDTO);
+        const q={...request.query},views=catalog.libraries(ctx.user,ctx.sub);
+        for(const key of ['ParentId','SeriesId','SeasonId'])if(q[key])q[key]=itemAlias(q[key]);
+        const parent=views.find(l=>l.id===q.ParentId);
+        let items=rows(ctx,parent?.catalogId||parent?.id),libraries=views.map(libraryDTO);
         if(mode==='resume')items=items.filter(i=>{const s=db.get('userdata',`${ctx.user.id}:${i.id}`);return s?.position>0&&!s.played;});
         else if(mode==='next') {
             const groups=new Map();for(const i of items.filter(i=>i.type==='Episode').sort((a,b)=>a.parentIndex-b.parentIndex||a.index-b.index)){const group=groups.get(i.seriesId)||[];group.push(i);groups.set(i.seriesId,group);}
@@ -186,7 +191,9 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
             const key=ctx.key+':'+JSON.stringify(Object.fromEntries(Object.entries(q).filter(([k])=>!['StartIndex','Limit','api_key','ApiKey','Fields','EnableUserData','EnableImages'].includes(k)).sort()));
             const start=Number(q.StartIndex||0);
             if(start===0||!pins.has(key))pins.set(key,items);
-            items=(pins.get(key)||[]).filter(i=>allowed(ctx,i.sourceId)&&db.get('libraries',i.libraryId));
+            const availableSources=new Set(ctx.sub.instances.filter(source=>allowed(ctx,source)));
+            const availableLibraries=new Set(catalog.catalogs(ctx.sub).map(l=>l.id));
+            items=(pins.get(key)||[]).filter(i=>availableSources.has(i.sourceId)&&availableLibraries.has(i.libraryId));
             if(q.ParentId===db.get('meta','server')) {
                 if(String(q.Recursive).toLowerCase()==='true')items=[...libraries,...items];else items=libraries;
             }else if(q.ParentId) {
@@ -205,7 +212,7 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
             items=items.filter(i=>types.includes(i.type));
         }
         if(q.ExcludeItemTypes)items=items.filter(i=>!String(q.ExcludeItemTypes).split(',').includes(i.type));
-        if(q.Ids)items=items.filter(i=>String(q.Ids).split(',').includes(i.id));
+        if(q.Ids){const ids=new Set(String(q.Ids).split(',').map(itemAlias));items=items.filter(i=>ids.has(i.id));}
         if(q.SearchTerm)items=items.filter(i=>i.name.toLowerCase().includes(String(q.SearchTerm).toLowerCase()));
         const filters=String(q.Filters||'').split(',');
         if(filters.includes('IsFavorite')||q.IsFavorite==='true')items=items.filter(i=>db.get('userdata',`${ctx.user.id}:${i.id}`)?.favorite);

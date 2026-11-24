@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {createApp} from '../src/server.js';
+import {EmbyStore} from '../src/emby/store.js';
 
 async function fixture(t) {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coketv-emby-'));
@@ -28,8 +29,8 @@ async function fixture(t) {
     app.runner.run = run;
     return {directory, admin, source, get app(){return app;}, async restart(){await app.close();app=await createApp({directory,seed:false});app.runner.run=run;}};
 }
-async function provision(f) {
-    const library = await f.admin('/libraries',{name:'电视剧',sourceId:f.source.id,kind:'Series',category:'tv',pages:1,maxItems:10});
+async function provision(f,{kind='Series'}={}) {
+    const library = await f.admin('/libraries',{name:'电视剧',sourceId:f.source.id,kind,category:'tv',pages:1,maxItems:10});
     const job = await f.admin(`/libraries/${library.id}/sync`,{});
     for(let attempt=0;attempt<100;attempt++) {
         const status = await f.admin('/jobs/'+job.id);
@@ -175,13 +176,38 @@ test('分页刷新期间固定目录快照，账号范围变化即时生效',asy
     assert.equal((await read(1)).TotalRecordCount,0);
 });
 
-test('分集不对齐的多线路分别展示作品版本，不把线路伪装成不同季',async t=>{
+test('分集不齐的多线路合并成一部剧，缺集线路只出现在实际提供的分集里',async t=>{
     const f=await fixture(t),original=f.app.runner.run;
     f.app.runner.run=async(s,q)=>{const value=await original(s,q);if(q.ac==='detail')value.list[0].vod_play_url='第1集$https://example.invalid/one.mp4#第2集$https://example.invalid/two.mp4$$$第2集$https://example.invalid/two-hd.mp4';return value;};
     const p=await provision(f);
     const response=await f.app.inject({url:'/Items?Recursive=true&IncludeItemTypes=Series',headers:p.headers});assert.equal(response.statusCode,200,response.body);
-    const series=response.json().Items;assert.equal(series.length,4);assert.ok(series.some(i=>i.Name.includes('[高清]')));assert.ok(series.some(i=>i.Name.includes('[超清]')));
-    for(const item of series){const seasons=await f.app.inject({url:`/Shows/${item.Id}/Seasons`,headers:p.headers});assert.equal(seasons.json().Items.length,1);assert.equal(seasons.json().Items[0].IndexNumber,1);}
+    const series=response.json().Items;assert.equal(series.length,2);assert.ok(series.every(i=>!i.Name.includes('[')));
+    for(const item of series){
+        const seasons=await f.app.inject({url:`/Shows/${item.Id}/Seasons`,headers:p.headers});assert.equal(seasons.json().Items.length,1);assert.equal(seasons.json().Items[0].IndexNumber,1);
+        const episodes=await f.app.inject({url:`/Shows/${item.Id}/Episodes`,headers:p.headers});assert.equal(episodes.json().Items.length,2);
+        assert.deepEqual(episodes.json().Items.map(e=>e.MediaSources.length),[1,2]);
+    }
+});
+
+test('电影的全部线路及片段显示为一个条目的可选版本',async t=>{
+    const f=await fixture(t),p=await provision(f,{kind:'Movie'});
+    const response=await f.app.inject({url:'/Items?Recursive=true&IncludeItemTypes=Movie',headers:p.headers});assert.equal(response.statusCode,200,response.body);
+    assert.equal(response.json().TotalRecordCount,2);
+    const movie=response.json().Items[0];assert.equal(movie.MediaSources.length,4);assert.ok(!movie.Name.includes('['));
+    assert.deepEqual(movie.MediaSources.map(v=>v.Name),['高清 · 第1集','高清 · 第2集','超清 · 第1集','超清 · 第2集']);
+    const version=movie.MediaSources[3].Id;
+    const play=await f.app.inject({url:'/Items/'+movie.Id+'/PlaybackInfo?MediaSourceId='+version,headers:p.headers});
+    assert.equal(play.json().MediaSources.length,1);assert.equal(play.json().MediaSources[0].Id,version);
+});
+
+test('非编号分集按名称合并，保留预告和花絮且不把线路作为季',async t=>{
+    const f=await fixture(t),run=f.app.runner.run;
+    f.app.runner.run=async(...args)=>{const value=await run(...args);if(args[1].ac==='detail')value.list[0].vod_play_url='正片$https://example.invalid/a.mp4#预告$https://example.invalid/b.mp4$$$正片$https://example.invalid/c.mp4#花絮$https://example.invalid/d.mp4';return value;};
+    const p=await provision(f);
+    const series=(await f.app.inject({url:'/Items?Recursive=true&IncludeItemTypes=Series',headers:p.headers})).json();assert.equal(series.TotalRecordCount,2);
+    const episodes=(await f.app.inject({url:'/Shows/'+series.Items[0].Id+'/Episodes',headers:p.headers})).json();
+    assert.equal(episodes.TotalRecordCount,3);assert.equal(episodes.Items.find(i=>i.Name==='正片').MediaSources.length,2);
+    assert.equal(new Set(episodes.Items.map(i=>i.SeasonId)).size,1);assert.equal(new Set(episodes.Items.map(i=>i.IndexNumber)).size,3);
 });
 
 test('根地址无需账号创建：coke+订阅Token定位唯一启用订阅，隔离观看状态并实时撤销',async t=>{
@@ -275,4 +301,39 @@ test('Emby自动电影/剧集视图支持小写查询且不泄漏其他视图条
     const children=await get('parentid='+series.Id+'&recursive=true&includeitemtypes=Series');
     assert.equal(children.TotalRecordCount,2);assert.ok(children.Items.every(i=>i.ParentId===series.Id&&i.Type==='Series'));
     assert.equal((await get('parentId='+movie.Id+'&recursive=true&includeItemTypes=Movie')).TotalRecordCount,0);
+});
+
+test('Emby读取单个媒体库不扫描其他目录，也不逐条查询媒体库权限',async t=>{
+    const f=await fixture(t),run=f.app.runner.run;
+    f.app.runner.run=async(...args)=>{
+        const result=await run(...args);
+        if(args[1].ac==='detail')result.list[0].vod_play_url=Array.from({length:180},(_,i)=>`第${i+1}集$https://example.invalid/${i}.mp4`).join('#');
+        return result;
+    };
+    const p=await provision(f),other=await f.admin('/libraries',{name:'其他目录',sourceId:f.source.id,kind:'Series',pages:1,maxItems:10});
+    const job=await f.admin('/libraries/'+other.id+'/sync',{});
+    for(let attempt=0;attempt<100;attempt++) {
+        const status=await f.admin('/jobs/'+job.id);if(status.status==='complete')break;
+        assert.notEqual(status.status,'failed',JSON.stringify(status));await new Promise(resolve=>setTimeout(resolve,10));
+        if(attempt===99)assert.fail('同步没有结束');
+    }
+    const originalGet=EmbyStore.prototype.get,originalAll=EmbyStore.prototype.all;
+    let libraryGets=0,otherScans=0;
+    EmbyStore.prototype.get=function(namespace,...args){if(namespace==='libraries')libraryGets++;return originalGet.call(this,namespace,...args);};
+    EmbyStore.prototype.all=function(namespace,...args){if(namespace==='catalog:'+other.id)otherScans++;return originalAll.call(this,namespace,...args);};
+    try {
+        const response=await f.app.inject({url:'/Items?ParentId='+p.library.id+'&Recursive=true&IncludeItemTypes=Episode&Limit=10',headers:p.headers});
+        assert.equal(response.statusCode,200,response.body);assert.equal(response.json().TotalRecordCount,360);
+        assert.equal(response.json().Items.length,10);assert.equal(otherScans,0,'打开一个媒体库不读取其他媒体库的分集');
+        assert.ok(libraryGets<10,`权限校验不应随分集数逐条读取数据库，实际 ${libraryGets} 次`);
+    }finally{EmbyStore.prototype.get=originalGet;EmbyStore.prototype.all=originalAll;}
+});
+
+test('Emby准备大量分集时批量持久化稳定ID，避免逐条自动提交阻塞HTTP',async t=>{
+    const f=await fixture(t),originalPut=EmbyStore.prototype.put,originalTransaction=EmbyStore.prototype.transaction;
+    let depth=0,identities=0,unbatched=0;
+    EmbyStore.prototype.transaction=function(fn){return originalTransaction.call(this,()=>{depth++;try{return fn();}finally{depth--;}});};
+    EmbyStore.prototype.put=function(namespace,...args){if(namespace==='identity'){identities++;if(!depth)unbatched++;}return originalPut.call(this,namespace,...args);};
+    try{await provision(f);assert.ok(identities>10);assert.equal(unbatched,0,'作品稳定ID必须批量写入，不能逐条触发磁盘提交');}
+    finally{EmbyStore.prototype.put=originalPut;EmbyStore.prototype.transaction=originalTransaction;}
 });
