@@ -1,11 +1,12 @@
 # CokeTV 接手记录
 
-更新：2026-11-23。当前源码版本 **0.2.5**，用户已明确 **只保留 drpy3 一个源执行引擎**；工作方式继续直接在 `main` 工作，不主动创建分支或 PR。
+更新：2026-11-24。当前源码版本 **0.2.5**，用户已明确 **只保留 drpy3 一个源执行引擎**；工作方式继续直接在 `main` 工作，不主动创建分支或 PR。
 
 ## 0. 当前接手入口（先看本节）
 
 - **先读顺序**：`AGENTS.md`（用户已确认的产品与安全决定）→ 本文件 → `README.md`、`SECURITY.md`；写站点源时读 `docs/SOURCE_DEVELOPMENT.md`。原 CONFIGURATION/DEVELOPMENT/NETDISK_DEVELOPMENT/THIRD_PARTY 已并入 README 与本文件后删除。
-- **当前验证**（2026-11-23，macOS arm64 / Node 22.23.5）：`npm run check`、`npm run build` 通过；`npm test` 为后端 292 项（281 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 90 项，共 382 项。本地 Node 位于忽略的 `.tools/`，`start.sh` 可自动发现。
+- **当前验证**（2026-11-24，macOS arm64 / Node 22.23.5）：`npm run check`、`npm run build` 通过；`npm test` 为后端 294 项（283 通过，11 项 data 目录站点脚本回归在空壳环境按设计跳过）+ 界面 90 项，共 384 项。本地 Node 位于忽略的 `.tools/`，`start.sh` 可自动发现。
+- **Emby 查询参数兼容（2026-11-24）**：原实现只识别 PascalCase 查询项，`searchTerm`/`parentId` 等 camelCase 参数会被忽略，搜索或目录请求可能错误返回全部媒体库。协议路由现在对已支持的非凭据查询项做大小写归一，冲突值拒绝；凭据别名保留原鉴权与冲突检查。固定回归覆盖搜索/空结果、自动电影与剧集视图、分页、搜索提示、播放版本及订阅身份。NAS 原版接口复现了两种大小写返回不同内容；日志可见 VidHub Android，但未记录原始查询，尚不能确认该客户端此次问题的全部原因。真实站点脚本、目录和观看状态未修改。Emby 搜索仍只检索有限已准备目录，不是网页/TVBox 的实时源搜索。
 - **当前 latest（2026-11-23 FongMi 导航搜索）**：`ghcr.io/tardlk/coketv:latest` 与 `:sha-fac4058`，manifest digest `sha256:6135a6d88d29a4109e842a18c5e44fd508879dc21c595ff51e57451541f15261`，image ID `sha256:5cccb656b7b504227daa3e9c59a464bf2deacd911bbd638c2892fbb01cd51043`，源码提交 `fac40589311c32b2d2a5d0353fd00d9cbd0f689f`，版本 0.2.5，`linux/amd64`。[Verify](https://github.com/tardlk/CokeTV/actions/runs/45132978595) 与 [容器验收并发布](https://github.com/tardlk/CokeTV/actions/runs/45132978421) 成功，14 项容器检查和容器内 280 项后端回归通过。latest 与 sha 标签匿名 manifest/config digest 一致并匹配验收镜像。本机无 Docker，未实际 pull。NAS 待用户升级，随后刷新 FongMi 订阅并测试首页推荐点击搜索；豆瓣脚本无需重新导入。
 - **豆瓣图片 UA 修复构建（2026-11-23 豆瓣图片 UA 修复）**：`ghcr.io/tardlk/coketv:latest` 与 `:sha-835b601`，manifest digest `sha256:ba2530d2218c548450f3516567656203fb6be8308229667959c2be3dad094d9a`，image ID `sha256:4014b8ec74c634a6eb6fc8b17c61de698e7e460a2457fbac1042e5edd6472bcc`，源码提交 `835b6014f3635e6b5f9f618f489120593f095652`，版本 0.2.5，`linux/amd64`。[Verify](https://github.com/tardlk/CokeTV/actions/runs/45106029342) 与 [容器验收并发布](https://github.com/tardlk/CokeTV/actions/runs/45106029360) 成功，14 项容器检查和容器内 280 项后端回归通过。latest 与 sha 标签匿名 manifest/config digest 一致并匹配验收镜像。本机无 Docker，未实际 pull。NAS 待用户更新镜像，豆瓣脚本无需重新导入。
 - **导航脚本轮播构建（2026-11-23 导航脚本轮播/图片）**：`ghcr.io/tardlk/coketv:latest` 与 `:sha-32e0384`，manifest digest `sha256:742cc12663df8846110615a42cfca06e7f5ee938e3bade9aea1c28aa57130258`，image ID `sha256:b4ef57196f859d2d71d64b96ce876477d422352871e8b7f721cd23228a5f5577`，源码提交 `32e0384d70665d4f166e00823deac76d11ad0b38`，版本 0.2.5，`linux/amd64`。[Verify](https://github.com/tardlk/CokeTV/actions/runs/45104480537) 与 [容器验收并发布](https://github.com/tardlk/CokeTV/actions/runs/45104480512) 成功，14 项容器检查和容器内 279 项后端回归通过。latest 与 sha 标签匿名 manifest/config digest 一致并匹配验收镜像。本机无 Docker，未实际 pull。豆瓣脚本单独交付供导入，NAS 需用户升级。

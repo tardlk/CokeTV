@@ -239,3 +239,40 @@ test('订阅直接输出Emby：免开关/建库，按订阅源自动准备目录
     const prepare=await f.app.inject({method:'POST',url:'/admin/subscriptions/viewer-sub/emby/prepare',headers:{authorization:'Basic '+Buffer.from(':admin-emby-fixture').toString('base64')},payload:{}});
     assert.equal(prepare.statusCode,200,prepare.body);assert.equal(prepare.json().sources,1);assert.equal(prepare.json().ready,1);
 });
+
+test('Emby客户端的camelCase查询正确限定目录、搜索、分页和播放版本',async t=>{
+    const f=await fixture(t),original=f.app.runner.run;
+    f.app.runner.run=async(...args)=>{
+        const result=await original(...args);
+        if(args[1].ac==='detail')result.list[0].vod_name=args[1].ids==='one'?'老友记':'其他剧集';
+        return result;
+    };
+    const p=await provision(f);
+    const get=async url=>{const r=await f.app.inject({url,headers:p.headers});assert.equal(r.statusCode,200,r.body);return r.json();};
+    const search=await get('/emby/Users/'+p.user.id+'/Items?searchTerm='+encodeURIComponent('老友记')+'&recursive=true&includeItemTypes=Series');
+    assert.equal(search.TotalRecordCount,1);assert.equal(search.Items[0].Name,'老友记');
+    const empty=await get('/emby/Items?searchTerm=missing&recursive=true');assert.equal(empty.TotalRecordCount,0);
+    const children=await get('/emby/Items?parentId='+p.library.id+'&recursive=true&includeItemTypes=Series&sortOrder=Descending&startIndex=1&limit=1');
+    const canonical=await get('/emby/Items?ParentId='+p.library.id+'&Recursive=true&IncludeItemTypes=Series&SortOrder=Descending&StartIndex=1&Limit=1');
+    assert.deepEqual(children,canonical);assert.equal(children.TotalRecordCount,2);assert.equal(children.Items.length,1);assert.equal(children.StartIndex,1);
+    const hints=await get('/emby/Search/Hints?searchTerm='+encodeURIComponent('老友记'));
+    assert.equal(hints.TotalRecordCount,1);assert.equal(hints.SearchHints[0].Name,'老友记');
+    const episodes=await get('/emby/Shows/'+search.Items[0].Id+'/Episodes');const ep=episodes.Items[0],version=ep.MediaSources[1].Id;
+    const playback=await get('/emby/Items/'+ep.Id+'/PlaybackInfo?mediaSourceId='+version);
+    assert.equal(playback.MediaSources.length,1);assert.equal(playback.MediaSources[0].Id,version);
+    const conflict=await f.app.inject({url:'/emby/Items?SearchTerm=one&searchTerm=two',headers:p.headers});assert.equal(conflict.statusCode,400);
+    const wrongUser=await f.app.inject({url:'/emby/Items?USERID=another-user',headers:p.headers});assert.equal(wrongUser.statusCode,403);
+    const conflictingToken=await f.app.inject({url:'/emby/Items?api_key='+'x'.repeat(43),headers:p.headers});assert.equal(conflictingToken.statusCode,401);
+});
+
+test('Emby自动电影/剧集视图支持小写查询且不泄漏其他视图条目',async t=>{
+    const f=await fixture(t);
+    const login=await f.app.inject({method:'POST',url:'/Users/AuthenticateByName',payload:{Username:'coke',Pw:'subscription-secret'}});
+    const headers={'x-emby-token':login.json().AccessToken};
+    const views=await f.app.inject({url:'/Users/'+login.json().User.Id+'/Views',headers});
+    const series=views.json().Items.find(i=>i.CollectionType==='tvshows'),movie=views.json().Items.find(i=>i.CollectionType==='movies');
+    const get=async query=>{const r=await f.app.inject({url:'/Items?'+query,headers});assert.equal(r.statusCode,200,r.body);return r.json();};
+    const children=await get('parentid='+series.Id+'&recursive=true&includeitemtypes=Series');
+    assert.equal(children.TotalRecordCount,2);assert.ok(children.Items.every(i=>i.ParentId===series.Id&&i.Type==='Series'));
+    assert.equal((await get('parentId='+movie.Id+'&recursive=true&includeItemTypes=Movie')).TotalRecordCount,0);
+});

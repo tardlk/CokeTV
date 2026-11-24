@@ -12,6 +12,19 @@ import {checkUnsafeRequestOrigin} from '../origin.js';
 
 const id=()=>randomUUID().replaceAll('-','');
 const count=(value,fallback,max)=>{const n=value===undefined?fallback:Number(value);if(!Number.isSafeInteger(n)||n<1||n>max)throw fail('数量或页数超出范围');return n;};
+// Emby clients also send camelCase/lowercase parameter names. Canonicalize
+// supported options before authorization and pagination; keep credential aliases
+// untouched so suppliedToken still rejects conflicting authentication values.
+const queryNames=new Map(('UserId DeviceId Client ParentId Recursive IncludeItemTypes ExcludeItemTypes Ids SearchTerm SeriesId SeasonId Filters IsFavorite IsPlayed SortBy SortOrder StartIndex Limit MediaSourceId').split(' ').map(name=>[name.toLowerCase(),name]));
+function normalizeQuery(query) {
+    const result={...query};
+    for(const [key,value]of Object.entries(query)) {
+        const name=queryNames.get(key.toLowerCase());if(!name)continue;
+        if(Object.hasOwn(result,name)&&result[name]!==value)throw fail('查询参数冲突');
+        if(name!==key)delete result[key];result[name]=value;
+    }
+    return result;
+}
 
 export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdiskCurrent,targetGuard}) {
     const db=await new EmbyStore(store).init(),catalog=new Catalog(db,store,content);
@@ -123,6 +136,7 @@ export async function registerEmby(app,{store,content,baseUrl,serveMedia,isNetdi
         const lower=url.split('/').map(part=>part.startsWith(':')?part:part.toLowerCase()).join('/');
         for(const route of new Set([url,lower,...[url,lower].map(p=>'/emby'+p)]))app.route({method:methods,url:route,handler:async(request,reply)=>{
             reply.header('Cache-Control','private, no-store');checkUnsafeRequestOrigin(request);
+            request.query=normalizeQuery(request.query);
             if(!media)rate(request,'request',1200);
             await db.open();
             let ctx=publicRoute?null:authenticate(request);
